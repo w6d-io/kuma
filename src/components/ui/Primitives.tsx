@@ -146,7 +146,7 @@ export function RulePipeline({ rule }: { rule: { match: { methods: string[] }; a
     { k: "auth", label: "Authenticate", sub: rule.authenticators.join(" \u00b7 ") || "\u2014", icon: I.shield },
     { k: "authz", label: "Authorize", sub: rule.authorizer, icon: rule.authorizer === "allow" ? I.check : I.shield },
     { k: "mutate", label: "Mutate", sub: rule.mutators.join(" \u00b7 ") || "\u2014", icon: I.edit },
-    { k: "upstream", label: "Upstream", sub: rule.upstream ? new URL(rule.upstream).host : "\u2014", icon: I.box },
+    { k: "upstream", label: "Upstream", sub: rule.upstream ? (() => { try { return new URL(rule.upstream).host; } catch { return rule.upstream; } })() : "\u2014", icon: I.box },
   ];
   return (
     <div className="rulepipe">
