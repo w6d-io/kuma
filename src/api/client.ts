@@ -1,6 +1,8 @@
 // API_BASE injected at container start via envsubst (see Dockerfile).
 // Falls back to relative /api when Oathkeeper proxies /api on the same domain.
-const BASE = ((window as any).__API_BASE__ || '').replace(/\/$/, '') || '/api';
+// Detect un-substituted envsubst placeholder (e.g. "${API_BASE}") and treat as empty.
+const _rawBase: string = (window as any).__API_BASE__ ?? '';
+const BASE = (_rawBase.startsWith('${') ? '' : _rawBase).replace(/\/$/, '') || '/api';
 
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -123,6 +125,16 @@ export const api = {
     const q = qs.toString()
     return request<{ events: AuditStreamEvent[]; total: number }>(`/admin/audit/events${q ? `?${q}` : ''}`)
   },
+
+  // ─── Bundle export / import ───
+  exportBundle: () =>
+    fetch(`${BASE}/admin/rbac/bundle/export`, { credentials: 'include' }),
+
+  importBundle: (bundle: unknown) =>
+    request<{ success: boolean; imported: BundleImportResult }>('/admin/rbac/bundle/import', {
+      method: 'POST',
+      body: JSON.stringify(bundle),
+    }),
 };
 
 // ─── Types matching jinbe API responses ───
@@ -205,6 +217,11 @@ export interface JinbeCommit {
   authorEmail: string;
   timestamp: string;
   filesChanged: string[];
+}
+
+export interface BundleImportResult {
+  rbac: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number };
+  identities: { created: number; updated: number; skipped: number };
 }
 
 export interface AuditStreamEvent {
