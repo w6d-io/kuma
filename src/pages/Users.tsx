@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree } from '../components/ui/Primitives';
+import { Pagination, usePagination } from '../components/ui/Pagination';
 import { useApplyChange } from '../hooks/useApplyChange';
 
 export function UsersPage() {
@@ -14,6 +15,9 @@ export function UsersPage() {
     if (groupFilter !== "all" && !u.groups.includes(groupFilter)) return false;
     return true;
   });
+
+  const pg = usePagination(filtered.length, 25);
+  const paged = filtered.slice(pg.from, pg.to);
 
   return (
     <>
@@ -45,7 +49,7 @@ export function UsersPage() {
         <table className="table">
           <thead><tr><th>Identity</th><th>Groups</th><th>Last seen</th><th></th></tr></thead>
           <tbody>
-            {filtered.map(u => (
+            {paged.map(u => (
               <tr key={u.id} className="row-click" onClick={() => setUserDrawer({ mode: "edit", user: u })}>
                 <td>
                   <div className="row" style={{ gap: 10 }}>
@@ -67,6 +71,9 @@ export function UsersPage() {
             ))}
           </tbody>
         </table>
+        {filtered.length > pg.pageSize && (
+          <Pagination page={pg.page} pageSize={pg.pageSize} total={filtered.length} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
+        )}
       </div>
     </>
   );

@@ -19,7 +19,7 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
 
 // ─── Auth / Session ───
 export const api = {
-  session: () => request<{ user: JinbeUser }>('/auth/session'),
+  session: () => request<WhoamiResponse>('/whoami'),
 
   // ─── Users (Kratos identities) ───
   getUsers: () => request<{ data: KratosIdentity[] }>('/admin/users').then(r => r.data),
@@ -110,18 +110,34 @@ export const api = {
   getUsersMatrix: () =>
     request<{ users: JinbeUserMatrix[] }>(`/admin/rbac/users`).then(r => r.users),
 
-  // ─── History ───
+  // ─── History (git commits) ───
   getHistory: () =>
     request<{ commits: JinbeCommit[] }>(`/admin/rbac/history`).then(r => r.commits),
+
+  // ─── Audit stream ───
+  getAuditEvents: (params?: { limit?: number; category?: string; since?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.limit)    qs.set('limit',    String(params.limit))
+    if (params?.category) qs.set('category', params.category)
+    if (params?.since)    qs.set('since',    params.since)
+    const q = qs.toString()
+    return request<{ events: AuditStreamEvent[]; total: number }>(`/admin/audit/events${q ? `?${q}` : ''}`)
+  },
 };
 
 // ─── Types matching jinbe API responses ───
 
-export interface JinbeUser {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
+export interface WhoamiResponse {
+  authenticated: boolean;
+  email: string | null;
+  name: string | null;
+  picture: string | null;
+  identity_id: string | null;
+  session_id: string | null;
+  error: string | null;
+  groups: string[];
+  roles: string[];
+  permissions: string[];
 }
 
 export interface KratosIdentity {
@@ -189,4 +205,24 @@ export interface JinbeCommit {
   authorEmail: string;
   timestamp: string;
   filesChanged: string[];
+}
+
+export interface AuditStreamEvent {
+  id:             string;
+  ts:             string;
+  when:           string;
+  category:       string;
+  verb:           string;
+  target:         string;
+  result:         string;
+  who:            string;
+  actorName?:     string;
+  ip?:            string;
+  ua?:            string;
+  service?:       string;
+  reason?:        string;
+  method?:        string;
+  path?:          string;
+  statusCode?:    number;
+  responseTimeMs?: number;
 }

@@ -5,6 +5,12 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      '/api/kratos': {
+        target: process.env.KRATOS_PUBLIC_URL || 'http://localhost:4433',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api\/kratos/, ''),
+      },
       '/api': {
         target: process.env.JINBE_URL || 'http://localhost:8080',
         changeOrigin: true,

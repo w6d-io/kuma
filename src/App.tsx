@@ -12,6 +12,7 @@ import { RolesPage } from './pages/Roles';
 import { RoutesPage } from './pages/Routes';
 import { RulesPage } from './pages/Rules';
 import { AuditPage } from './pages/Audit';
+import { SettingsPage } from './pages/Settings';
 import type { PageId } from './api/types';
 
 const NAV: { id: PageId; name: string; ico: React.ReactNode; section: string }[] = [
@@ -33,8 +34,8 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
 
   // Real session user when live; fallback to "you@console / super_admin"
   const { data: session } = useSession();
-  const email = isLive && session?.user?.email ? session.user.email : "you@console";
-  const role  = isLive && session?.user?.role  ? session.user.role  : "super_admin";
+  const email = isLive && session?.email ? session.email : "you@console";
+  const role  = isLive && session?.roles?.length ? session.roles[0] : "super_admin";
   const [localPart, domain] = email.includes("@") ? [email.split("@")[0], "@" + email.split("@")[1]] : [email, ""];
 
   return (
@@ -68,7 +69,7 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
           </Fragment>
         ))}
       </nav>
-      <div className="sidebar-foot">
+      <div className="sidebar-foot" style={{ cursor: "pointer" }} onClick={() => setPage("settings")} title="Account settings">
         <Avatar name={localPart} />
         <div className="who">
           <span className="n">
@@ -77,8 +78,8 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
           </span>
           <span className="e">{role}</span>
         </div>
-        <button className="btn ghost sm" style={{ padding: 4 }} onClick={onOpenTweaks} title="Settings">
-          <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.more}</span>
+        <button className="btn ghost sm" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); onOpenTweaks(); }} title="Tweaks">
+          <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.cog}</span>
         </button>
       </div>
     </aside>
@@ -277,6 +278,7 @@ function AppShell() {
           {page === "routes" && <RoutesPage />}
           {page === "rules" && <RulesPage />}
           {page === "audit" && <AuditPage />}
+          {page === "settings" && <SettingsPage />}
         </div>
       </div>
       <UserDrawer />
