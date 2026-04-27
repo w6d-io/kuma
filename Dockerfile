@@ -11,17 +11,20 @@ RUN npm run build
 # ── Serve ────────────────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine AS runner
 
-# Install envsubst (part of gettext)
 RUN apk add --no-cache gettext
 
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/templates/default.conf.template
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# JINBE_URL: in-cluster URL of the jinbe service
-# e.g. http://auth-jinbe.w6d-ops:8080 or http://test-auth-jinbe:8080
-ENV JINBE_URL=http://jinbe:8080
+# API_BASE: absolute URL of the jinbe API.
+# - Leave empty (default) → uses relative /api (Oathkeeper proxies /api on same domain)
+# - Set to https://jinbe.dev.w6d.io → SPA calls jinbe directly (separate domain)
+ENV API_BASE=""
 
 EXPOSE 8080
 
-# envsubst replaces ${JINBE_URL} in the nginx template at startup
-CMD ["/bin/sh", "-c", "envsubst '${JINBE_URL}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
+# Inject API_BASE into index.html at startup, then start nginx
+CMD ["/bin/sh", "-c", \
+  "envsubst '${API_BASE}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
+   mv /tmp/index.html /usr/share/nginx/html/index.html && \
+   nginx -g 'daemon off;'"]

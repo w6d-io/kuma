@@ -1,4 +1,6 @@
-const BASE = '/api';
+// API_BASE injected at container start via envsubst (see Dockerfile).
+// Falls back to relative /api when Oathkeeper proxies /api on the same domain.
+const BASE = ((window as any).__API_BASE__ || '').replace(/\/$/, '') || '/api';
 
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
