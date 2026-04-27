@@ -42,6 +42,7 @@ export interface AuditEvent {
   when: string;
   ts?: string;
   who: string;
+  actorName?: string;
   category: string;
   verb: string;
   target: string;
@@ -51,6 +52,10 @@ export interface AuditEvent {
   ua?: string;
   reason?: string;
   mfa?: boolean;
+  method?: string;
+  path?: string;
+  statusCode?: number;
+  responseTimeMs?: number;
 }
 
 export type GroupMapping = Record<string, string[]>;
@@ -64,6 +69,7 @@ export interface AppState {
     opalServer: string;
     kratosAdmin: string;
     lastSync: string;
+    authDomain?: string;
   };
   services: Service[];
   roles: RolesMap;
@@ -74,7 +80,7 @@ export interface AppState {
   audit: AuditEvent[];
 }
 
-export type PageId = 'dashboard' | 'simulator' | 'users' | 'groups' | 'services' | 'roles' | 'routes' | 'rules' | 'audit';
+export type PageId = 'dashboard' | 'simulator' | 'users' | 'groups' | 'services' | 'roles' | 'routes' | 'rules' | 'audit' | 'settings';
 
 export interface TweakDefaults {
   theme: string;

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
+import { Pagination, usePagination } from '../components/ui/Pagination';
 import { Chip, Method, EmptyHint } from '../components/ui/Primitives';
 import { useApplyChange } from '../hooks/useApplyChange';
 import { useUpdateServiceRoutes } from '../api/hooks';
@@ -90,6 +91,7 @@ export function RoutesPage() {
   const applyChange = useApplyChange();
   const svc = activeService && state.routeMaps[activeService] ? activeService : "jinbe";
   const routes = state.routeMaps[svc] || [];
+  const pg = usePagination(routes.length, 25);
   const [draft, setDraft] = useState({ method: "GET", path: "", permission: "" });
   const [editIdx, setEditIdx] = useState<number | null>(null);
 
@@ -163,7 +165,8 @@ export function RoutesPage() {
         <table className="table">
           <thead><tr><th style={{ width: 100 }}>Method</th><th>Path</th><th>Permission</th><th>Granted by</th><th style={{ width: 72 }}></th></tr></thead>
           <tbody>
-            {routes.map((r, i) => {
+            {routes.slice(pg.from, pg.to).map((r, _pi) => {
+              const i = pg.from + _pi; // real index for edit/delete
               if (editIdx === i) {
                 return <EditRow key={i} route={r} perms={availablePerms} onSave={u => saveEdit(i, u)} onCancel={() => setEditIdx(null)} />;
               }
@@ -191,6 +194,9 @@ export function RoutesPage() {
             {routes.length === 0 && <tr><td colSpan={5}><EmptyHint>No routes.</EmptyHint></td></tr>}
           </tbody>
         </table>
+        {routes.length > pg.pageSize && (
+          <Pagination page={pg.page} pageSize={pg.pageSize} total={routes.length} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
+        )}
       </div>
     </>
   );

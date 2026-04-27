@@ -43,6 +43,7 @@ function jinbeRuleToUi(r: JinbeAccessRule): AccessRule {
 }
 
 async function fetchAllRbacData(): Promise<AppState> {
+  console.log('[useRbacData] fetching...');
   const [usersRaw, groupsRaw, servicesRaw, rulesRaw] = await Promise.all([
     api.getUsers().catch(() => [] as KratosIdentity[]),
     api.getGroups().catch(() => [] as JinbeGroup[]),
@@ -101,30 +102,91 @@ async function fetchAllRbacData(): Promise<AppState> {
     if (rule?.upstream) svc.upstreamUrl = rule.upstream;
   }
 
-  // History as audit events
+  // Audit events — try enriched endpoint first, fall back to history
   let audit: AuditEvent[] = [];
   try {
-    const commits = await api.getHistory();
-    audit = commits.map((c, i) => ({
-      id: `h_${i}`,
-      when: timeAgo(c.timestamp),
-      ts: c.timestamp,
-      who: c.authorEmail,
-      category: 'rbac' as const,
-      verb: 'commit',
-      target: c.message,
-      status: 'applied',
-    }));
+    let events: any[] = [];
+    // Try /admin/audit/events first (new enriched format)
+    try {
+      const raw = await api.getAuditEvents({ limit: 200 });
+      events = (raw.events || []).filter((e: any) => e && Object.keys(e).length > 0);
+    } catch { /* endpoint may not exist */ }
+    // Fallback: /admin/rbac/history (old format, always works)
+    if (events.length === 0) {
+      try {
+        const commits = await api.getHistory();
+        events = commits.map((c: any) => ({ ...c, _legacy: true }));
+      } catch { /* history may also fail */ }
+    }
+    audit = events.map((e: any) => {
+      // New enriched format (has who/verb/category directly)
+      if (e.who || e.verb) {
+        return {
+          id:             e.id,
+          when:           e.when || timeAgo(e.ts || ''),
+          ts:             e.ts,
+          who:            e.who || '',
+          actorName:      e.actorName,
+          category:       e.category || 'system',
+          verb:           e.verb || 'unknown',
+          target:         e.target || '',
+          status:         e.result === 'applied' ? 'applied' : e.result === 'ok' ? undefined : e.result,
+          service:        e.service,
+          ip:             e.ip,
+          ua:             e.ua,
+          reason:         e.reason,
+          method:         e.method,
+          path:           e.path,
+          statusCode:     e.statusCode,
+          responseTimeMs: e.responseTimeMs,
+        };
+      }
+      // Old format: { id, event: { type, timestamp, actor: JSON, details: JSON } }
+      const ev = e.event || e;
+      const actor = typeof ev.actor === 'string' ? JSON.parse(ev.actor) : ev.actor || {};
+      const details = typeof ev.details === 'string' ? JSON.parse(ev.details) : ev.details || {};
+      const target = typeof ev.target === 'string' ? (ev.target.startsWith('{') ? JSON.parse(ev.target) : { id: ev.target }) : ev.target || {};
+      const type = ev.type || '';
+      const [cat, verb] = type.includes('.') ? type.split('.', 2) : ['system', type];
+      return {
+        id:             e.id || ev.id || '',
+        when:           timeAgo(ev.timestamp || ''),
+        ts:             ev.timestamp,
+        who:            actor.email || ev.author || 'system',
+        actorName:      actor.name,
+        category:       cat,
+        verb:           verb,
+        target:         ev.message || details.path || target.id || type,
+        status:         details.statusCode && details.statusCode >= 400 ? 'failed' : undefined,
+        service:        target.type === 'service' ? target.id : undefined,
+        ip:             actor.ip || details.ip,
+        ua:             actor.ua,
+        reason:         details.reason,
+        method:         details.method,
+        path:           details.path,
+        statusCode:     details.statusCode,
+        responseTimeMs: details.responseTimeMs,
+      };
+    }).filter((e: AuditEvent) => e.id);
   } catch {
-    // history endpoint may not exist
+    // fall back to empty
   }
 
-  return {
+  // Extract auth domain from access rules (kratos-public rule match URL)
+  const kratosRule = rulesRaw.find(r => r.id === 'kratos-public' || r.id.includes('kratos'));
+  let authDomain: string | undefined;
+  if (kratosRule) {
+    const m = kratosRule.match.url.match(/https?:\/\/([^/\\>]+)/);
+    if (m) authDomain = m[1].replace(/\\/g, '');
+  }
+
+  const result: AppState = {
     meta: {
       jinbeApi: '/api',
       opalServer: '',
       kratosAdmin: '',
       lastSync: 'live',
+      authDomain,
     },
     services,
     roles: rolesMap,
@@ -134,6 +196,8 @@ async function fetchAllRbacData(): Promise<AppState> {
     accessRules,
     audit,
   };
+  console.log('[useRbacData] fetched:', { users: users.length, groups: Object.keys(groups).length, services: services.length, rules: accessRules.length });
+  return result;
 }
 
 export function useRbacData() {

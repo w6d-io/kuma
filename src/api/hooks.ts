@@ -224,6 +224,15 @@ export function useUpdateServiceRoutes(serviceName: string) {
   });
 }
 
+export function useUpdateAccessRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, rule }: { id: string; rule: import('./client').JinbeAccessRule }) =>
+      api.updateAccessRule(id, rule),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['access-rules'] }),
+  });
+}
+
 export function useUpdateServiceRoles(serviceName: string) {
   const qc = useQueryClient();
   return useMutation({
