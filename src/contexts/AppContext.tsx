@@ -122,7 +122,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const invalidateRbac = useInvalidateRbac();
 
   const [state, setState] = useState<AppState>(SEED);
-  const [page, setPage] = useState<PageId>("dashboard");
+
+  // Hash-based routing: read initial page from URL hash (#/page)
+  const pageFromHash = (): PageId => {
+    const hash = window.location.hash.replace(/^#\/?/, '');
+    const valid: PageId[] = ['dashboard','simulator','users','groups','services','roles','routes','rules','audit','settings'];
+    return valid.includes(hash as PageId) ? (hash as PageId) : 'dashboard';
+  };
+  const [page, setPageRaw] = useState<PageId>(pageFromHash);
+
+  const setPage = (p: PageId) => {
+    window.location.hash = `/${p}`;
+    setPageRaw(p);
+  };
+
+  // Keep page in sync when user navigates back/forward
+  useEffect(() => {
+    const onHashChange = () => setPageRaw(pageFromHash());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
   const [activeService, setActiveService] = useState("jinbe");
   const [userDrawer, setUserDrawer] = useState<UserDrawerState | null>(null);
   const [groupDrawer, setGroupDrawer] = useState<GroupDrawerState | null>(null);
