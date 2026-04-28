@@ -2,7 +2,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 import type { KratosIdentity, JinbeGroup, JinbeAccessRule } from './client';
 import type { AppState, User, GroupsMap, RolesMap, RouteMapsMap, AccessRule, AuditEvent, Service } from './types';
-import { SEED } from '../seed';
+
+function classifyError(err: unknown): Error {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes('Unauthorized') || msg.includes('401')) return Object.assign(new Error('Unauthorized'), { status: 401 });
+  if (msg.includes('403') || msg.includes('Forbidden')) return Object.assign(new Error('Forbidden'), { status: 403 });
+  return Object.assign(new Error('NetworkError'), { status: 0 }); // CORS / offline
+}
 
 function kratosToUser(k: KratosIdentity): User {
   return {
@@ -44,12 +50,29 @@ function jinbeRuleToUi(r: JinbeAccessRule): AccessRule {
 
 async function fetchAllRbacData(): Promise<AppState> {
   console.log('[useRbacData] fetching...');
-  const [usersRaw, groupsRaw, servicesRaw, rulesRaw] = await Promise.all([
-    api.getUsers().catch(() => [] as KratosIdentity[]),
-    api.getGroups().catch(() => [] as JinbeGroup[]),
-    api.getServices().catch(() => []),
-    api.getAccessRules().catch(() => [] as JinbeAccessRule[]),
+  const [usersResult, groupsResult, servicesResult, rulesResult] = await Promise.allSettled([
+    api.getUsers(),
+    api.getGroups(),
+    api.getServices(),
+    api.getAccessRules(),
   ]);
+
+  // If users fetch failed, classify and throw — this is the critical signal
+  if (usersResult.status === 'rejected') {
+    throw classifyError(usersResult.reason);
+  }
+
+  // If any other critical fetch failed, classify and throw
+  for (const result of [groupsResult, servicesResult, rulesResult]) {
+    if (result.status === 'rejected') {
+      throw classifyError(result.reason);
+    }
+  }
+
+  const usersRaw = usersResult.value as KratosIdentity[];
+  const groupsRaw = (groupsResult as PromiseFulfilledResult<JinbeGroup[]>).value;
+  const servicesRaw = (servicesResult as PromiseFulfilledResult<any[]>).value;
+  const rulesRaw = (rulesResult as PromiseFulfilledResult<JinbeAccessRule[]>).value;
 
   // Transform users
   const users: User[] = usersRaw.map(kratosToUser);
@@ -206,7 +229,7 @@ export function useRbacData() {
     queryFn: fetchAllRbacData,
     staleTime: 60_000,
     retry: 1,
-    placeholderData: SEED,
+    retryDelay: 1000,
   });
 }
 

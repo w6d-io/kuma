@@ -88,9 +88,17 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
 }
 
 function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
-  const { page, pipeline, theme, setTheme, persona, tweaks, isLive, isLoading } = useApp();
+  const { page, pipeline, theme, setTheme, persona, tweaks, isLive, isLoading, apiError, state } = useApp();
   const title = NAV.find(n => n.id === page)?.name || "Console";
   const showPipe = tweaks?.showPipeline !== false;
+
+  useEffect(() => {
+    if ((apiError as any)?.status === 401) {
+      const authDomain = state.meta.authDomain || (window as any).__AUTH_DOMAIN__ || 'auth.dev.w6d.io';
+      window.location.href = `https://${authDomain}/login?return_to=${encodeURIComponent(window.location.href)}`;
+    }
+  }, [apiError, state.meta.authDomain]);
+
   return (
     <>
       <div className="topbar">
@@ -106,10 +114,17 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
             loading…
           </span>
         )}
-        {!isLoading && (
-          <span className={`sync-pill ${isLive ? "" : "err"}`} title={isLive ? "Connected to jinbe" : "Using seed data"}>
+        {!isLoading && !apiError && (
+          <span className={`sync-pill ${isLive ? "" : "err"}`} title={isLive ? "Connected to jinbe" : "Disconnected"}>
             <span className="d" />
             {isLive ? "live" : "offline"}
+          </span>
+        )}
+        {!isLoading && apiError && (
+          <span className="sync-pill err" title={apiError.message}>
+            <span className="d" />
+            {(apiError as any).status === 401 ? "session expired" :
+             (apiError as any).status === 403 ? "forbidden" : "offline"}
           </span>
         )}
         {showPipe && pipeline.stage !== "idle" && (
@@ -131,6 +146,12 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
         <div className="viewer-banner">
           <span>{I.shield}</span>
           read-only persona · destructive actions and writes are disabled
+        </div>
+      )}
+      {apiError && (apiError as any).status === 403 && (
+        <div className="viewer-banner" style={{ background: 'var(--red-muted, #7f1d1d)' }}>
+          <span>{I.shield}</span>
+          Access denied · your account has no groups assigned
         </div>
       )}
     </>
