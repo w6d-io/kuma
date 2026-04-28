@@ -2,7 +2,11 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import type { AppState, PageId, AuditEvent, User, TweakDefaults } from '../api/types';
 import { useRbacData, useInvalidateRbac } from '../api/useRbacData';
 import { api } from '../api/client';
-import { SEED } from '../seed';
+
+const EMPTY_STATE: AppState = {
+  meta: { jinbeApi: '/api', opalServer: '', kratosAdmin: '', lastSync: '' },
+  services: [], roles: {}, groups: {}, users: [], routeMaps: {}, accessRules: [], audit: [],
+};
 
 const TWEAK_DEFAULTS: TweakDefaults = {
   theme: "light",
@@ -54,6 +58,7 @@ interface AppContextType {
   setAudit: React.Dispatch<React.SetStateAction<AuditEvent[]>>;
   isLive: boolean;
   isLoading: boolean;
+  apiError: Error | null;
   refetch: () => void;
   page: PageId;
   setPage: (page: PageId) => void;
@@ -121,7 +126,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const { data: liveData, isSuccess, isLoading, error } = useRbacData();
   const invalidateRbac = useInvalidateRbac();
 
-  const [state, setState] = useState<AppState>(SEED);
+  const [state, setState] = useState<AppState>(EMPTY_STATE);
 
   // Hash-based routing: read initial page from URL hash (#/page)
   const pageFromHash = (): PageId => {
@@ -152,7 +157,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Sync live data into state when it arrives
   useEffect(() => {
     console.log('[AppContext] liveData changed:', { isSuccess, isLoading, hasError: !!error, hasData: !!liveData, userCount: liveData?.users?.length });
-    if (liveData && liveData.users.length > 0) {
+    if (liveData) {
       setState(liveData);
       if (liveData.audit.length > 0) {
         setAudit(liveData.audit);
@@ -160,7 +165,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [liveData, isSuccess, isLoading, error]);
 
-  const isLive = isSuccess && !error;
+  const isLive = isSuccess && !error && !!liveData && liveData.users.length >= 0;
+  const apiError = (error as Error | null) ?? null;
 
   const [theme, setThemeRaw] = useState(TWEAK_DEFAULTS.theme);
   const [persona, setPersonaRaw] = useState(TWEAK_DEFAULTS.persona);
@@ -220,7 +226,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const ctx: AppContextType = {
     state, setState,
     audit, setAudit,
-    isLive, isLoading,
+    isLive, isLoading, apiError,
     refetch: invalidateRbac,
     page, setPage,
     activeService, setActiveService,
