@@ -30,7 +30,7 @@ function timeAgo(dateStr: string): string {
 function jinbeRuleToUi(r: JinbeAccessRule): AccessRule {
   return {
     id: r.id,
-    service: r.id.replace(/-authenticated$|-health$|-public$/, ''),
+    service: r.id.split('-')[0],
     match: { url: r.match.url, methods: r.match.methods },
     authenticators: r.authenticators.map(a => a.handler),
     authorizer: r.authorizer.handler,
