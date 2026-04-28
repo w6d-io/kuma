@@ -25,6 +25,7 @@ const NAV: { id: PageId; name: string; ico: React.ReactNode; section: string }[]
   { id: "routes", name: "Route map", ico: I.route, section: "Policy" },
   { id: "rules", name: "Oathkeeper", ico: I.gate, section: "Gateway" },
   { id: "audit", name: "Audit log", ico: I.audit, section: "Changes" },
+  { id: "settings", name: "Settings", ico: I.cog, section: "Changes" },
 ];
 
 function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
