@@ -17,9 +17,15 @@ export default defineConfig({
         secure: false,
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq) => {
-            proxyReq.setHeader('X-User-Email', process.env.DEV_USER_EMAIL || 'admin@w6d.io');
-            proxyReq.setHeader('X-User-Id', process.env.DEV_USER_ID || 'f4a86592-d10d-41df-a700-718282bf5719');
-            proxyReq.setHeader('X-User-Name', process.env.DEV_USER_NAME || 'W6D Admin');
+            const token = process.env.DEV_KRATOS_SESSION;
+            if (token) {
+              proxyReq.setHeader('Cookie', `ory_kratos_session=${token}`);
+              proxyReq.setHeader('X-Session-Token', token);
+            } else {
+              proxyReq.setHeader('X-User-Email', process.env.DEV_USER_EMAIL || 'admin@w6d.io');
+              proxyReq.setHeader('X-User-Id', process.env.DEV_USER_ID || 'f4a86592-d10d-41df-a700-718282bf5719');
+              proxyReq.setHeader('X-User-Name', process.env.DEV_USER_NAME || 'W6D Admin');
+            }
           });
         },
       },
