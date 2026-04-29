@@ -5,24 +5,26 @@ import { AccessLevel, EmptyHint } from '../components/ui/Primitives';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
 import { useUpdateServiceRoles } from '../api/hooks';
+import { api } from '../api/client';
 
 // ─── Permission picker ────────────────────────────────────────────────────────
 
 interface PermPickerProps {
   svc: string;
   allRoles: Record<string, Record<string, string[]>>;  // service → role → perms
+  apiPerms: string[];
   current: string[];
   onToggle: (p: string) => void;
   onAdd: (p: string) => void;
 }
 
-function PermPicker({ svc, allRoles, current, onToggle, onAdd }: PermPickerProps) {
+function PermPicker({ svc, allRoles, apiPerms, current, onToggle, onAdd }: PermPickerProps) {
   const [q, setQ] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // All known perms across every service/role, deduplicated, excluding "*"
+  // All known perms: API-fetched + across every service/role, deduplicated, excluding "*"
   const allPerms = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(apiPerms);
     for (const roles of Object.values(allRoles)) {
       for (const perms of Object.values(roles)) {
         for (const p of perms) {
@@ -31,7 +33,7 @@ function PermPicker({ svc, allRoles, current, onToggle, onAdd }: PermPickerProps
       }
     }
     return Array.from(set).sort();
-  }, [allRoles]);
+  }, [allRoles, apiPerms]);
 
   // Group by namespace prefix (before first ":")
   const groups = useMemo(() => {
@@ -136,6 +138,7 @@ export function RolesPage() {
   const [newRoleName, setNewRoleName] = useState("");
   const [addingRole, setAddingRole] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [apiPerms, setApiPerms] = useState<string[]>([]);
 
   const updateServiceRoles = useUpdateServiceRoles(svc);
 
@@ -143,7 +146,10 @@ export function RolesPage() {
     const keys = Object.keys(state.roles[svc] || {});
     if (!keys.includes(selectedRole)) setSelectedRole(keys[0] || "");
     setShowPicker(false);
-  }, [svc]);
+    if (isLive) {
+      api.getServicePermissions(svc).then(r => setApiPerms(r.permissions)).catch(() => setApiPerms([]));
+    }
+  }, [svc, isLive]);
 
   useEffect(() => {
     const keys = Object.keys(state.roles[svc] || {});
@@ -291,6 +297,7 @@ export function RolesPage() {
                       <PermPicker
                         svc={svc}
                         allRoles={state.roles}
+                        apiPerms={apiPerms}
                         current={role}
                         onToggle={togglePerm}
                         onAdd={addNewPerm}
