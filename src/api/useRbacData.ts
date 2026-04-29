@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { SEED } from '../seed';
 import { api } from './client';
 import type { KratosIdentity, JinbeGroup, JinbeAccessRule } from './client';
 import type { AppState, User, GroupsMap, RolesMap, RouteMapsMap, AccessRule, AuditEvent, Service } from './types';
@@ -230,8 +231,9 @@ export function useRbacData() {
     queryKey: ['rbac-all'],
     queryFn: fetchAllRbacData,
     staleTime: 60_000,
-    retry: 1,
+    retry: (failureCount, err) => (err as any).status === 403 || (err as any).status === 401 ? false : failureCount < 1,
     retryDelay: 1000,
+    ...(import.meta.env.DEV ? { placeholderData: SEED } : {}),
   });
 }
 
