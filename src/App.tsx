@@ -29,9 +29,10 @@ const NAV: { id: PageId; name: string; ico: React.ReactNode; section: string }[]
 ];
 
 function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
-  const { page, setPage, state, tweaks, isLive } = useApp();
+  const { page, setPage, state, tweaks, isLive, apiError } = useApp();
   const sections = [...new Set(NAV.map(n => n.section))];
   const showCounts = tweaks?.showCounts !== false;
+  const isForbidden = tweaks?.simulateForbidden || (apiError as any)?.status === 403;
 
   // Real session user when live; fallback to "you@console / super_admin"
   const { data: session } = useSession();
@@ -49,7 +50,13 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
         </div>
       </div>
       <nav className="nav">
-        {sections.map(sec => (
+        {isForbidden && (
+          <div style={{ padding: "10px 8px", display: "flex", alignItems: "center", gap: 8, color: "var(--red, #ef4444)", fontSize: 12, fontWeight: 500 }}>
+            <span style={{ width: 14, height: 14, display: "grid", placeItems: "center", flexShrink: 0 }}>{I.shield}</span>
+            Forbidden
+          </div>
+        )}
+        {!isForbidden && sections.map(sec => (
           <Fragment key={sec}>
             <div className="nav-section">{sec}</div>
             {NAV.filter(n => n.section === sec).map(n => {
@@ -91,6 +98,7 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
   const { page, pipeline, theme, setTheme, persona, tweaks, isLive, isLoading, apiError, state } = useApp();
   const title = NAV.find(n => n.id === page)?.name || "Console";
   const showPipe = tweaks?.showPipeline !== false;
+  const isForbidden = tweaks?.simulateForbidden || (apiError as any)?.status === 403;
 
   useEffect(() => {
     if ((apiError as any)?.status === 401) {
@@ -120,11 +128,11 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
             {isLive ? "live" : "offline"}
           </span>
         )}
-        {!isLoading && apiError && (
-          <span className="sync-pill err" title={apiError.message}>
+        {!isLoading && (apiError || tweaks?.simulateForbidden) && (
+          <span className="sync-pill err" title={apiError?.message || "simulated 403"}>
             <span className="d" />
-            {(apiError as any).status === 401 ? "session expired" :
-             (apiError as any).status === 403 ? "forbidden" : "offline"}
+            {tweaks?.simulateForbidden || (apiError as any)?.status === 403 ? "forbidden" :
+             (apiError as any)?.status === 401 ? "session expired" : "offline"}
           </span>
         )}
         {showPipe && pipeline.stage !== "idle" && (
@@ -142,16 +150,16 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
           {theme === "dark" ? I.sun : I.moon}
         </button>
       </div>
-      {persona === "viewer" && (
+      {isForbidden && (
+        <div className="viewer-banner" style={{ background: 'var(--red, #ef4444)', color: '#fff' }}>
+          <span>{I.shield}</span>
+          403 Forbidden · access denied
+        </div>
+      )}
+      {!isForbidden && persona === "viewer" && (
         <div className="viewer-banner">
           <span>{I.shield}</span>
           read-only persona · destructive actions and writes are disabled
-        </div>
-      )}
-      {apiError && (apiError as any).status === 403 && (
-        <div className="viewer-banner" style={{ background: 'var(--red-muted, #7f1d1d)' }}>
-          <span>{I.shield}</span>
-          Access denied · your account has no groups assigned
         </div>
       )}
     </>
@@ -267,13 +275,29 @@ function TweaksPanel({ open, onClose }: { open: boolean; onClose: () => void }) 
         <div className="tweak-row"><span className="lbl">Collapse nav</span><Switch on={!!tweaks.navCollapsed} onChange={v => setTweak("navCollapsed", v)} /></div>
         <div className="tweak-row"><span className="lbl">Pipeline</span><Switch on={!!tweaks.showPipeline} onChange={v => setTweak("showPipeline", v)} /></div>
         <div className="tweak-row"><span className="lbl">Counts</span><Switch on={!!tweaks.showCounts} onChange={v => setTweak("showCounts", v)} /></div>
+        <div className="tweak-row">
+          <span className="lbl" style={tweaks.simulateForbidden ? { color: "var(--red, #ef4444)" } : {}}>Forbidden</span>
+          <Switch on={!!tweaks.simulateForbidden} onChange={v => setTweak("simulateForbidden", v)} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ForbiddenPage() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 16, color: "var(--fg-dim)" }}>
+      <span style={{ width: 48, height: 48, display: "grid", placeItems: "center", opacity: 0.5 }}>{I.shield}</span>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 18, fontWeight: 600, color: "var(--fg)", marginBottom: 6 }}>Access denied</div>
+        <div style={{ fontSize: 13 }}>Your account has no groups assigned — contact an administrator.</div>
       </div>
     </div>
   );
 }
 
 function AppShell() {
-  const { page, toasts } = useApp();
+  const { page, toasts, apiError, tweaks } = useApp();
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [tweaksOpen, setTweaksOpen] = useState(false);
 
@@ -291,16 +315,18 @@ function AppShell() {
       <div className="main">
         <Topbar onOpenCmdk={() => setCmdkOpen(true)} />
         <div className="content">
-          {page === "dashboard" && <DashboardPage />}
-          {page === "simulator" && <SimulatorPage />}
-          {page === "users" && <UsersPage />}
-          {page === "groups" && <GroupsPage />}
-          {page === "services" && <ServicesPage />}
-          {page === "roles" && <RolesPage />}
-          {page === "routes" && <RoutesPage />}
-          {page === "rules" && <RulesPage />}
-          {page === "audit" && <AuditPage />}
-          {page === "settings" && <SettingsPage />}
+          {(tweaks?.simulateForbidden || (apiError as any)?.status === 403) ? <ForbiddenPage /> : <>
+            {page === "dashboard" && <DashboardPage />}
+            {page === "simulator" && <SimulatorPage />}
+            {page === "users" && <UsersPage />}
+            {page === "groups" && <GroupsPage />}
+            {page === "services" && <ServicesPage />}
+            {page === "roles" && <RolesPage />}
+            {page === "routes" && <RoutesPage />}
+            {page === "rules" && <RulesPage />}
+            {page === "audit" && <AuditPage />}
+            {page === "settings" && <SettingsPage />}
+          </>}
         </div>
       </div>
       <UserDrawer />

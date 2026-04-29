@@ -15,6 +15,7 @@ export interface User {
   title: string;
   active: boolean;
   last: string;
+  tenantId?: string;
 }
 
 export interface RouteEntry {
@@ -95,4 +96,5 @@ export interface TweakDefaults {
   matrixColor: boolean;
   levelStyle: string;
   wildcardWarn: boolean;
+  simulateForbidden: boolean;
 }
