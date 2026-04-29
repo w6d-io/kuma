@@ -24,8 +24,21 @@ interface KratosSession {
   identity: { traits: { email: string; name?: string } };
 }
 
+async function logout(authDomain: string) {
+  try {
+    const res = await fetch('/api/kratos/self-service/logout/browser', { credentials: 'include' });
+    if (res.ok) {
+      const { logout_url } = await res.json();
+      if (logout_url) { window.location.href = logout_url; return; }
+    }
+  } catch { /* fall through */ }
+  window.location.href = `https://${authDomain}/self-service/logout/browser`;
+}
+
 export function SettingsPage() {
   const user = useCurrentUser();
+  const { state } = useApp();
+  const authDomain = state.meta.authDomain || (window as any).__AUTH_DOMAIN__ || 'auth.dev.w6d.io';
   const [tab, setTab] = useState<'profile' | 'security' | 'sessions' | 'backup'>('profile');
 
   return (
@@ -68,6 +81,20 @@ export function SettingsPage() {
               {tab === item.id && <span style={{ color: "var(--accent)" }}>{I.chev}</span>}
             </button>
           ))}
+          <button
+            onClick={() => logout(authDomain)}
+            style={{
+              width: "100%", textAlign: "left", padding: "12px 14px", border: "none",
+              cursor: "pointer", background: "transparent",
+              color: "var(--red, #ef4444)", display: "flex", gap: 10, alignItems: "center",
+            }}
+          >
+            <span style={{ width: 16, height: 16, display: "grid", placeItems: "center" }}>{I.close}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 400, fontSize: 12.5 }}>Sign out</div>
+              <div className="small muted">End your session</div>
+            </div>
+          </button>
         </div>
 
         {/* Content */}
