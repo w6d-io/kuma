@@ -51,12 +51,12 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
       </div>
       <nav className="nav">
         {isForbidden && (
-          <div style={{ padding: "10px 8px", display: "flex", alignItems: "center", gap: 8, color: "var(--red, #ef4444)", fontSize: 12, fontWeight: 500 }}>
-            <span style={{ width: 14, height: 14, display: "grid", placeItems: "center", flexShrink: 0 }}>{I.shield}</span>
-            Forbidden
+          <div style={{ padding: "8px 10px", display: "flex", alignItems: "center", gap: 8, color: "var(--red, #ef4444)", fontSize: 11.5, fontWeight: 500, background: "color-mix(in srgb, var(--red, #ef4444) 8%, transparent)", borderRadius: 6, margin: "0 2px 4px" }}>
+            <span style={{ width: 13, height: 13, display: "grid", placeItems: "center", flexShrink: 0 }}>{I.shield}</span>
+            403 · access denied
           </div>
         )}
-        {!isForbidden && sections.map(sec => (
+        {sections.map(sec => (
           <Fragment key={sec}>
             <div className="nav-section">{sec}</div>
             {NAV.filter(n => n.section === sec).map(n => {
@@ -285,12 +285,14 @@ function TweaksPanel({ open, onClose }: { open: boolean; onClose: () => void }) 
 }
 
 function ForbiddenPage() {
+  const { page } = useApp();
+  const label = NAV.find(n => n.id === page)?.name || "this page";
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 16, color: "var(--fg-dim)" }}>
-      <span style={{ width: 48, height: 48, display: "grid", placeItems: "center", opacity: 0.5 }}>{I.shield}</span>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 16 }}>
+      <span style={{ width: 44, height: 44, display: "grid", placeItems: "center", color: "var(--red, #ef4444)", opacity: 0.7 }}>{I.shield}</span>
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 18, fontWeight: 600, color: "var(--fg)", marginBottom: 6 }}>Access denied</div>
-        <div style={{ fontSize: 13 }}>Your account has no groups assigned — contact an administrator.</div>
+        <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>Access denied · {label}</div>
+        <div style={{ fontSize: 13, color: "var(--ink-3)" }}>Your account has no groups assigned — contact an administrator.</div>
       </div>
     </div>
   );
