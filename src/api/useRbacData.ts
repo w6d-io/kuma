@@ -46,6 +46,7 @@ function jinbeRuleToUi(r: JinbeAccessRule): AccessRule {
       : undefined,
     mutators: r.mutators.map(m => m.handler),
     upstream: r.upstream?.url,
+    stripPath: r.upstream?.strip_path,
   };
 }
 

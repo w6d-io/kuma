@@ -81,14 +81,23 @@ export const api = {
   getServices: () =>
     request<{ services: JinbeService[] }>(`/admin/rbac/services`).then(r => r.services),
 
-  createService: (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[] }) =>
+  createService: (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string }) =>
     request<{ commitId: string }>(`/admin/rbac/services`, {
       method: 'POST',
       body: JSON.stringify(svc),
     }),
 
+  updateService: (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null }) =>
+    request<{ commitId: string }>(`/admin/rbac/services/${name}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
   deleteService: (name: string) =>
     request<void>(`/admin/rbac/services/${name}`, { method: 'DELETE' }),
+
+  getServicePermissions: (name: string) =>
+    request<{ permissions: string[] }>(`/admin/rbac/services/${name}/permissions`),
 
   // ─── Roles (per service) ───
   getRoles: (serviceName: string) =>

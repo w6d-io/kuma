@@ -36,6 +36,7 @@ export interface AccessRule {
   opaUrl?: string;
   mutators: string[];
   upstream?: string;
+  stripPath?: string;
 }
 
 export interface AuditEvent {

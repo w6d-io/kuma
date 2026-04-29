@@ -4,7 +4,8 @@ import { I } from '../components/ui/Icons';
 import { Chip, Drawer, AccessLevel } from '../components/ui/Primitives';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
-import { api } from '../api/client';
+
+const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 
 export function ServicesPage() {
   const { state, setServiceDrawer, setPage, setActiveService } = useApp();
@@ -71,33 +72,58 @@ export function ServicesPage() {
 }
 
 export function ServiceDrawer() {
-  const { serviceDrawer, setServiceDrawer, state, setState, isLive, apiCreateService, pushToast, refetch } = useApp();
+  const { serviceDrawer, setServiceDrawer, state, setState, isLive, apiCreateService, apiUpdateService, apiDeleteService, setPage } = useApp();
   const applyChange = useApplyChange();
-  const [name, setName] = useState("");
-  const [upstream, setUpstream] = useState("");
-  const [description, setDescription] = useState("");
 
   const isEdit = serviceDrawer?.mode === "edit";
   const editSvc = isEdit && serviceDrawer?.serviceName ? state.services.find(s => s.name === serviceDrawer.serviceName) : null;
+  const editRule = editSvc ? state.accessRules.find(r => r.service === editSvc.name) : null;
+
+  // create fields
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+
+  // shared fields (create + edit)
+  const [upstream, setUpstream] = useState("");
+  const [matchUrl, setMatchUrl] = useState("");
+  const [matchMethods, setMatchMethods] = useState<string[]>(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+  const [stripPath, setStripPath] = useState("");
+
+  // edit danger
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
-    if (serviceDrawer?.mode === "create") {
-      setName(""); setUpstream(""); setDescription("");
+    if (!serviceDrawer) return;
+    setConfirmDelete(false);
+    if (serviceDrawer.mode === "create") {
+      setName(""); setUpstream(""); setDescription(""); setMatchUrl(""); setStripPath("");
+      setMatchMethods(["GET", "POST", "PUT", "PATCH", "DELETE"]);
     } else if (isEdit && editSvc) {
       setUpstream(editSvc.upstreamUrl || "");
       setDescription(editSvc.description || "");
+      setMatchUrl(editRule?.match.url || "");
+      setMatchMethods(editRule?.match.methods || ["GET", "POST", "PUT", "PATCH", "DELETE"]);
+      setStripPath(editRule?.stripPath || "");
     }
-  }, [serviceDrawer]);
+  }, [serviceDrawer?.mode, serviceDrawer?.serviceName]);
 
   if (!serviceDrawer) return null;
 
   const validName = /^[a-z0-9_]+$/.test(name) && !state.services.some(s => s.name === name);
   const validUrl = /^https?:\/\//.test(upstream);
 
+  const toggleMethod = (m: string) =>
+    setMatchMethods(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
+
   const saveCreate = () => {
     if (!validName || !validUrl) return;
     const mutator = isLive
-      ? () => apiCreateService({ name, upstreamUrl: upstream, matchUrl: `<https?://${name}\\.example\\.io/.*>`, matchMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"] })
+      ? () => apiCreateService({
+          name, upstreamUrl: upstream,
+          matchUrl: matchUrl || `<https?://${name}\\.example\\.io/.*>`,
+          matchMethods,
+          stripPath: stripPath || undefined,
+        })
       : () => {
           setState(s => ({
             ...s,
@@ -106,9 +132,10 @@ export function ServiceDrawer() {
             routeMaps: { ...s.routeMaps, [name]: [{ method: "GET", path: "/api/health" }] },
             accessRules: [...s.accessRules, {
               id: `${name}-authenticated`, service: name,
-              match: { url: `<http|https>://api.example.io/${name}/<**>`, methods: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+              match: { url: matchUrl || `<http|https>://api.example.io/${name}/<**>`, methods: matchMethods },
               authenticators: ["cookie_session", "bearer_token"], authorizer: "remote_json",
               opaUrl: "http://opa:8181/v1/data/authz/allow", mutators: ["header"], upstream,
+              stripPath: stripPath || undefined,
             }],
           }));
         };
@@ -116,63 +143,157 @@ export function ServiceDrawer() {
     if (ok) setServiceDrawer(null);
   };
 
-  const saveEdit = async () => {
+  const saveEdit = () => {
+    if (!editSvc || !validUrl) return;
+    const payload = {
+      upstreamUrl: upstream,
+      matchUrl: matchUrl || undefined,
+      matchMethods: matchMethods.length ? matchMethods : undefined,
+      stripPath: stripPath || null,
+    };
+    const mutator = isLive
+      ? () => apiUpdateService(editSvc.name, payload)
+      : () => {
+          setState(s => ({
+            ...s,
+            services: s.services.map(sv => sv.name === editSvc.name ? { ...sv, upstreamUrl: upstream, description } : sv),
+            accessRules: s.accessRules.map(r => r.service === editSvc.name ? {
+              ...r, upstream, match: { url: matchUrl || r.match.url, methods: matchMethods },
+              stripPath: stripPath || undefined,
+            } : r),
+          }));
+        };
+    const ok = applyChange("update", `service:${editSvc.name} updated`, mutator);
+    if (ok) setServiceDrawer(null);
+  };
+
+  const doDelete = () => {
     if (!editSvc) return;
     const svcName = editSvc.name;
-    // Find and update the main access rule for this service
-    const rule = state.accessRules.find(r => r.service === svcName && !r.id.endsWith('-health'));
-    if (isLive && rule) {
-      try {
-        await api.updateAccessRule(rule.id, { upstream: { url: upstream } } as any);
-        setState(s => ({
-          ...s,
-          services: s.services.map(sv => sv.name === svcName ? { ...sv, upstreamUrl: upstream, description } : sv),
-          accessRules: s.accessRules.map(r => r.id === rule.id ? { ...r, upstream } : r),
-        }));
-        if (refetch) refetch();
-        pushToast?.(`service:${svcName} updated`);
-      } catch (err: any) {
-        pushToast?.(`Failed: ${err.message}`, { err: true });
-        return;
-      }
-    } else {
-      setState(s => ({
-        ...s,
-        services: s.services.map(sv => sv.name === svcName ? { ...sv, upstreamUrl: upstream, description } : sv),
-      }));
-    }
-    setServiceDrawer(null);
+    const mutator = isLive
+      ? () => apiDeleteService(svcName)
+      : () => {
+          setState(s => ({
+            ...s,
+            services: s.services.filter(sv => sv.name !== svcName),
+            roles: Object.fromEntries(Object.entries(s.roles).filter(([k]) => k !== svcName)),
+            routeMaps: Object.fromEntries(Object.entries(s.routeMaps).filter(([k]) => k !== svcName)),
+            accessRules: s.accessRules.filter(r => r.service !== svcName),
+          }));
+        };
+    const ok = applyChange("delete", `service:${svcName} removed`, mutator);
+    if (ok) { setServiceDrawer(null); setPage("services"); }
   };
+
+  const MethodPicker = () => (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {HTTP_METHODS.map(m => {
+        const on = matchMethods.includes(m);
+        return (
+          <button key={m} onClick={() => toggleMethod(m)} style={{
+            padding: "3px 10px", borderRadius: 20, fontSize: 11.5,
+            fontFamily: "var(--font-mono, monospace)",
+            border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`,
+            background: on ? "color-mix(in srgb, var(--accent) 15%, transparent)" : "transparent",
+            color: on ? "var(--accent)" : "var(--ink-2)", cursor: "pointer",
+          }}>{m}</button>
+        );
+      })}
+    </div>
+  );
+
+  const SharedFields = () => (
+    <>
+      <div className="mb-12">
+        <label className="input-label">Upstream URL *</label>
+        <input className="input mono" value={upstream} onChange={e => setUpstream(e.target.value)} placeholder="http://service.namespace:8080" />
+        {upstream && !validUrl && <div className="input-hint" style={{ color: "var(--err)" }}>Must start with http:// or https://</div>}
+      </div>
+      <div className="mb-12">
+        <label className="input-label">Match URL</label>
+        <input className="input mono" value={matchUrl} onChange={e => setMatchUrl(e.target.value)} placeholder="<https?://api.example.io/svc/<**>>" />
+        <div className="input-hint">Oathkeeper regexp format</div>
+      </div>
+      <div className="mb-12">
+        <label className="input-label">Match methods</label>
+        <MethodPicker />
+      </div>
+      <div className="mb-12">
+        <label className="input-label">Strip path <span className="muted">(optional)</span></label>
+        <input className="input mono" value={stripPath} onChange={e => setStripPath(e.target.value)} placeholder="/api/v1 — leave empty to remove" />
+        <div className="input-hint">Oathkeeper strip_path — empty = remove existing</div>
+      </div>
+    </>
+  );
 
   if (isEdit) {
     return (
-      <Drawer open={!!serviceDrawer} onClose={() => setServiceDrawer(null)} eyebrow={`PATCH /api/admin/rbac/access-rules/${editSvc?.name}`} title={`Edit ${editSvc?.name}`}
-        footer={<><span className="small muted mono">updates upstream URL and description</span><div className="row"><button className="btn" onClick={() => setServiceDrawer(null)}>Cancel</button><button className="btn primary" onClick={saveEdit} disabled={!validUrl}>Save</button></div></>}>
-        <div className="mb-12">
-          <label className="input-label">Upstream URL</label>
-          <input className="input mono" value={upstream} onChange={e => setUpstream(e.target.value)} placeholder="http://service.namespace:8080" />
-          <div className="input-hint">{upstream && !validUrl ? <span style={{ color: "var(--err)" }}>Must start with http:// or https://</span> : "Base URL of the upstream service."}</div>
-        </div>
+      <Drawer
+        open={!!serviceDrawer}
+        onClose={() => setServiceDrawer(null)}
+        eyebrow={`PATCH /admin/rbac/services/${editSvc?.name}`}
+        title={`Edit · ${editSvc?.name}`}
+        footer={
+          <>
+            <span className="small muted mono">PATCH /admin/rbac/services/:name</span>
+            <div className="row">
+              <button className="btn" onClick={() => setServiceDrawer(null)}>Cancel</button>
+              <button className="btn primary" onClick={saveEdit} disabled={!validUrl}>Save</button>
+            </div>
+          </>
+        }
+      >
+        <SharedFields />
         <div className="mb-12">
           <label className="input-label">Description</label>
           <input className="input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Short description" />
+        </div>
+
+        {/* Danger zone */}
+        <div className="panel" style={{ padding: 14, marginTop: 8 }}>
+          <div style={{ fontWeight: 500, marginBottom: 4, color: "var(--red, #ef4444)" }}>Delete service</div>
+          <div className="small muted" style={{ marginBottom: 10 }}>
+            Removes all roles, routes, Oathkeeper rules, and group assignments for <span className="mono">{editSvc?.name}</span>. Cannot be undone.
+          </div>
+          {!confirmDelete
+            ? (
+              <button className="btn" style={{ borderColor: "var(--red, #ef4444)", color: "var(--red, #ef4444)" }} onClick={() => setConfirmDelete(true)}>
+                Delete service
+              </button>
+            ) : (
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span className="small" style={{ flex: 1, color: "var(--red, #ef4444)" }}>Delete {editSvc?.name} and all its data?</span>
+                <button className="btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
+                <button className="btn primary" style={{ background: "var(--red, #ef4444)", borderColor: "var(--red, #ef4444)" }} onClick={doDelete}>Delete</button>
+              </div>
+            )}
         </div>
       </Drawer>
     );
   }
 
   return (
-    <Drawer open={!!serviceDrawer} onClose={() => setServiceDrawer(null)} eyebrow="POST /api/admin/rbac/services" title="Register service"
-      footer={<><span className="small muted mono">creates roles + route_map + oathkeeper rule</span><div className="row"><button className="btn" onClick={() => setServiceDrawer(null)}>Cancel</button><button className="btn primary" onClick={saveCreate} disabled={!validName || !validUrl}>Register</button></div></>}>
+    <Drawer
+      open={!!serviceDrawer}
+      onClose={() => setServiceDrawer(null)}
+      eyebrow="POST /admin/rbac/services"
+      title="Register service"
+      footer={
+        <>
+          <span className="small muted mono">creates roles + route_map + oathkeeper rule</span>
+          <div className="row">
+            <button className="btn" onClick={() => setServiceDrawer(null)}>Cancel</button>
+            <button className="btn primary" onClick={saveCreate} disabled={!validName || !validUrl}>Register</button>
+          </div>
+        </>
+      }
+    >
       <div className="mb-12">
-        <label className="input-label">Service name</label>
+        <label className="input-label">Service name *</label>
         <input className="input mono" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. reporting" />
         <div className="input-hint">{name && !validName ? <span style={{ color: "var(--err)" }}>Invalid or already exists</span> : "Lowercase, alphanumeric and underscores."}</div>
       </div>
-      <div className="mb-12">
-        <label className="input-label">Upstream URL</label>
-        <input className="input mono" value={upstream} onChange={e => setUpstream(e.target.value)} placeholder="http://reporting.local:8080" />
-      </div>
+      <SharedFields />
       <div className="mb-12">
         <label className="input-label">Description</label>
         <input className="input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Short description" />

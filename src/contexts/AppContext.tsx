@@ -89,7 +89,9 @@ interface AppContextType {
   apiCreateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
   apiUpdateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
   apiDeleteGroup: (name: string) => Promise<void>;
-  apiCreateService: (svc: { name: string; upstreamUrl: string; matchUrl: string; matchMethods: string[] }) => Promise<void>;
+  apiCreateService: (svc: { name: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string }) => Promise<void>;
+  apiUpdateService: (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null }) => Promise<void>;
+  apiDeleteService: (name: string) => Promise<void>;
 }
 
 const AppCtx = createContext<AppContextType | null>(null);
@@ -243,8 +245,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     invalidateRbac();
   }, [invalidateRbac]);
 
-  const apiCreateService = useCallback(async (svc: { name: string; upstreamUrl: string; matchUrl: string; matchMethods: string[] }) => {
+  const apiCreateService = useCallback(async (svc: { name: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string }) => {
     await api.createService(svc);
+    invalidateRbac();
+  }, [invalidateRbac]);
+
+  const apiUpdateService = useCallback(async (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null }) => {
+    await api.updateService(name, payload);
+    invalidateRbac();
+  }, [invalidateRbac]);
+
+  const apiDeleteService = useCallback(async (name: string) => {
+    await api.deleteService(name);
     invalidateRbac();
   }, [invalidateRbac]);
 
@@ -262,7 +274,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     theme, setTheme, persona, setPersona,
     tweaks, setTweak,
     apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata,
-    apiCreateGroup, apiUpdateGroup, apiDeleteGroup, apiCreateService,
+    apiCreateGroup, apiUpdateGroup, apiDeleteGroup,
+    apiCreateService, apiUpdateService, apiDeleteService,
   };
 
   return <AppCtx.Provider value={ctx}>{children}</AppCtx.Provider>;
