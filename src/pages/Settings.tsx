@@ -1,8 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { useSession } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, EmptyHint } from '../components/ui/Primitives';
 import { api, type BundleImportResult } from '../api/client';
+
+function useCurrentUser() {
+  const { state, isLive } = useApp();
+  const { data: session } = useSession();
+  const email = isLive && session?.email ? session.email : null;
+  return email
+    ? (state.users.find(u => u.email === email) ?? state.users[0])
+    : state.users[0];
+}
 
 interface KratosSession {
   id: string;
@@ -15,8 +25,7 @@ interface KratosSession {
 }
 
 export function SettingsPage() {
-  const { state } = useApp();
-  const user = state.users.find(u => u.groups.includes('super_admins')) || state.users[0];
+  const user = useCurrentUser();
   const [tab, setTab] = useState<'profile' | 'security' | 'sessions' | 'backup'>('profile');
 
   return (
@@ -76,8 +85,8 @@ export function SettingsPage() {
 // ─── Profile ──────────────────────────────────────────────────────────────────
 
 function ProfileSection() {
-  const { state, pushToast } = useApp();
-  const user = state.users.find(u => u.groups.includes('super_admins')) || state.users[0];
+  const { pushToast } = useApp();
+  const user = useCurrentUser();
   const [name, setName] = useState(user?.name || '');
   const [saving, setSaving] = useState(false);
 
