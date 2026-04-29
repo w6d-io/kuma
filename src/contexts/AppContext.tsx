@@ -21,6 +21,7 @@ const TWEAK_DEFAULTS: TweakDefaults = {
   matrixColor: true,
   levelStyle: "bars",
   wildcardWarn: true,
+  simulateForbidden: false,
 };
 
 interface Toast {
@@ -36,7 +37,7 @@ interface PipelineState {
 }
 
 export interface UserDrawerState {
-  mode: 'edit' | 'assign';
+  mode: 'edit' | 'assign' | 'create';
   user?: User;
 }
 
@@ -81,6 +82,10 @@ interface AppContextType {
   setTweak: (key: string, val: unknown) => void;
   // Live API mutations
   apiSetUserGroups: (email: string, groups: string[]) => Promise<void>;
+  apiCreateUser: (payload: { email: string; name: string; groups?: string[]; sendInvite?: boolean }) => Promise<void>;
+  apiDeleteUser: (id: string) => Promise<void>;
+  apiSetUserState: (id: string, state: 'active' | 'inactive') => Promise<void>;
+  apiSetUserMetadata: (id: string, metadata: Record<string, unknown>) => Promise<void>;
   apiCreateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
   apiUpdateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
   apiDeleteGroup: (name: string) => Promise<void>;
@@ -203,6 +208,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     invalidateRbac();
   }, [invalidateRbac]);
 
+  const apiCreateUser = useCallback(async (payload: { email: string; name: string; groups?: string[]; sendInvite?: boolean }) => {
+    await api.createUser(payload);
+    invalidateRbac();
+  }, [invalidateRbac]);
+
+  const apiDeleteUser = useCallback(async (id: string) => {
+    await api.deleteUser(id);
+    invalidateRbac();
+  }, [invalidateRbac]);
+
+  const apiSetUserState = useCallback(async (id: string, state: 'active' | 'inactive') => {
+    await api.setUserState(id, state);
+    invalidateRbac();
+  }, [invalidateRbac]);
+
+  const apiSetUserMetadata = useCallback(async (id: string, metadata: Record<string, unknown>) => {
+    await api.setUserMetadata(id, metadata);
+    invalidateRbac();
+  }, [invalidateRbac]);
+
   const apiCreateGroup = useCallback(async (name: string, services: Record<string, string[]>) => {
     await api.createGroup({ name, services });
     invalidateRbac();
@@ -236,7 +261,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     pushToast, toasts, pipeline,
     theme, setTheme, persona, setPersona,
     tweaks, setTweak,
-    apiSetUserGroups, apiCreateGroup, apiUpdateGroup, apiDeleteGroup, apiCreateService,
+    apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata,
+    apiCreateGroup, apiUpdateGroup, apiDeleteGroup, apiCreateService,
   };
 
   return <AppCtx.Provider value={ctx}>{children}</AppCtx.Provider>;

@@ -37,6 +37,27 @@ export const api = {
       body: JSON.stringify({ groups }),
     }),
 
+  createUser: (payload: { email: string; name: string; groups?: string[]; sendInvite?: boolean }) =>
+    request<{ identity: KratosIdentity; recoveryLink?: string }>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteUser: (id: string) =>
+    request<void>(`/admin/users/${id}`, { method: 'DELETE' }),
+
+  setUserState: (id: string, state: 'active' | 'inactive') =>
+    request<{ identity: KratosIdentity }>(`/admin/users/${id}/state`, {
+      method: 'PATCH',
+      body: JSON.stringify({ state }),
+    }),
+
+  setUserMetadata: (id: string, metadata: Record<string, unknown>) =>
+    request<{ identity: KratosIdentity }>(`/admin/users/${id}/metadata`, {
+      method: 'PATCH',
+      body: JSON.stringify({ metadata_admin: metadata }),
+    }),
+
   // ─── Groups ───
   getGroups: () =>
     request<{ groups: JinbeGroup[] }>(`/admin/rbac/groups`).then(r => r.groups),
@@ -164,6 +185,8 @@ export interface KratosIdentity {
   };
   metadata_admin?: {
     groups?: string[];
+    tenant_id?: string;
+    [key: string]: unknown;
   };
   created_at: string;
   updated_at: string;

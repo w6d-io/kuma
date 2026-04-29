@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
-import { Chip, Avatar, Drawer, PermTree } from '../components/ui/Primitives';
+import { Chip, Avatar, Drawer, PermTree, Switch } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
 import { useApplyChange } from '../hooks/useApplyChange';
 
@@ -27,9 +27,13 @@ export function UsersPage() {
           <div className="sub">{state.users.length} identities · Kratos <span className="mono">metadata_admin.groups</span></div>
         </div>
         <div className="page-actions">
-          <button className="btn primary" onClick={() => setUserDrawer({ mode: "assign" })}>
+          <button className="btn" onClick={() => setUserDrawer({ mode: "assign" })}>
             <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.plus}</span>
             Assign to group
+          </button>
+          <button className="btn primary" onClick={() => setUserDrawer({ mode: "create" })}>
+            <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.plus}</span>
+            Create user
           </button>
         </div>
       </div>
@@ -55,7 +59,7 @@ export function UsersPage() {
                   <div className="row" style={{ gap: 10 }}>
                     <Avatar name={u.name} />
                     <div>
-                      <div style={{ fontWeight: 500 }}>{u.name} {!u.active && <Chip tone="warn">pending</Chip>}</div>
+                      <div style={{ fontWeight: 500 }}>{u.name} {!u.active && <Chip tone="warn">inactive</Chip>}</div>
                       <div className="small muted mono">{u.email}</div>
                     </div>
                   </div>
@@ -80,22 +84,40 @@ export function UsersPage() {
 }
 
 export function UserDrawer() {
-  const { userDrawer, setUserDrawer, state, setState, isLive, apiSetUserGroups } = useApp();
+  const { userDrawer, setUserDrawer, state, setState, isLive, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata } = useApp();
   const applyChange = useApplyChange();
+
+  // edit/assign state
   const editing = userDrawer?.user;
   const [selectedUserId, setSelectedUserId] = useState(editing?.id || "");
   const user = editing || state.users.find(u => u.id === selectedUserId);
   const [groups, setGroups] = useState(user?.groups || []);
   const [drawerTab, setDrawerTab] = useState("groups");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // metadata state
+  const [tenantId, setTenantId] = useState(editing?.tenantId || "");
+
+  // create state
+  const [newEmail, setNewEmail] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newGroups, setNewGroups] = useState<string[]>([]);
+  const [sendInvite, setSendInvite] = useState(true);
 
   useEffect(() => { setGroups(user?.groups || []); }, [user?.id]);
-  useEffect(() => { setDrawerTab("groups"); }, [userDrawer?.mode, user?.id]);
+  useEffect(() => { setTenantId(user?.tenantId || ""); }, [user?.id]);
+  useEffect(() => {
+    setDrawerTab("groups");
+    setConfirmDelete(false);
+    setNewEmail(""); setNewName(""); setNewGroups([]); setSendInvite(true);
+  }, [userDrawer?.mode, user?.id]);
 
   if (!userDrawer) return null;
 
   const toggleGroup = (g: string) => setGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
+  const toggleNewGroup = (g: string) => setNewGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
 
-  const save = () => {
+  const saveGroups = () => {
     if (!user) return;
     const changed = JSON.stringify(groups.sort()) !== JSON.stringify((user.groups || []).sort());
     if (!changed) { setUserDrawer(null); return; }
@@ -107,18 +129,111 @@ export function UserDrawer() {
     if (ok) setUserDrawer(null);
   };
 
+  const create = () => {
+    if (!newEmail || !newName) return;
+    const mutator = isLive
+      ? () => apiCreateUser({ email: newEmail, name: newName, groups: newGroups, sendInvite })
+      : () => { setState(s => ({ ...s, users: [...s.users, { id: `local-${Date.now()}`, name: newName, email: newEmail, groups: newGroups, title: "", active: true, last: "just now" }] })); };
+    const ok = applyChange("create", newEmail, mutator);
+    if (ok) setUserDrawer(null);
+  };
+
+  const toggleActive = () => {
+    if (!user) return;
+    const next: 'active' | 'inactive' = user.active ? 'inactive' : 'active';
+    const verb = next === 'inactive' ? 'deactivate' : 'reactivate';
+    const mutator = isLive
+      ? () => apiSetUserState(user.id, next)
+      : () => { setState(s => ({ ...s, users: s.users.map(x => x.id === user.id ? { ...x, active: next === 'active' } : x) })); };
+    applyChange(verb, user.email, mutator);
+  };
+
+  const saveMetadata = () => {
+    if (!user) return;
+    const mutator = isLive
+      ? () => apiSetUserMetadata(user.id, { tenant_id: tenantId || undefined })
+      : () => { setState(s => ({ ...s, users: s.users.map(x => x.id === user.id ? { ...x, tenantId: tenantId || undefined } : x) })); };
+    const ok = applyChange("metadata", user.email, mutator);
+    if (ok) setUserDrawer(null);
+  };
+
+  const doDelete = () => {
+    if (!user) return;
+    const mutator = isLive
+      ? () => apiDeleteUser(user.id)
+      : () => { setState(s => ({ ...s, users: s.users.filter(x => x.id !== user.id) })); };
+    const ok = applyChange("delete", user.email, mutator);
+    if (ok) setUserDrawer(null);
+  };
+
+  const groupRows = (checked: string[], toggle: (g: string) => void) =>
+    Object.entries(state.groups).map(([g, map], i) => {
+      const on = checked.includes(g);
+      return (
+        <label key={g} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: i < Object.keys(state.groups).length - 1 ? "1px solid var(--line)" : "none", cursor: "pointer", background: on ? "var(--accent-soft)" : "transparent" }}>
+          <input type="checkbox" checked={on} onChange={() => toggle(g)} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 500, fontSize: 12.5 }}>{g}</div>
+            <div className="small muted mono">{Object.entries(map).map(([s, rs]) => `${s}: ${rs.join(",")}`).join(" · ")}</div>
+          </div>
+        </label>
+      );
+    });
+
+  if (userDrawer.mode === 'create') {
+    return (
+      <Drawer
+        open={true}
+        onClose={() => setUserDrawer(null)}
+        eyebrow="POST /admin/users"
+        title="Create user"
+        footer={
+          <>
+            <span className="small muted mono">POST /admin/identities · Kratos</span>
+            <div className="row">
+              <button className="btn" onClick={() => setUserDrawer(null)}>Cancel</button>
+              <button className="btn primary" onClick={create} disabled={!newEmail || !newName}>Create user</button>
+            </div>
+          </>
+        }
+      >
+        <div className="mb-12">
+          <label className="input-label">Email *</label>
+          <input className="input mono" type="email" placeholder="user@example.com" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
+        </div>
+        <div className="mb-12">
+          <label className="input-label">Full name *</label>
+          <input className="input" placeholder="Jane Doe" value={newName} onChange={e => setNewName(e.target.value)} />
+        </div>
+        {Object.keys(state.groups).length > 0 && (
+          <div className="mb-12">
+            <label className="input-label">Groups <span className="muted">(optional)</span></label>
+            <div className="panel" style={{ padding: 0 }}>{groupRows(newGroups, toggleNewGroup)}</div>
+          </div>
+        )}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0" }}>
+          <div>
+            <div style={{ fontWeight: 500, fontSize: 13 }}>Send invite email</div>
+            <div className="small muted">Generates a recovery link via Kratos</div>
+          </div>
+          <Switch on={sendInvite} onChange={setSendInvite} />
+        </div>
+      </Drawer>
+    );
+  }
+
   return (
     <Drawer
       open={!!userDrawer}
       onClose={() => setUserDrawer(null)}
       eyebrow="PATCH /admin/identities/{id}"
-      title={editing ? `Edit groups · ${user?.name}` : "Assign user to group"}
+      title={editing ? `Edit · ${user?.name}` : "Assign user to group"}
       footer={
         <>
           <span className="small muted mono">metadata_admin.groups</span>
           <div className="row">
             <button className="btn" onClick={() => setUserDrawer(null)}>Cancel</button>
-            <button className="btn primary" onClick={save} disabled={!user}>Apply change</button>
+            {drawerTab === "groups" && <button className="btn primary" onClick={saveGroups} disabled={!user}>Apply change</button>}
           </div>
         </>
       }
@@ -140,28 +255,80 @@ export function UserDrawer() {
               <div style={{ fontWeight: 500 }}>{user.name}</div>
               <div className="small muted mono">{user.email}</div>
             </div>
+            {!user.active && <Chip tone="warn">inactive</Chip>}
           </div>
-          <div className="drawer-tabs">
-            <button className={drawerTab === "groups" ? "on" : ""} onClick={() => setDrawerTab("groups")}>Edit groups</button>
-            <button className={drawerTab === "tree" ? "on" : ""} onClick={() => setDrawerTab("tree")}>Effective access</button>
-          </div>
-          {drawerTab === "groups" && (
-            <div className="panel" style={{ padding: 0 }}>
-              {Object.entries(state.groups).map(([g, map], i) => {
-                const on = groups.includes(g);
-                return (
-                  <label key={g} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: i < Object.keys(state.groups).length - 1 ? "1px solid var(--line)" : "none", cursor: "pointer", background: on ? "var(--accent-soft)" : "transparent" }}>
-                    <input type="checkbox" checked={on} onChange={() => toggleGroup(g)} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 500, fontSize: 12.5 }}>{g}</div>
-                      <div className="small muted mono">{Object.entries(map).map(([s, rs]) => `${s}: ${rs.join(",")}`).join(" · ")}</div>
-                    </div>
-                  </label>
-                );
-              })}
+          {editing && (
+            <div className="drawer-tabs">
+              <button className={drawerTab === "groups" ? "on" : ""} onClick={() => setDrawerTab("groups")}>Groups</button>
+              <button className={drawerTab === "tree" ? "on" : ""} onClick={() => setDrawerTab("tree")}>Access</button>
+              <button className={drawerTab === "metadata" ? "on" : ""} onClick={() => setDrawerTab("metadata")}>Metadata</button>
+              <button className={drawerTab === "danger" ? "on" : ""} onClick={() => { setDrawerTab("danger"); setConfirmDelete(false); }}>Danger</button>
             </div>
           )}
+          {drawerTab === "groups" && (
+            <div className="panel" style={{ padding: 0 }}>{groupRows(groups, toggleGroup)}</div>
+          )}
           {drawerTab === "tree" && <PermTree user={{ ...user, groups }} state={state} />}
+          {drawerTab === "metadata" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <label className="input-label">Tenant ID</label>
+                <input
+                  className="input mono"
+                  placeholder="e.g. acme-corp"
+                  value={tenantId}
+                  onChange={e => setTenantId(e.target.value)}
+                />
+                <div className="small muted" style={{ marginTop: 4 }}>Stored as <span className="mono">metadata_admin.tenant_id</span> in Kratos</div>
+              </div>
+              <div>
+                <button className="btn primary" onClick={saveMetadata}>Save metadata</button>
+              </div>
+            </div>
+          )}
+          {drawerTab === "danger" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="panel" style={{ padding: 14 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>{user.active ? "Deactivate account" : "Reactivate account"}</div>
+                <div className="small muted" style={{ marginBottom: 10 }}>
+                  {user.active
+                    ? "Blocks login. Identity and data are preserved."
+                    : "Restores login access for this identity."}
+                </div>
+                <button className="btn" onClick={toggleActive}>
+                  {user.active ? "Deactivate" : "Reactivate"}
+                </button>
+              </div>
+              <div className="panel" style={{ padding: 14 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4, color: "var(--red, #ef4444)" }}>Delete account</div>
+                <div className="small muted" style={{ marginBottom: 10 }}>
+                  Permanently removes this identity from Kratos. Cannot be undone.
+                </div>
+                {!confirmDelete
+                  ? (
+                    <button
+                      className="btn"
+                      style={{ borderColor: "var(--red, #ef4444)", color: "var(--red, #ef4444)" }}
+                      onClick={() => setConfirmDelete(true)}
+                    >
+                      Delete user
+                    </button>
+                  ) : (
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span className="small" style={{ flex: 1, color: "var(--red, #ef4444)" }}>Delete {user.email}?</span>
+                      <button className="btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
+                      <button
+                        className="btn primary"
+                        style={{ background: "var(--red, #ef4444)", borderColor: "var(--red, #ef4444)" }}
+                        onClick={doDelete}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+              </div>
+            </div>
+          )}
         </>
       )}
     </Drawer>
