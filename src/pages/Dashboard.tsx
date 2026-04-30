@@ -1,12 +1,16 @@
 import React, { useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { useSession } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Pipeline, } from '../components/ui/Primitives';
 import { ROLE_LEVEL } from '../hooks/useRbac';
 
 export function DashboardPage() {
   const app = useApp();
-  const { state, audit, setPage, setUserDrawer, setGroupDrawer, setServiceDrawer, pushToast, pipeline } = app;
+  const { state, audit, setPage, setUserDrawer, setGroupDrawer, setServiceDrawer, pushToast, pipeline, apiError } = app;
+  const { data: session } = useSession();
+  const hasAdmin = !!session?.permissions?.some((p) => p === '*' || p === 'admin:read');
+  const isForbidden = !hasAdmin || (apiError as { status?: number } | null)?.status === 403;
 
   const totalUsers = state.users.length;
   const activeUsers = state.users.filter(u => u.active).length;
@@ -86,6 +90,21 @@ export function DashboardPage() {
   const scoreColor = scoreTone === "ok" ? "var(--ok)" : scoreTone === "warn" ? "var(--warn)" : "var(--err)";
   const circ = 2 * Math.PI * 32;
   const offset = circ * (1 - score / 100);
+
+  if (isForbidden) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', padding: 24 }}>
+        <div className="panel" style={{ maxWidth: 520, padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 14, borderColor: 'var(--red, #ef4444)' }}>
+          <span style={{ width: 44, height: 44, display: 'grid', placeItems: 'center', color: 'var(--red, #ef4444)' }}>{I.shield}</span>
+          <div style={{ fontWeight: 600, fontSize: 17 }}>Access denied</div>
+          <div className="small muted" style={{ lineHeight: 1.6 }}>
+            Your account does not have admin permissions. The RBAC console requires <code>admin:read</code>.
+            Ask an administrator to assign you to a group with that permission.
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <>
