@@ -20,7 +20,7 @@ function kratosToUser(k: KratosIdentity): User {
     title: '',
     active: k.state === 'active',
     last: k.updated_at ? timeAgo(k.updated_at) : 'never',
-    tenantId: k.metadata_admin?.tenant_id,
+    organizationId: k.organization_id,
   };
 }
 

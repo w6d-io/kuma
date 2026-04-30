@@ -84,7 +84,7 @@ export function UsersPage() {
 }
 
 export function UserDrawer() {
-  const { userDrawer, setUserDrawer, state, setState, isLive, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata } = useApp();
+  const { userDrawer, setUserDrawer, state, setState, isLive, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserOrganization } = useApp();
   const applyChange = useApplyChange();
 
   // edit/assign state
@@ -96,7 +96,7 @@ export function UserDrawer() {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // metadata state
-  const [tenantId, setTenantId] = useState(editing?.tenantId || "");
+  const [organizationId, setOrganizationId] = useState(editing?.organizationId || "");
 
   // create state
   const [newEmail, setNewEmail] = useState("");
@@ -105,7 +105,7 @@ export function UserDrawer() {
   const [sendInvite, setSendInvite] = useState(true);
 
   useEffect(() => { setGroups(user?.groups || []); }, [user?.id]);
-  useEffect(() => { setTenantId(user?.tenantId || ""); }, [user?.id]);
+  useEffect(() => { setOrganizationId(user?.organizationId || ""); }, [user?.id]);
   useEffect(() => {
     setDrawerTab("groups");
     setConfirmDelete(false);
@@ -151,8 +151,8 @@ export function UserDrawer() {
   const saveMetadata = () => {
     if (!user) return;
     const mutator = isLive
-      ? () => apiSetUserMetadata(user.id, { tenant_id: tenantId || undefined })
-      : () => { setState(s => ({ ...s, users: s.users.map(x => x.id === user.id ? { ...x, tenantId: tenantId || undefined } : x) })); };
+      ? () => apiSetUserOrganization(user.id, organizationId || undefined)
+      : () => { setState(s => ({ ...s, users: s.users.map(x => x.id === user.id ? { ...x, organizationId: organizationId || undefined } : x) })); };
     const ok = applyChange("metadata", user.email, mutator);
     if (ok) setUserDrawer(null);
   };
@@ -272,14 +272,14 @@ export function UserDrawer() {
           {drawerTab === "metadata" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div>
-                <label className="input-label">Tenant ID</label>
+                <label className="input-label">Organization ID</label>
                 <input
                   className="input mono"
                   placeholder="e.g. acme-corp"
-                  value={tenantId}
-                  onChange={e => setTenantId(e.target.value)}
+                  value={organizationId}
+                  onChange={e => setOrganizationId(e.target.value)}
                 />
-                <div className="small muted" style={{ marginTop: 4 }}>Stored as <span className="mono">metadata_admin.tenant_id</span> in Kratos</div>
+                <div className="small muted" style={{ marginTop: 4 }}>Stored as <span className="mono">organization_id</span> in Kratos (native field)</div>
               </div>
               <div>
                 <button className="btn primary" onClick={saveMetadata}>Save metadata</button>
