@@ -45,6 +45,9 @@ export const api = {
   deleteUser: (id: string) =>
     request<void>(`/admin/users/${id}`, { method: 'DELETE' }),
 
+  sendRecoveryEmail: (id: string) =>
+    request<void>(`/admin/users/${id}/recovery-email`, { method: 'POST' }),
+
   setUserState: (id: string, state: 'active' | 'inactive') =>
     request<{ identity: KratosIdentity }>(`/admin/users/${id}/state`, {
       method: 'PATCH',

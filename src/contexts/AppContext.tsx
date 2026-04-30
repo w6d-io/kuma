@@ -84,6 +84,7 @@ interface AppContextType {
   apiSetUserGroups: (email: string, groups: string[]) => Promise<void>;
   apiCreateUser: (payload: { email: string; name: string; groups?: string[]; sendInvite?: boolean }) => Promise<void>;
   apiDeleteUser: (id: string) => Promise<void>;
+  apiSendRecoveryEmail: (id: string) => Promise<void>;
   apiSetUserState: (id: string, state: 'active' | 'inactive') => Promise<void>;
   apiSetUserMetadata: (id: string, metadata: Record<string, unknown>) => Promise<void>;
   apiCreateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
@@ -220,6 +221,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     invalidateRbac();
   }, [invalidateRbac]);
 
+  const apiSendRecoveryEmail = useCallback(async (id: string) => {
+    await api.sendRecoveryEmail(id);
+  }, []);
+
   const apiSetUserState = useCallback(async (id: string, state: 'active' | 'inactive') => {
     await api.setUserState(id, state);
     invalidateRbac();
@@ -273,7 +278,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     pushToast, toasts, pipeline,
     theme, setTheme, persona, setPersona,
     tweaks, setTweak,
-    apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata,
+    apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata, apiSendRecoveryEmail,
     apiCreateGroup, apiUpdateGroup, apiDeleteGroup,
     apiCreateService, apiUpdateService, apiDeleteService,
   };

@@ -84,7 +84,7 @@ export function UsersPage() {
 }
 
 export function UserDrawer() {
-  const { userDrawer, setUserDrawer, state, setState, isLive, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata } = useApp();
+  const { userDrawer, setUserDrawer, state, setState, isLive, pushToast, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata, apiSendRecoveryEmail } = useApp();
   const applyChange = useApplyChange();
 
   // edit/assign state
@@ -97,6 +97,8 @@ export function UserDrawer() {
 
   // metadata state
   const [tenantId, setTenantId] = useState(editing?.tenantId || "");
+
+  const [sendingRecovery, setSendingRecovery] = useState(false);
 
   // create state
   const [newEmail, setNewEmail] = useState("");
@@ -266,7 +268,33 @@ export function UserDrawer() {
             </div>
           )}
           {drawerTab === "groups" && (
-            <div className="panel" style={{ padding: 0 }}>{groupRows(groups, toggleGroup)}</div>
+            <>
+              <div className="panel" style={{ padding: 0 }}>{groupRows(groups, toggleGroup)}</div>
+              <div className="panel" style={{ padding: 14, marginTop: 8, display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 500, fontSize: 12.5 }}>Recovery email</div>
+                  <div className="small muted">Send password-reset link via Kratos</div>
+                </div>
+                <button
+                  className="btn"
+                  disabled={!isLive || sendingRecovery}
+                  onClick={async () => {
+                    if (!user) return;
+                    setSendingRecovery(true);
+                    try {
+                      await apiSendRecoveryEmail(user.id);
+                      pushToast(`Recovery email sent to ${user.email}`);
+                    } catch {
+                      pushToast("Failed to send recovery email", { err: true });
+                    } finally {
+                      setSendingRecovery(false);
+                    }
+                  }}
+                >
+                  {sendingRecovery ? "Sending…" : "Send recovery email"}
+                </button>
+              </div>
+            </>
           )}
           {drawerTab === "tree" && <PermTree user={{ ...user, groups }} state={state} />}
           {drawerTab === "metadata" && (
