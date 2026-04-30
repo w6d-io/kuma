@@ -60,6 +60,12 @@ export const api = {
       body: JSON.stringify({ metadata_admin: metadata }),
     }),
 
+  setUserOrganization: (id: string, organizationId: string | undefined) =>
+    request<{ identity: KratosIdentity }>(`/admin/users/${id}/organization`, {
+      method: 'PATCH',
+      body: JSON.stringify({ organization_id: organizationId || null }),
+    }),
+
   // ─── Groups ───
   getGroups: () =>
     request<{ groups: JinbeGroup[] }>(`/admin/rbac/groups`).then(r => r.groups),
@@ -196,9 +202,9 @@ export interface KratosIdentity {
   };
   metadata_admin?: {
     groups?: string[];
-    tenant_id?: string;
     [key: string]: unknown;
   };
+  organization_id?: string;
   created_at: string;
   updated_at: string;
 }

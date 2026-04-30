@@ -15,7 +15,7 @@ export interface User {
   title: string;
   active: boolean;
   last: string;
-  tenantId?: string;
+  organizationId?: string;
 }
 
 export interface RouteEntry {
