@@ -86,6 +86,7 @@ interface AppContextType {
   apiDeleteUser: (id: string) => Promise<void>;
   apiSetUserState: (id: string, state: 'active' | 'inactive') => Promise<void>;
   apiSetUserMetadata: (id: string, metadata: Record<string, unknown>) => Promise<void>;
+  apiSetUserOrganization: (id: string, organizationId: string | undefined) => Promise<void>;
   apiCreateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
   apiUpdateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
   apiDeleteGroup: (name: string) => Promise<void>;
@@ -230,6 +231,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     invalidateRbac();
   }, [invalidateRbac]);
 
+  const apiSetUserOrganization = useCallback(async (id: string, organizationId: string | undefined) => {
+    await api.setUserOrganization(id, organizationId);
+    invalidateRbac();
+  }, [invalidateRbac]);
+
   const apiCreateGroup = useCallback(async (name: string, services: Record<string, string[]>) => {
     await api.createGroup({ name, services });
     invalidateRbac();
@@ -273,7 +279,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     pushToast, toasts, pipeline,
     theme, setTheme, persona, setPersona,
     tweaks, setTweak,
-    apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata,
+    apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata, apiSetUserOrganization,
     apiCreateGroup, apiUpdateGroup, apiDeleteGroup,
     apiCreateService, apiUpdateService, apiDeleteService,
   };
