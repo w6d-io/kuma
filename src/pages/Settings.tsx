@@ -6,12 +6,12 @@ import { Chip, Avatar, EmptyHint } from '../components/ui/Primitives';
 import { api, type BundleImportResult } from '../api/client';
 
 function useCurrentUser() {
-  const { state, isLive } = useApp();
+  const { state } = useApp();
   const { data: session } = useSession();
-  const email = isLive && session?.email ? session.email : null;
+  const email = session?.email ?? null;
   return email
-    ? (state.users.find(u => u.email === email) ?? state.users[0])
-    : state.users[0];
+    ? (state.users.find(u => u.email === email) ?? null)
+    : null;
 }
 
 interface KratosSession {
