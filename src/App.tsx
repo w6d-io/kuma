@@ -29,15 +29,15 @@ const NAV: { id: PageId; name: string; ico: React.ReactNode; section: string }[]
 ];
 
 function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
-  const { page, setPage, state, tweaks, isLive, apiError } = useApp();
+  const { page, setPage, state, tweaks, apiError } = useApp();
   const sections = [...new Set(NAV.map(n => n.section))];
   const showCounts = tweaks?.showCounts !== false;
   const isForbidden = tweaks?.simulateForbidden || (apiError as any)?.status === 403;
 
   // Real session user when live; fallback to "you@console / super_admin"
   const { data: session } = useSession();
-  const email = isLive && session?.email ? session.email : "you@console";
-  const role  = isLive && session?.roles?.length ? session.roles[0] : "super_admin";
+  const email = session?.email || "you@console";
+  const role  = session?.roles?.[0] || "super_admin";
   const [localPart, domain] = email.includes("@") ? [email.split("@")[0], "@" + email.split("@")[1]] : [email, ""];
 
   return (

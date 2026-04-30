@@ -10,10 +10,9 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...opts?.headers },
     ...opts,
   });
-  if (res.status === 401) throw new Error('Unauthorized');
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `HTTP ${res.status}`);
+    throw Object.assign(new Error(body.error || `HTTP ${res.status}`), { status: res.status });
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -45,6 +44,9 @@ export const api = {
 
   deleteUser: (id: string) =>
     request<void>(`/admin/users/${id}`, { method: 'DELETE' }),
+
+  sendRecoveryEmail: (id: string) =>
+    request<void>(`/admin/users/${id}/recovery-email`, { method: 'POST' }),
 
   setUserState: (id: string, state: 'active' | 'inactive') =>
     request<{ identity: KratosIdentity }>(`/admin/users/${id}/state`, {

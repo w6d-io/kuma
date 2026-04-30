@@ -5,10 +5,11 @@ import type { KratosIdentity, JinbeGroup, JinbeAccessRule } from './client';
 import type { AppState, User, GroupsMap, RolesMap, RouteMapsMap, AccessRule, AuditEvent, Service } from './types';
 
 function classifyError(err: unknown): Error {
+  if (err instanceof Error && (err as any).status) return err as Error;
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.includes('Unauthorized') || msg.includes('401')) return Object.assign(new Error('Unauthorized'), { status: 401 });
   if (msg.includes('403') || msg.includes('Forbidden')) return Object.assign(new Error('Forbidden'), { status: 403 });
-  return Object.assign(new Error('NetworkError'), { status: 0 }); // CORS / offline
+  return Object.assign(new Error('NetworkError'), { status: 0 });
 }
 
 function kratosToUser(k: KratosIdentity): User {
