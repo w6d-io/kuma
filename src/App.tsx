@@ -15,30 +15,49 @@ import { AuditPage } from './pages/Audit';
 import { SettingsPage } from './pages/Settings';
 import type { PageId } from './api/types';
 
-const NAV: { id: PageId; name: string; ico: React.ReactNode; section: string }[] = [
-  { id: "dashboard", name: "Overview", ico: I.grid, section: "Platform" },
-  { id: "simulator", name: "Simulator", ico: I.sparkle, section: "Platform" },
-  { id: "users", name: "Users", ico: I.users, section: "Platform" },
-  { id: "groups", name: "Groups", ico: I.group, section: "Platform" },
-  { id: "services", name: "Services", ico: I.service, section: "Policy" },
-  { id: "roles", name: "Roles", ico: I.role, section: "Policy" },
-  { id: "routes", name: "Route map", ico: I.route, section: "Policy" },
-  { id: "rules", name: "Oathkeeper", ico: I.gate, section: "Gateway" },
-  { id: "audit", name: "Audit log", ico: I.audit, section: "Changes" },
-  { id: "settings", name: "Settings", ico: I.cog, section: "Changes" },
-];
+type NavItem = {
+  id: PageId
+  name: string
+  ico: React.ReactNode
+  section: string
+  /** Permissions required to access this page. User needs at least one. Empty = always visible. */
+  perms: string[]
+}
+
+const NAV: NavItem[] = [
+  { id: "dashboard", name: "Overview",  ico: I.grid,    section: "Platform", perms: [] },
+  { id: "simulator", name: "Simulator", ico: I.sparkle, section: "Platform", perms: ["admin:read"] },
+  { id: "users",     name: "Users",     ico: I.users,   section: "Platform", perms: ["admin:read"] },
+  { id: "groups",    name: "Groups",    ico: I.group,   section: "Platform", perms: ["admin:read"] },
+  { id: "services",  name: "Services",  ico: I.service, section: "Policy",   perms: ["admin:read"] },
+  { id: "roles",     name: "Roles",     ico: I.role,    section: "Policy",   perms: ["admin:read"] },
+  { id: "routes",    name: "Route map", ico: I.route,   section: "Policy",   perms: ["admin:read"] },
+  { id: "rules",     name: "Oathkeeper", ico: I.gate,   section: "Gateway",  perms: ["admin:read"] },
+  { id: "audit",     name: "Audit log", ico: I.audit,   section: "Changes",  perms: ["admin:read"] },
+  { id: "settings",  name: "Settings",  ico: I.cog,     section: "Changes",  perms: [] },
+]
+
+/** True if user has any of the required permissions or holds the wildcard "*". */
+function hasAnyPerm(userPerms: string[] | undefined, required: string[]): boolean {
+  if (required.length === 0) return true
+  if (!userPerms || userPerms.length === 0) return false
+  if (userPerms.includes("*")) return true
+  return required.some((r) => userPerms.includes(r))
+}
 
 function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
   const { page, setPage, state, tweaks, apiError } = useApp();
-  const sections = [...new Set(NAV.map(n => n.section))];
   const showCounts = tweaks?.showCounts !== false;
   const isForbidden = tweaks?.simulateForbidden || (apiError as any)?.status === 403;
 
-  // Real session user when live; fallback to "you@console / super_admin"
   const { data: session } = useSession();
   const email = session?.email || "you@console";
-  const role  = session?.roles?.[0] || "super_admin";
+  const role  = session?.roles?.[0] || "";
   const [localPart, domain] = email.includes("@") ? [email.split("@")[0], "@" + email.split("@")[1]] : [email, ""];
+
+  // Filter nav by user permissions — non-admins only see Overview + Settings.
+  const visibleNav = NAV.filter((n) => hasAnyPerm(session?.permissions, n.perms))
+  const sections = [...new Set(visibleNav.map((n) => n.section))]
 
   return (
     <aside className="sidebar">
@@ -59,7 +78,7 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
         {sections.map(sec => (
           <Fragment key={sec}>
             <div className="nav-section">{sec}</div>
-            {NAV.filter(n => n.section === sec).map(n => {
+            {visibleNav.filter(n => n.section === sec).map(n => {
               const count =
                 n.id === "users" ? state.users.length :
                 n.id === "groups" ? Object.keys(state.groups).length :
@@ -77,7 +96,18 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
           </Fragment>
         ))}
       </nav>
-      <div className="sidebar-foot" style={{ cursor: "pointer" }} onClick={() => setPage("settings")} title="Account settings">
+      <div className="sidebar-foot" style={{ cursor: "pointer" }} onClick={() => {
+        // Account settings live on the auth domain — redirect there. The
+        // window-level __AUTH_DOMAIN__ is injected by the chart at runtime.
+        const authDomain = (window as any).__AUTH_DOMAIN__;
+        if (authDomain) {
+          window.location.href = `https://${authDomain}/settings?return_to=${encodeURIComponent(window.location.href)}`;
+        } else {
+          // Fallback to in-app settings (admin-only RBAC management) if no
+          // auth domain configured.
+          setPage("settings");
+        }
+      }} title="Account settings">
         <Avatar name={localPart} />
         <div className="who">
           <span className="n">
@@ -102,7 +132,13 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
 
   useEffect(() => {
     if ((apiError as any)?.status === 401) {
-      const authDomain = state.meta.authDomain || (window as any).__AUTH_DOMAIN__ || 'auth.dev.w6d.io';
+      const authDomain = state.meta.authDomain || (window as any).__AUTH_DOMAIN__;
+      if (!authDomain) {
+        // No runtime config and no API metadata — surface the misconfig instead of
+        // silently redirecting somewhere unexpected.
+        console.error('Kuma: AUTH_DOMAIN is not configured. Set the AUTH_DOMAIN env on the container, or have jinbe expose meta.authDomain.');
+        return;
+      }
       window.location.href = `https://${authDomain}/login?return_to=${encodeURIComponent(window.location.href)}`;
     }
   }, [apiError, state.meta.authDomain]);
@@ -299,9 +335,19 @@ function ForbiddenPage() {
 }
 
 function AppShell() {
-  const { page, toasts, apiError, tweaks } = useApp();
+  const { page, setPage, toasts, apiError, tweaks } = useApp();
+  const { data: session } = useSession();
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [tweaksOpen, setTweaksOpen] = useState(false);
+
+  // If user landed on a page they cannot access (direct URL), bounce to Overview.
+  useEffect(() => {
+    const nav = NAV.find((n) => n.id === page)
+    if (!nav) return
+    if (!hasAnyPerm(session?.permissions, nav.perms)) {
+      setPage('dashboard')
+    }
+  }, [page, session?.permissions, setPage])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
