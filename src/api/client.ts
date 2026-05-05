@@ -167,6 +167,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(bundle),
     }),
+
+  // ─── Permission simulator (live OPA query) ───
+  simulate: (input: { email: string; service: string; method: string; path: string }) =>
+    request<SimulateResponse>('/admin/rbac/simulate', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 };
 
 // ─── Types matching jinbe API responses ───
@@ -256,6 +263,25 @@ export interface JinbeCommit {
 export interface BundleImportResult {
   rbac: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number };
   identities: { created: number; updated: number; skipped: number };
+}
+
+export interface SimulateMatchedRule {
+  method: string;
+  path: string;
+  permission?: string;
+}
+
+export interface SimulateResponse {
+  allowed: boolean;
+  superAdmin?: boolean;
+  matchedRule?: SimulateMatchedRule;
+  requiredPermission?: string;
+  userInfo: {
+    email: string;
+    groups: string[];
+    roles: string[];
+    permissions: string[];
+  };
 }
 
 export interface AuditStreamEvent {

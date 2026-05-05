@@ -1,8 +1,81 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
 import { Chip, Method, Avatar } from '../components/ui/Primitives';
-import { resolvePerms, matchRoute } from '../hooks/useRbac';
+import { resolvePerms } from '../hooks/useRbac';
+import { api, type SimulateResponse } from '../api/client';
+
+type TraceStep = { id: string; stage: string; label: string; detail: string; tone: string; body?: string };
+type Decision = { steps: TraceStep[]; allowed: boolean; reason: string; latency: number };
+
+// Maps the SimulateResponse from jinbe (which forwards to OPA's data.rbac.simulate
+// rule) into the trace step shape rendered below. The trace mirrors the runtime
+// pipeline (oathkeeper → opa) without re-deriving any authorization logic in JS,
+// so a green ALLOW here cannot drift from a request-time deny.
+function buildDecision(res: SimulateResponse, service: string, latency: number): Decision {
+  const steps: TraceStep[] = [];
+  const matched = res.matchedRule;
+
+  steps.push({
+    id: 'route',
+    stage: 'oathkeeper',
+    label: `Route map lookup · ${matched?.method ?? '?'} ${matched?.path ?? ''}`,
+    detail: matched ? `matched ${matched.method} ${matched.path}` : 'no match',
+    tone: matched ? 'ok' : 'warn',
+    body: matched
+      ? matched.permission ? `requires "${matched.permission}"` : 'public'
+      : 'falls through to deny',
+  });
+
+  if (!matched) {
+    return { steps, allowed: res.allowed, reason: 'route_not_found', latency };
+  }
+
+  if (!matched.permission) {
+    steps.push({
+      id: 'bypass', stage: 'oathkeeper',
+      label: 'Public endpoint — skipping OPA',
+      detail: 'no permission gate', tone: 'ok',
+    });
+    return { steps, allowed: true, reason: 'public', latency };
+  }
+
+  const groups = res.userInfo.groups;
+  steps.push({
+    id: 'kratos', stage: 'opa', label: 'Identity → groups',
+    detail: groups.length ? groups.join(', ') : '(none)',
+    tone: groups.length ? 'ok' : 'warn',
+  });
+
+  const roles = res.userInfo.roles;
+  steps.push({
+    id: 'roles', stage: 'opa', label: 'Groups → roles',
+    detail: roles.length ? roles.map(r => `${service}:${r}`).join(', ') : '(none)',
+    tone: roles.length ? 'ok' : 'err',
+  });
+
+  const perms = res.userInfo.permissions;
+  const hasWildcard = perms.includes('*');
+  const hasPerm = perms.includes(matched.permission) || hasWildcard;
+
+  steps.push({
+    id: 'check', stage: 'opa',
+    label: `Permission check · "${matched.permission}"`,
+    detail: hasPerm ? 'granted' : 'not granted',
+    tone: hasPerm ? 'ok' : 'err',
+    body: hasPerm
+      ? hasWildcard ? 'super_admin wildcard ("*")' : `permission present in user_permissions`
+      : `no role grants "${matched.permission}"`,
+  });
+
+  if (!res.allowed) {
+    return { steps, allowed: false, reason: 'not_authorized', latency };
+  }
+
+  steps.push({ id: 'opa_allow', stage: 'opa', label: 'OPA decision', detail: 'allow', tone: 'ok' });
+  steps.push({ id: 'forward', stage: 'upstream', label: `Forward to ${service}-upstream`, detail: 'with X-User / X-Groups headers', tone: 'ok' });
+  return { steps, allowed: true, reason: 'authorized', latency };
+}
 
 export function SimulatorPage() {
   const { state, setPage, setUserDrawer } = useApp();
@@ -14,52 +87,35 @@ export function SimulatorPage() {
   const user = state.users.find(u => u.id === userId);
   const services = state.services.map(s => s.name).filter(n => n !== "global");
 
-  const decision = useMemo(() => {
-    if (!user) return null;
-    const steps: { id: string; stage: string; label: string; detail: string; tone: string; body?: string }[] = [];
+  const [decision, setDecision] = useState<Decision | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const reqId = useRef(0);
 
-    const rule = state.accessRules.find(r => r.service === service);
-    steps.push({ id: "rule", stage: "oathkeeper", label: `Access rule match · ${service}`, detail: rule ? rule.id : "no rule defined", tone: rule ? "ok" : "err" });
-    if (!rule) return { steps, allowed: false, reason: "no_rule", latency: 2 };
-
-    const authed = rule.authenticators.includes("noop") ? "anonymous" : user.active ? "cookie_session" : "none";
-    const authOk = rule.authenticators.includes("noop") || user.active;
-    steps.push({ id: "auth", stage: "oathkeeper", label: "Authentication", detail: authed + (authOk ? " ✓" : " · rejected"), tone: authOk ? "ok" : "err" });
-    if (!authOk) return { steps, allowed: false, reason: "auth_failed", latency: 4 };
-
-    const routes = state.routeMaps[service] || [];
-    const match = matchRoute(routes, method, path);
-    steps.push({ id: "route", stage: "oathkeeper", label: `Route map lookup · ${method} ${path}`, detail: match ? `matched ${match.method} ${match.path}` : "no match", tone: match ? "ok" : "warn", body: match ? (match.permission ? `requires "${match.permission}"` : "public") : "falls through to deny" });
-    if (!match) return { steps, allowed: false, reason: "route_not_found", latency: 6 };
-    if (!match.permission) {
-      steps.push({ id: "bypass", stage: "oathkeeper", label: "Public endpoint — skipping OPA", tone: "ok", detail: "no permission gate" });
-      return { steps, allowed: true, reason: "public", latency: 8 };
-    }
-
-    const groups = user.groups;
-    steps.push({ id: "kratos", stage: "opa", label: "Identity → groups", detail: groups.length ? groups.join(", ") : "(none)", tone: groups.length ? "ok" : "warn" });
-
-    const { roles: userRoles, perms: userPerms, granters } = resolvePerms(user, state);
-    const relevantRoles = Array.from(new Set(
-      Object.entries(userRoles).filter(([svc]) => svc === service || svc === "global").flatMap(([svc, rs]) => rs.map(r => `${svc}:${r}`))
-    ));
-    steps.push({ id: "roles", stage: "opa", label: "Groups → roles", detail: relevantRoles.length ? relevantRoles.join(", ") : "(none)", tone: relevantRoles.length ? "ok" : "err" });
-
-    const svcPerms = userPerms[service] || new Set();
-    const globPerms = userPerms.global || new Set();
-    const hasPerm = svcPerms.has(match.permission) || svcPerms.has("*") || globPerms.has("*");
-
-    steps.push({
-      id: "check", stage: "opa", label: `Permission check · "${match.permission}"`,
-      detail: hasPerm ? "granted" : "not granted", tone: hasPerm ? "ok" : "err",
-      body: hasPerm ? `granted by ${(granters[`${service}:${match.permission}`] || granters[`${service}:*`] || granters[`global:*`] || ["unknown"]).join(", ")}` : `no role grants "${match.permission}"`
-    });
-    if (!hasPerm) return { steps, allowed: false, reason: "not_authorized", latency: 11 };
-
-    steps.push({ id: "opa_allow", stage: "opa", label: "OPA decision", detail: "allow", tone: "ok" });
-    steps.push({ id: "forward", stage: "upstream", label: `Forward to ${rule.upstream}`, detail: "with X-User / X-Groups headers", tone: "ok" });
-    return { steps, allowed: true, reason: "authorized", latency: 13 };
-  }, [user, service, method, path, state]);
+  // Debounced live OPA query — fires on any input change.
+  useEffect(() => {
+    if (!user) { setDecision(null); return; }
+    const myId = ++reqId.current;
+    const t = setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+      const t0 = performance.now();
+      try {
+        const res = await api.simulate({ email: user.email, service, method, path });
+        if (myId !== reqId.current) return; // stale
+        const latency = Math.round(performance.now() - t0);
+        setDecision(buildDecision(res, service, latency));
+      } catch (e) {
+        if (myId !== reqId.current) return;
+        const status = (e as { status?: number }).status;
+        setError(status === 503 ? 'OPA unreachable — request-time decisions cannot be previewed.' : 'Simulator query failed.');
+        setDecision(null);
+      } finally {
+        if (myId === reqId.current) setLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [user, service, method, path]);
 
   const verdictTone = !decision ? "info" : decision.allowed ? "ok" : "err";
   const verdictText = !decision ? "—" : decision.allowed ? "ALLOW" : "DENY";
@@ -69,7 +125,7 @@ export function SimulatorPage() {
       <div className="page-head">
         <div>
           <h1>Permission simulator</h1>
-          <div className="sub">Dry-run any identity × route. Mirrors <span className="mono">oathkeeper → opa → opal</span> decision trace.</div>
+          <div className="sub">Live <span className="mono">oathkeeper → opa</span> decision via <span className="mono">POST /api/admin/rbac/simulate</span>. Same code path as request-time auth.</div>
         </div>
       </div>
       <div className="grid mb-12" style={{ gridTemplateColumns: "1fr 1.35fr", gap: 10 }}>
@@ -131,7 +187,7 @@ export function SimulatorPage() {
 
         <div className="panel">
           <div className="panel-head">
-            <div><h3>Decision</h3><div className="sub">Traced through pipeline</div></div>
+            <div><h3>Decision</h3><div className="sub">{loading ? 'Querying OPA…' : 'Live OPA decision'}</div></div>
             <div className="row" style={{ gap: 8 }}>
               {decision && <span className="mono small muted">{decision.latency} ms</span>}
               <div className={`verdict verdict-${verdictTone}`}>
@@ -140,7 +196,12 @@ export function SimulatorPage() {
               </div>
             </div>
           </div>
-          {decision && (
+          {error && (
+            <div className="panel-body">
+              <div className="small" style={{ color: 'var(--err, #ef4444)', padding: 12 }}>{error}</div>
+            </div>
+          )}
+          {!error && decision && (
             <div className="panel-body">
               <ol className="trace">
                 {decision.steps.map((s, i) => (
