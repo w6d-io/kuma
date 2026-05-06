@@ -185,7 +185,12 @@ export function ServiceDrawer() {
     if (ok) { setServiceDrawer(null); setPage("services"); }
   };
 
-  const MethodPicker = () => (
+  // NOTE: these are JSX expressions, NOT component declarations. Declaring a
+  // child component INSIDE the render function gives it a fresh identity on
+  // every parent render, which causes React to unmount/remount its DOM —
+  // including any focused <input>. Using JSX values keeps the same elements
+  // across renders so typing in the inputs no longer loses focus per char.
+  const methodPicker = (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
       {HTTP_METHODS.map(m => {
         const on = matchMethods.includes(m);
@@ -202,7 +207,7 @@ export function ServiceDrawer() {
     </div>
   );
 
-  const SharedFields = () => (
+  const sharedFields = (
     <>
       <div className="mb-12">
         <label className="input-label">Upstream URL *</label>
@@ -216,7 +221,7 @@ export function ServiceDrawer() {
       </div>
       <div className="mb-12">
         <label className="input-label">Match methods</label>
-        <MethodPicker />
+        {methodPicker}
       </div>
       <div className="mb-12">
         <label className="input-label">Strip path <span className="muted">(optional)</span></label>
@@ -243,7 +248,7 @@ export function ServiceDrawer() {
           </>
         }
       >
-        <SharedFields />
+        {sharedFields}
         <div className="mb-12">
           <label className="input-label">Description</label>
           <input className="input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Short description" />
@@ -293,7 +298,7 @@ export function ServiceDrawer() {
         <input className="input mono" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. reporting" />
         <div className="input-hint">{name && !validName ? <span style={{ color: "var(--err)" }}>Invalid or already exists</span> : "Lowercase, alphanumeric and underscores."}</div>
       </div>
-      <SharedFields />
+      {sharedFields}
       <div className="mb-12">
         <label className="input-label">Description</label>
         <input className="input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Short description" />

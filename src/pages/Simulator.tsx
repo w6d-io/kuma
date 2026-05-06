@@ -87,6 +87,19 @@ export function SimulatorPage() {
   const user = state.users.find(u => u.id === userId);
   const services = state.services.map(s => s.name).filter(n => n !== "global");
 
+  // Route picker filter — searchable list of every route in the selected
+  // service's route_map. Without this, the user is stuck guessing paths or
+  // typing them by hand.
+  const [routeFilter, setRouteFilter] = useState("");
+  const allRoutes = state.routeMaps[service] || [];
+  const filteredRoutes = routeFilter
+    ? allRoutes.filter(r =>
+        r.path.toLowerCase().includes(routeFilter.toLowerCase()) ||
+        r.method.toLowerCase().includes(routeFilter.toLowerCase()) ||
+        (r.permission ?? "").toLowerCase().includes(routeFilter.toLowerCase())
+      )
+    : allRoutes;
+
   const [decision, setDecision] = useState<Decision | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -157,13 +170,53 @@ export function SimulatorPage() {
               </div>
             </div>
             <div>
-              <div className="input-label">Quick routes</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                {(state.routeMaps[service] || []).slice(0, 8).map((r, i) => (
-                  <button key={i} className="chip" style={{ cursor: "pointer", fontFamily: "var(--font-mono)" }} onClick={() => { setMethod(r.method); setPath(r.path); }}>
-                    <Method m={r.method} /> {r.path}
-                  </button>
-                ))}
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                <span className="input-label">All routes <span className="small muted">({filteredRoutes.length}/{allRoutes.length})</span></span>
+                <input
+                  className="input mono"
+                  style={{ maxWidth: 180, padding: "2px 6px", fontSize: 12 }}
+                  placeholder="filter…"
+                  value={routeFilter}
+                  onChange={e => setRouteFilter(e.target.value)}
+                />
+              </div>
+              {/* Scrollable picker — all route_map entries, not just the first 8.
+                  Click sets method+path on the request form. */}
+              <div style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                maxHeight: 220,
+                overflowY: "auto",
+                padding: 4,
+                background: "var(--panel-2)",
+                borderRadius: 6,
+              }}>
+                {filteredRoutes.length === 0 && (
+                  <span className="small muted" style={{ padding: 8 }}>no routes match filter</span>
+                )}
+                {filteredRoutes.map((r, i) => {
+                  const active = r.method === method && r.path === path;
+                  return (
+                    <button
+                      key={`${r.method}-${r.path}-${i}`}
+                      className="chip"
+                      style={{
+                        cursor: "pointer",
+                        fontFamily: "var(--font-mono)",
+                        textAlign: "left",
+                        justifyContent: "flex-start",
+                        background: active ? "var(--accent-soft)" : undefined,
+                        outline: active ? "1px solid var(--accent)" : undefined,
+                      }}
+                      onClick={() => { setMethod(r.method); setPath(r.path); }}
+                      title={r.permission ? `requires "${r.permission}"` : "public"}
+                    >
+                      <Method m={r.method} /> <span style={{ flex: 1 }}>{r.path}</span>
+                      {r.permission && <span className="small muted" style={{ marginLeft: 8 }}>{r.permission}</span>}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             {user && (
