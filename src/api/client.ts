@@ -12,7 +12,16 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw Object.assign(new Error(body.error || `HTTP ${res.status}`), { status: res.status });
+    // Surface the API's human-readable message ('Group X grants admin
+    // privileges; the target user must enroll a second factor…') instead
+    // of just the error code, so the toast in kuma actually explains
+    // what went wrong.
+    const msg = body.message || body.error || `HTTP ${res.status}`;
+    throw Object.assign(new Error(msg), {
+      status: res.status,
+      code: body.error,
+      details: body,
+    });
   }
   if (res.status === 204) return undefined as T;
   return res.json();
