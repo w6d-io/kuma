@@ -12,7 +12,16 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw Object.assign(new Error(body.error || `HTTP ${res.status}`), { status: res.status });
+    // Surface the API's human-readable message ('Group X grants admin
+    // privileges; the target user must enroll a second factor…') instead
+    // of just the error code, so the toast in kuma actually explains
+    // what went wrong.
+    const msg = body.message || body.error || `HTTP ${res.status}`;
+    throw Object.assign(new Error(msg), {
+      status: res.status,
+      code: body.error,
+      details: body,
+    });
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -173,6 +182,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(bundle),
     }),
+
+  // ─── Permission simulator (live OPA query) ───
+  simulate: (input: { email: string; service: string; method: string; path: string }) =>
+    request<SimulateResponse>('/admin/rbac/simulate', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 };
 
 // ─── Types matching jinbe API responses ───
@@ -212,6 +228,9 @@ export interface KratosIdentity {
 export interface JinbeGroup {
   name: string;
   services: Record<string, string[]>;
+  /** True when this group is bootstrap-protected (cannot be deleted, may need super_admin to mutate). */
+  system?: boolean;
+  description?: string;
 }
 
 export interface JinbeService {
@@ -221,6 +240,9 @@ export interface JinbeService {
   routeMapFilePath: string;
   rolesCount: number;
   routesCount: number;
+  /** True when this service is bootstrap-protected. */
+  system?: boolean;
+  description?: string;
 }
 
 export interface JinbeRole {
@@ -262,6 +284,25 @@ export interface JinbeCommit {
 export interface BundleImportResult {
   rbac: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number };
   identities: { created: number; updated: number; skipped: number };
+}
+
+export interface SimulateMatchedRule {
+  method: string;
+  path: string;
+  permission?: string;
+}
+
+export interface SimulateResponse {
+  allowed: boolean;
+  superAdmin?: boolean;
+  matchedRule?: SimulateMatchedRule;
+  requiredPermission?: string;
+  userInfo: {
+    email: string;
+    groups: string[];
+    roles: string[];
+    permissions: string[];
+  };
 }
 
 export interface AuditStreamEvent {

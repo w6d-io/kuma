@@ -22,14 +22,18 @@ export function GroupsPage() {
           </button>
         </div>
       </div>
-      <div className="panel" style={{ overflow: "auto" }}>
-        <table className="table">
+      {/* Sticky-column matrix: GROUP, USERS, and the trailing edit button stay
+          fixed while the SERVICES columns scroll horizontally. Without sticky
+          columns, on accounts with many services the user has no anchor for
+          which row they're editing once the table scrolls. */}
+      <div className="panel group-matrix-wrap" style={{ overflowX: "auto", overflowY: "visible", position: "relative" }}>
+        <table className="table group-matrix">
           <thead>
             <tr>
-              <th style={{ width: 180 }}>Group</th>
-              <th style={{ width: 70 }}>Users</th>
-              {services.map(s => <th key={s}>{s}</th>)}
-              <th style={{ width: 1 }}></th>
+              <th className="sticky-col" style={{ width: 180, left: 0 }}>Group</th>
+              <th className="sticky-col" style={{ width: 70, left: 180 }}>Users</th>
+              {services.map(s => <th key={s} style={{ minWidth: 140 }}>{s}</th>)}
+              <th className="sticky-col-right" style={{ width: 60, right: 0 }}></th>
             </tr>
           </thead>
           <tbody>
@@ -37,19 +41,22 @@ export function GroupsPage() {
               const users = state.users.filter(u => u.groups.includes(g)).length;
               return (
                 <tr key={g}>
-                  <td style={{ fontWeight: 500 }}>
+                  <td className="sticky-col" style={{ left: 0, fontWeight: 500 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span>{g}</span>
+                      {state.groupsMeta?.[g]?.system && (
+                        <Chip tone="info" title={state.groupsMeta[g].description || "Bootstrap-protected — cannot be deleted"}>🔒 system</Chip>
+                      )}
                       {Object.values(map).some(rs => rs.includes("*")) && <Chip tone="accent">wildcard</Chip>}
                     </div>
                   </td>
-                  <td><span className="mono small">{users}</span></td>
+                  <td className="sticky-col" style={{ left: 180 }}><span className="mono small">{users}</span></td>
                   {services.map(s => {
                     const roles = map[s] || [];
                     const perms = roles.flatMap(r => (state.roles[s]?.[r]) || []);
                     const level = roles.length === 0 ? "none" : accessLevelOf(perms);
                     return (
-                      <td key={s} className={`matrix-cell lv-${level}`}>
+                      <td key={s} className={`matrix-cell lv-${level}`} style={{ minWidth: 140 }}>
                         {roles.length === 0 ? <span className="small muted">—</span> : (
                           <div className="matrix-stack">
                             <AccessLevel level={level} compact />
@@ -59,7 +66,7 @@ export function GroupsPage() {
                       </td>
                     );
                   })}
-                  <td>
+                  <td className="sticky-col-right" style={{ right: 0 }}>
                     <button className="btn ghost sm" onClick={() => setGroupDrawer({ mode: "edit", name: g })}>
                       <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.edit}</span>
                     </button>
@@ -90,6 +97,7 @@ export function GroupDrawer() {
   if (!groupDrawer) return null;
   const services = state.services.map(s => s.name);
   const validName = /^[a-z0-9_]+$/.test(name);
+  const isSystem = !!(isEdit && groupDrawer.name && state.groupsMeta?.[groupDrawer.name]?.system);
 
   const toggle = (svc: string, role: string) => {
     setMapping(prev => {
@@ -142,10 +150,16 @@ export function GroupDrawer() {
       title={isEdit ? `Edit group · ${groupDrawer.name}` : "New group"}
       footer={
         <>
-          {isEdit ? <button className="btn danger sm" onClick={remove}><span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.trash}</span> Delete group</button> : <div />}
+          {isEdit && !isSystem ? (
+            <button className="btn danger sm" onClick={remove}><span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.trash}</span> Delete group</button>
+          ) : isEdit && isSystem ? (
+            <span className="small muted" title="System groups cannot be deleted">🔒 system group</span>
+          ) : <div />}
           <div className="row">
             <button className="btn" onClick={() => setGroupDrawer(null)}>Cancel</button>
-            <button className="btn primary" onClick={save} disabled={!validName || Object.keys(mapping).length === 0}>{isEdit ? "Apply change" : "Create group"}</button>
+            {/* On EDIT, an empty mapping is a legitimate intent (clearing every role).
+                On CREATE, refuse it — a group with no roles grants nothing. */}
+            <button className="btn primary" onClick={save} disabled={!validName || (!isEdit && Object.keys(mapping).length === 0)}>{isEdit ? "Apply change" : "Create group"}</button>
           </div>
         </>
       }
@@ -155,6 +169,19 @@ export function GroupDrawer() {
         <input className="input mono" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. qa, security_reviewers" disabled={isEdit} />
         <div className="input-hint">{name && !validName ? <span style={{ color: "var(--err)" }}>Must match ^[a-z0-9_]+$</span> : "Lowercase, alphanumeric and underscores."}</div>
       </div>
+      {/* Empty-mapping warning. With PUT-replace semantics on the backend,
+          saving with no roles wipes all of the group's permissions. Surface
+          that explicitly so it's intentional. */}
+      {Object.keys(mapping).length === 0 && (
+        <div className="panel mb-12" style={{ padding: 10, background: "var(--warn-soft, #422)", border: "1px solid var(--warn, #d97706)", color: "var(--warn, #d97706)" }}>
+          <div style={{ fontWeight: 500, fontSize: 12.5 }}>{isEdit ? "All roles cleared" : "No roles selected"}</div>
+          <div className="small" style={{ marginTop: 4 }}>
+            {isEdit
+              ? "Saving will remove every permission from this group. Members will keep their identity but lose access until reassigned."
+              : "Pick at least one role for at least one service to give this group meaningful access."}
+          </div>
+        </div>
+      )}
       <label className="input-label">Roles per service</label>
       <div className="panel" style={{ padding: 0 }}>
         {services.map((svc, i) => {

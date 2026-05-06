@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { useSession } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, Switch } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
@@ -51,7 +52,7 @@ export function UsersPage() {
           <span className="small muted mono">{filtered.length} / {state.users.length}</span>
         </div>
         <table className="table">
-          <thead><tr><th>Identity</th><th>Groups</th><th>Last seen</th><th></th></tr></thead>
+          <thead><tr><th>Identity</th><th>Groups</th><th>2FA</th><th>Last seen</th><th></th></tr></thead>
           <tbody>
             {paged.map(u => (
               <tr key={u.id} className="row-click" onClick={() => setUserDrawer({ mode: "edit", user: u })}>
@@ -59,7 +60,9 @@ export function UsersPage() {
                   <div className="row" style={{ gap: 10 }}>
                     <Avatar name={u.name} />
                     <div>
-                      <div style={{ fontWeight: 500 }}>{u.name} {!u.active && <Chip tone="warn">inactive</Chip>}</div>
+                      <div style={{ fontWeight: 500 }}>
+                        {u.name} {!u.active && <Chip tone="warn">inactive</Chip>}
+                      </div>
                       <div className="small muted mono">{u.email}</div>
                     </div>
                   </div>
@@ -68,6 +71,11 @@ export function UsersPage() {
                   {u.groups.length === 0
                     ? <span className="small muted">— no groups —</span>
                     : <span style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{u.groups.map(g => <Chip key={g}>{g}</Chip>)}</span>}
+                </td>
+                <td>
+                  {u.mfa === true && <Chip tone="ok" title="Has second factor (TOTP / WebAuthn / backup codes)">🔐 enabled</Chip>}
+                  {u.mfa === false && <Chip tone="warn" title="No second factor — required before admin / super_admin assignment">⚠️ off</Chip>}
+                  {u.mfa === undefined && <span className="small muted">—</span>}
                 </td>
                 <td className="small muted nowrap">{u.last}</td>
                 <td style={{ width: 24, textAlign: "right" }}><span style={{ color: "var(--ink-4)" }}>{I.chev}</span></td>
@@ -86,6 +94,11 @@ export function UsersPage() {
 export function UserDrawer() {
   const { userDrawer, setUserDrawer, state, setState, isLive, pushToast, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserOrganization, apiSendRecoveryEmail } = useApp();
   const applyChange = useApplyChange();
+  const { data: session } = useSession();
+  // Privilege-escalation guard mirror: only super_admin actors can grant
+  // groups that confer admin / super_admin power. Frontend disables the
+  // checkboxes; jinbe rejects the mutation as 422 either way.
+  const actorIsSuperAdmin = (session?.roles || []).includes('super_admin');
 
   // edit/assign state
   const editing = userDrawer?.user;
@@ -168,14 +181,69 @@ export function UserDrawer() {
     if (ok) setUserDrawer(null);
   };
 
-  const groupRows = (checked: string[], toggle: (g: string) => void) =>
+  // A group is "privileged" when its mapping yields the global super_admin
+  // role OR a service-scoped admin role. Membership grants admin power, so
+  // jinbe will refuse to add an MFA-less identity to it.
+  const isPrivilegedGroup = (g: string): boolean => {
+    const meta = state.groupsMeta?.[g];
+    if (!meta?.system) return false;
+    const map = state.groups[g] || {};
+    if ((map.global ?? []).includes('super_admin')) return true;
+    for (const [svc, roles] of Object.entries(map)) {
+      if (svc === 'global' || !roles?.length) continue;
+      const allRoles = state.roles[svc] || {};
+      for (const r of roles) {
+        if ((allRoles[r] ?? []).includes('*')) return true;
+      }
+    }
+    return false;
+  };
+
+  const groupRows = (checked: string[], toggle: (g: string) => void, targetMfa?: boolean) =>
     Object.entries(state.groups).map(([g, map], i) => {
       const on = checked.includes(g);
+      const privileged = isPrivilegedGroup(g);
+      // MFA gate (frontend mirror of jinbe's backend refusal): a privileged
+      // group cannot be picked for a target user without a second factor.
+      const blockedByMfa = privileged && targetMfa === false && !on;
+      // Privilege-escalation guard: only super_admin actors can grant a
+      // privileged group. Non-super_admins see the box disabled with
+      // explanation; backend enforces it via 422 either way.
+      const blockedByActor = privileged && !actorIsSuperAdmin && !on;
+      const blocked = blockedByMfa || blockedByActor;
+      const title = blockedByActor
+        ? `Group '${g}' grants admin privileges. Only super_admins may assign it.`
+        : blockedByMfa
+        ? `Group '${g}' grants admin privileges. Target user must enroll a second factor (TOTP / security key / backup codes) before assignment.`
+        : undefined;
       return (
-        <label key={g} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: i < Object.keys(state.groups).length - 1 ? "1px solid var(--line)" : "none", cursor: "pointer", background: on ? "var(--accent-soft)" : "transparent" }}>
-          <input type="checkbox" checked={on} onChange={() => toggle(g)} />
+        <label
+          key={g}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "10px 14px",
+            borderBottom: i < Object.keys(state.groups).length - 1 ? "1px solid var(--line)" : "none",
+            cursor: blocked ? "not-allowed" : "pointer",
+            background: on ? "var(--accent-soft)" : "transparent",
+            opacity: blocked ? 0.55 : 1,
+          }}
+          title={title}
+        >
+          <input
+            type="checkbox"
+            checked={on}
+            disabled={blocked}
+            onChange={() => { if (!blocked) toggle(g); }}
+          />
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 500, fontSize: 12.5 }}>{g}</div>
+            <div style={{ fontWeight: 500, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+              {g}
+              {privileged && <Chip tone="warn">🔒 privileged</Chip>}
+              {blockedByActor && <Chip tone="err">super_admin only</Chip>}
+              {blockedByMfa && !blockedByActor && <Chip tone="err">MFA required</Chip>}
+            </div>
             <div className="small muted mono">{Object.entries(map).map(([s, rs]) => `${s}: ${rs.join(",")}`).join(" · ")}</div>
           </div>
         </label>
@@ -210,7 +278,7 @@ export function UserDrawer() {
         {Object.keys(state.groups).length > 0 && (
           <div className="mb-12">
             <label className="input-label">Groups <span className="muted">(optional)</span></label>
-            <div className="panel" style={{ padding: 0 }}>{groupRows(newGroups, toggleNewGroup)}</div>
+            <div className="panel" style={{ padding: 0 }}>{groupRows(newGroups, toggleNewGroup, undefined)}</div>
           </div>
         )}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0" }}>
@@ -269,7 +337,7 @@ export function UserDrawer() {
           )}
           {drawerTab === "groups" && (
             <>
-              <div className="panel" style={{ padding: 0 }}>{groupRows(groups, toggleGroup)}</div>
+              <div className="panel" style={{ padding: 0 }}>{groupRows(groups, toggleGroup, user?.mfa)}</div>
               <div className="panel" style={{ padding: 14, marginTop: 8, display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 500, fontSize: 12.5 }}>Recovery email</div>

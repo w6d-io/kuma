@@ -148,6 +148,7 @@ export const SEED: AppState = {
       upstream: "http://reporting.local:8080",
     },
   ],
+  groupsMeta: {},
   audit: [
     { id: "e_201", when: "12s ago", ts: "2026-04-24 14:32:48", who: "felix@example.io", category: "access", verb: "allow", target: "GET /api/clusters", service: "jinbe", ip: "10.12.4.88", ua: "Chrome 124 / macOS" },
     { id: "e_200", when: "34s ago", ts: "2026-04-24 14:32:26", who: "felix@example.io", category: "auth", verb: "login", target: "oauth2 \u00b7 google", ip: "10.12.4.88", ua: "Chrome 124 / macOS", mfa: true },
