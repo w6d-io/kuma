@@ -105,6 +105,41 @@ export function SimulatorPage() {
   const [error, setError] = useState<string | null>(null);
   const reqId = useRef(0);
 
+  // Bulk-test state: query simulate for every route in the route_map at once
+  // and render a green/red matrix. Same OPA path as the per-route trace —
+  // verdicts cannot diverge.
+  type BulkResult = { method: string; path: string; permission?: string; allowed: boolean; error?: string };
+  const [bulkResults, setBulkResults] = useState<BulkResult[] | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+
+  async function runBulkTest() {
+    if (!user || allRoutes.length === 0) return;
+    const userEmail = user.email; // Capture for closure — narrows the optional in TS.
+    setBulkLoading(true);
+    setBulkResults(null);
+    // Concurrency 8 — keeps OPA latency tolerable on 70+ routes without
+    // stampeding the request bucket.
+    const queue = [...allRoutes];
+    const out: BulkResult[] = [];
+    async function worker() {
+      while (queue.length > 0) {
+        const r = queue.shift();
+        if (!r) return;
+        try {
+          const res = await api.simulate({ email: userEmail, service, method: r.method, path: r.path });
+          out.push({ method: r.method, path: r.path, permission: r.permission, allowed: res.allowed });
+        } catch (e) {
+          const status = (e as { status?: number }).status;
+          out.push({ method: r.method, path: r.path, permission: r.permission, allowed: false, error: status === 503 ? 'OPA unreachable' : 'request failed' });
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: 8 }, () => worker()));
+    out.sort((a, b) => (a.path === b.path ? a.method.localeCompare(b.method) : a.path.localeCompare(b.path)));
+    setBulkResults(out);
+    setBulkLoading(false);
+  }
+
   // Debounced live OPA query — fires on any input change.
   useEffect(() => {
     if (!user) { setDecision(null); return; }
@@ -291,6 +326,60 @@ export function SimulatorPage() {
           )}
         </div>
       </div>
+
+      {/* Bulk test — runs simulate for every route in the selected service.
+          Same OPA path as the per-route trace, so green/red can never lie. */}
+      {user && allRoutes.length > 0 && (
+        <div className="panel mb-12">
+          <div className="panel-head">
+            <div>
+              <h3>Test all rules · {service}</h3>
+              <div className="sub">Runs <span className="mono">POST /api/admin/rbac/simulate</span> for each route in the route_map.</div>
+            </div>
+            <div className="row" style={{ gap: 8 }}>
+              {bulkResults && (() => {
+                const allowed = bulkResults.filter(r => r.allowed).length;
+                const denied = bulkResults.length - allowed;
+                return (
+                  <span className="small muted mono">
+                    <span style={{ color: "var(--ok, #22c55e)" }}>{allowed} allow</span>
+                    {" · "}
+                    <span style={{ color: "var(--err, #ef4444)" }}>{denied} deny</span>
+                    {" / "}
+                    {bulkResults.length}
+                  </span>
+                );
+              })()}
+              <button className="btn" onClick={runBulkTest} disabled={bulkLoading}>
+                {bulkLoading ? "Testing…" : (bulkResults ? "Re-test" : "Test all rules")}
+              </button>
+            </div>
+          </div>
+          {bulkResults && (
+            <div style={{ padding: 0, maxHeight: 360, overflowY: "auto" }}>
+              <table className="table">
+                <thead><tr><th style={{ width: 70 }}>Verdict</th><th>Method</th><th>Path</th><th>Required permission</th></tr></thead>
+                <tbody>
+                  {bulkResults.map((r, i) => (
+                    <tr key={`${r.method}-${r.path}-${i}`} style={{
+                      background: r.allowed
+                        ? "color-mix(in oklab, var(--ok-soft, #22c55e) 18%, transparent)"
+                        : "color-mix(in oklab, var(--err-soft, #ef4444) 18%, transparent)",
+                    }}>
+                      <td>
+                        <Chip tone={r.allowed ? "ok" : "err"}>{r.allowed ? "ALLOW" : "DENY"}</Chip>
+                      </td>
+                      <td className="mono small">{r.method}</td>
+                      <td className="mono small">{r.path}</td>
+                      <td className="mono small muted">{r.error ?? r.permission ?? "(public)"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {user && (() => {
         const { roles, perms } = resolvePerms(user, state);

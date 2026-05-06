@@ -81,20 +81,28 @@ async function fetchAllRbacData(): Promise<AppState> {
   // Transform users
   const users: User[] = usersRaw.map(kratosToUser);
 
-  // Transform groups → map
+  // Transform groups → map + collect per-group metadata side-car
   const groups: GroupsMap = {};
+  const groupsMeta: Record<string, { system?: boolean; description?: string }> = {};
   for (const g of groupsRaw) {
     groups[g.name] = g.services || {};
+    if (g.system || g.description) {
+      groupsMeta[g.name] = {
+        ...(g.system ? { system: true } : {}),
+        ...(g.description ? { description: g.description } : {}),
+      };
+    }
   }
 
   // Transform services
   const services: Service[] = servicesRaw.map(s => ({
     name: s.name,
     upstreamUrl: null,
-    description: s.displayName || s.name,
+    description: s.description || s.displayName || s.name,
     createdAt: '',
     routes: s.routesCount || 0,
     roles: s.rolesCount || 0,
+    ...(s.system ? { system: true } : {}),
   }));
 
   // Fetch roles and route maps for each service in parallel
@@ -218,6 +226,7 @@ async function fetchAllRbacData(): Promise<AppState> {
     services,
     roles: rolesMap,
     groups,
+    groupsMeta,
     users,
     routeMaps,
     accessRules,

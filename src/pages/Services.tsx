@@ -35,6 +35,7 @@ export function ServicesPage() {
                   <div className="row" style={{ gap: 8 }}>
                     <span className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</span>
                     {s.name === "global" && <Chip tone="info">virtual</Chip>}
+                    {s.system && <Chip tone="info" title="Bootstrap-protected — cannot be deleted">🔒 system</Chip>}
                     <div className="flex-1" />
                     <AccessLevel level={level} compact />
                   </div>
@@ -254,25 +255,36 @@ export function ServiceDrawer() {
           <input className="input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Short description" />
         </div>
 
-        {/* Danger zone */}
-        <div className="panel" style={{ padding: 14, marginTop: 8 }}>
-          <div style={{ fontWeight: 500, marginBottom: 4, color: "var(--red, #ef4444)" }}>Delete service</div>
-          <div className="small muted" style={{ marginBottom: 10 }}>
-            Removes all roles, routes, Oathkeeper rules, and group assignments for <span className="mono">{editSvc?.name}</span>. Cannot be undone.
+        {/* Danger zone — hidden entirely for system services. The backend
+            also enforces this (rbac.service.ts SystemResourceImmutable),
+            but UI is the first line of defense. */}
+        {editSvc?.system ? (
+          <div className="panel" style={{ padding: 14, marginTop: 8 }}>
+            <div style={{ fontWeight: 500, marginBottom: 4 }}>🔒 System service</div>
+            <div className="small muted">
+              <span className="mono">{editSvc.name}</span> is bootstrap-protected and cannot be deleted. Removing it would break the platform's RBAC plumbing.
+            </div>
           </div>
-          {!confirmDelete
-            ? (
-              <button className="btn" style={{ borderColor: "var(--red, #ef4444)", color: "var(--red, #ef4444)" }} onClick={() => setConfirmDelete(true)}>
-                Delete service
-              </button>
-            ) : (
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span className="small" style={{ flex: 1, color: "var(--red, #ef4444)" }}>Delete {editSvc?.name} and all its data?</span>
-                <button className="btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
-                <button className="btn primary" style={{ background: "var(--red, #ef4444)", borderColor: "var(--red, #ef4444)" }} onClick={doDelete}>Delete</button>
-              </div>
-            )}
-        </div>
+        ) : (
+          <div className="panel" style={{ padding: 14, marginTop: 8 }}>
+            <div style={{ fontWeight: 500, marginBottom: 4, color: "var(--red, #ef4444)" }}>Delete service</div>
+            <div className="small muted" style={{ marginBottom: 10 }}>
+              Removes all roles, routes, Oathkeeper rules, and group assignments for <span className="mono">{editSvc?.name}</span>. Cannot be undone.
+            </div>
+            {!confirmDelete
+              ? (
+                <button className="btn" style={{ borderColor: "var(--red, #ef4444)", color: "var(--red, #ef4444)" }} onClick={() => setConfirmDelete(true)}>
+                  Delete service
+                </button>
+              ) : (
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span className="small" style={{ flex: 1, color: "var(--red, #ef4444)" }}>Delete {editSvc?.name} and all its data?</span>
+                  <button className="btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
+                  <button className="btn primary" style={{ background: "var(--red, #ef4444)", borderColor: "var(--red, #ef4444)" }} onClick={doDelete}>Delete</button>
+                </div>
+              )}
+          </div>
+        )}
       </Drawer>
     );
   }

@@ -5,6 +5,8 @@ export interface Service {
   createdAt: string;
   routes: number;
   roles: number;
+  /** True when this service is bootstrap-protected (cannot be deleted). */
+  system?: boolean;
 }
 
 export interface User {
@@ -62,6 +64,8 @@ export interface AuditEvent {
 
 export type GroupMapping = Record<string, string[]>;
 export type GroupsMap = Record<string, GroupMapping>;
+/** Per-group metadata side-car (system flag, description). */
+export type GroupsMetaMap = Record<string, { system?: boolean; description?: string }>;
 export type RolesMap = Record<string, Record<string, string[]>>;
 export type RouteMapsMap = Record<string, RouteEntry[]>;
 
@@ -76,6 +80,8 @@ export interface AppState {
   services: Service[];
   roles: RolesMap;
   groups: GroupsMap;
+  /** Per-group metadata (system flag, description). Indexed by group name. */
+  groupsMeta: GroupsMetaMap;
   users: User[];
   routeMaps: RouteMapsMap;
   accessRules: AccessRule[];

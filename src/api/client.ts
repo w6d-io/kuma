@@ -213,6 +213,9 @@ export interface KratosIdentity {
 export interface JinbeGroup {
   name: string;
   services: Record<string, string[]>;
+  /** True when this group is bootstrap-protected (cannot be deleted, may need super_admin to mutate). */
+  system?: boolean;
+  description?: string;
 }
 
 export interface JinbeService {
@@ -222,6 +225,9 @@ export interface JinbeService {
   routeMapFilePath: string;
   rolesCount: number;
   routesCount: number;
+  /** True when this service is bootstrap-protected. */
+  system?: boolean;
+  description?: string;
 }
 
 export interface JinbeRole {

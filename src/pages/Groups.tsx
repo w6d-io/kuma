@@ -44,6 +44,9 @@ export function GroupsPage() {
                   <td className="sticky-col" style={{ left: 0, fontWeight: 500 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span>{g}</span>
+                      {state.groupsMeta?.[g]?.system && (
+                        <Chip tone="info" title={state.groupsMeta[g].description || "Bootstrap-protected — cannot be deleted"}>🔒 system</Chip>
+                      )}
                       {Object.values(map).some(rs => rs.includes("*")) && <Chip tone="accent">wildcard</Chip>}
                     </div>
                   </td>
@@ -94,6 +97,7 @@ export function GroupDrawer() {
   if (!groupDrawer) return null;
   const services = state.services.map(s => s.name);
   const validName = /^[a-z0-9_]+$/.test(name);
+  const isSystem = !!(isEdit && groupDrawer.name && state.groupsMeta?.[groupDrawer.name]?.system);
 
   const toggle = (svc: string, role: string) => {
     setMapping(prev => {
@@ -146,7 +150,11 @@ export function GroupDrawer() {
       title={isEdit ? `Edit group · ${groupDrawer.name}` : "New group"}
       footer={
         <>
-          {isEdit ? <button className="btn danger sm" onClick={remove}><span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.trash}</span> Delete group</button> : <div />}
+          {isEdit && !isSystem ? (
+            <button className="btn danger sm" onClick={remove}><span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.trash}</span> Delete group</button>
+          ) : isEdit && isSystem ? (
+            <span className="small muted" title="System groups cannot be deleted">🔒 system group</span>
+          ) : <div />}
           <div className="row">
             <button className="btn" onClick={() => setGroupDrawer(null)}>Cancel</button>
             {/* On EDIT, an empty mapping is a legitimate intent (clearing every role).
