@@ -18,6 +18,8 @@ export interface User {
   active: boolean;
   last: string;
   tenantId?: string;
+  /** True when the identity has at least one second factor (TOTP, WebAuthn, lookup_secret). */
+  mfa?: boolean;
 }
 
 export interface RouteEntry {

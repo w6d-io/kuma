@@ -13,6 +13,20 @@ function classifyError(err: unknown): Error {
 }
 
 function kratosToUser(k: KratosIdentity): User {
+  // jinbe's enriched users response carries credential presence as
+  // top-level `mfa: boolean`. The raw Kratos identity may also have a
+  // `credentials` object when listIdentities was called with
+  // include_credential — fall back to scanning that.
+  const enriched = k as KratosIdentity & {
+    mfa?: boolean
+    credentials?: Record<string, unknown>
+  };
+  let mfa: boolean | undefined = enriched.mfa;
+  if (mfa === undefined && enriched.credentials) {
+    const c = enriched.credentials;
+    if (c.totp || c.webauthn || c.lookup_secret) mfa = true;
+    else if (Object.keys(c).length > 0) mfa = false;
+  }
   return {
     id: k.id,
     name: k.traits.name || k.traits.email,
@@ -22,6 +36,7 @@ function kratosToUser(k: KratosIdentity): User {
     active: k.state === 'active',
     last: k.updated_at ? timeAgo(k.updated_at) : 'never',
     tenantId: k.metadata_admin?.tenant_id,
+    ...(mfa !== undefined ? { mfa } : {}),
   };
 }
 

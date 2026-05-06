@@ -59,7 +59,11 @@ export function UsersPage() {
                   <div className="row" style={{ gap: 10 }}>
                     <Avatar name={u.name} />
                     <div>
-                      <div style={{ fontWeight: 500 }}>{u.name} {!u.active && <Chip tone="warn">inactive</Chip>}</div>
+                      <div style={{ fontWeight: 500 }}>
+                        {u.name} {!u.active && <Chip tone="warn">inactive</Chip>}
+                        {u.mfa === true && <Chip tone="ok" title="Has second factor (TOTP / WebAuthn / backup codes)">🔐 MFA</Chip>}
+                        {u.mfa === false && <Chip tone="warn" title="No second factor — required before admin/super_admin assignment">⚠️ no MFA</Chip>}
+                      </div>
                       <div className="small muted mono">{u.email}</div>
                     </div>
                   </div>
@@ -168,14 +172,62 @@ export function UserDrawer() {
     if (ok) setUserDrawer(null);
   };
 
-  const groupRows = (checked: string[], toggle: (g: string) => void) =>
+  // A group is "privileged" when its mapping yields the global super_admin
+  // role OR a service-scoped admin role. Membership grants admin power, so
+  // jinbe will refuse to add an MFA-less identity to it.
+  const isPrivilegedGroup = (g: string): boolean => {
+    const meta = state.groupsMeta?.[g];
+    if (!meta?.system) return false;
+    const map = state.groups[g] || {};
+    if ((map.global ?? []).includes('super_admin')) return true;
+    for (const [svc, roles] of Object.entries(map)) {
+      if (svc === 'global' || !roles?.length) continue;
+      const allRoles = state.roles[svc] || {};
+      for (const r of roles) {
+        if ((allRoles[r] ?? []).includes('*')) return true;
+      }
+    }
+    return false;
+  };
+
+  const groupRows = (checked: string[], toggle: (g: string) => void, targetMfa?: boolean) =>
     Object.entries(state.groups).map(([g, map], i) => {
       const on = checked.includes(g);
+      const privileged = isPrivilegedGroup(g);
+      // MFA gate (frontend mirror of jinbe's backend refusal): a privileged
+      // group cannot be picked for a target user without a second factor.
+      // The backend will 403 anyway, but disabling the checkbox makes the
+      // intent obvious and prevents wasted clicks.
+      const blockedByMfa = privileged && targetMfa === false && !on;
       return (
-        <label key={g} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: i < Object.keys(state.groups).length - 1 ? "1px solid var(--line)" : "none", cursor: "pointer", background: on ? "var(--accent-soft)" : "transparent" }}>
-          <input type="checkbox" checked={on} onChange={() => toggle(g)} />
+        <label
+          key={g}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "10px 14px",
+            borderBottom: i < Object.keys(state.groups).length - 1 ? "1px solid var(--line)" : "none",
+            cursor: blockedByMfa ? "not-allowed" : "pointer",
+            background: on ? "var(--accent-soft)" : "transparent",
+            opacity: blockedByMfa ? 0.55 : 1,
+          }}
+          title={blockedByMfa
+            ? `Group '${g}' grants admin privileges. Target user must enroll a second factor (TOTP / security key / backup codes) before assignment.`
+            : undefined}
+        >
+          <input
+            type="checkbox"
+            checked={on}
+            disabled={blockedByMfa}
+            onChange={() => { if (!blockedByMfa) toggle(g); }}
+          />
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 500, fontSize: 12.5 }}>{g}</div>
+            <div style={{ fontWeight: 500, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+              {g}
+              {privileged && <Chip tone="warn">🔒 privileged</Chip>}
+              {blockedByMfa && <Chip tone="err">MFA required</Chip>}
+            </div>
             <div className="small muted mono">{Object.entries(map).map(([s, rs]) => `${s}: ${rs.join(",")}`).join(" · ")}</div>
           </div>
         </label>
@@ -210,7 +262,7 @@ export function UserDrawer() {
         {Object.keys(state.groups).length > 0 && (
           <div className="mb-12">
             <label className="input-label">Groups <span className="muted">(optional)</span></label>
-            <div className="panel" style={{ padding: 0 }}>{groupRows(newGroups, toggleNewGroup)}</div>
+            <div className="panel" style={{ padding: 0 }}>{groupRows(newGroups, toggleNewGroup, undefined)}</div>
           </div>
         )}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0" }}>
@@ -269,7 +321,7 @@ export function UserDrawer() {
           )}
           {drawerTab === "groups" && (
             <>
-              <div className="panel" style={{ padding: 0 }}>{groupRows(groups, toggleGroup)}</div>
+              <div className="panel" style={{ padding: 0 }}>{groupRows(groups, toggleGroup, user?.mfa)}</div>
               <div className="panel" style={{ padding: 14, marginTop: 8, display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 500, fontSize: 12.5 }}>Recovery email</div>
