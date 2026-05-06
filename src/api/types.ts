@@ -17,7 +17,7 @@ export interface User {
   title: string;
   active: boolean;
   last: string;
-  tenantId?: string;
+  organizationId?: string;
   /** True when the identity has at least one second factor (TOTP, WebAuthn, lookup_secret). */
   mfa?: boolean;
 }
