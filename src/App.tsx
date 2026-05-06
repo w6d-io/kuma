@@ -116,6 +116,42 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
             {domain && <span className="user-domain">{domain}</span>}
           </span>
           <span className="e">{role}</span>
+          <button
+            type="button"
+            className="logout-link"
+            onClick={(e) => {
+              e.stopPropagation();
+              const authDomain = (window as any).__AUTH_DOMAIN__;
+              if (!authDomain) return;
+              // Top-level navigation rather than XHR + redirect: under
+              // Safari ITP and stricter third-party-cookie regimes the
+              // session cookie may not be sent on a cross-origin XHR
+              // even with credentials:'include', so fetching
+              // /self-service/logout/browser as JSON can return an
+              // unusable logout_url. A direct nav from kuma to auth
+              // travels as a top-level request that always carries the
+              // first-party cookie on the auth domain. Kratos serves
+              // its own logout page or 303s through to return_to.
+              window.location.href =
+                `https://${authDomain}/self-service/logout/browser?return_to=` +
+                encodeURIComponent(`https://${authDomain}/login`);
+            }}
+            title="Sign out"
+            style={{
+              fontSize: 11,
+              color: 'var(--ink-3)',
+              textDecoration: 'none',
+              marginTop: 2,
+              display: 'inline-block',
+              background: 'none',
+              border: 0,
+              padding: 0,
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            ↩ Sign out
+          </button>
         </div>
         <button className="btn ghost sm" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); onOpenTweaks(); }} title="Tweaks">
           <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.cog}</span>

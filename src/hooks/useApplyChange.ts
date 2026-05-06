@@ -30,6 +30,13 @@ export function useApplyChange() {
             );
             return;
           }
+          if (err.code === 'privilege_escalation_blocked') {
+            pushToast(
+              'Privilege escalation blocked · super_admin required',
+              { err: true, sub: err.details?.hint || err.message },
+            );
+            return;
+          }
           pushToast(`${err.message}`, { err: true });
         });
     } else {
