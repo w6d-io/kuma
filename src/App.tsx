@@ -97,17 +97,18 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
         ))}
       </nav>
       <div className="sidebar-foot" style={{ cursor: "pointer" }} onClick={() => {
-        // Account settings live on the auth domain — redirect there. The
+        // Account settings live on the auth domain — open in a new tab so
+        // the kuma session stays put (no return_to round-trip needed). The
         // window-level __AUTH_DOMAIN__ is injected by the chart at runtime.
         const authDomain = (window as any).__AUTH_DOMAIN__;
         if (authDomain) {
-          window.location.href = `https://${authDomain}/settings?return_to=${encodeURIComponent(window.location.href)}`;
+          window.open(`https://${authDomain}/settings`, '_blank', 'noopener,noreferrer');
         } else {
           // Fallback to in-app settings (admin-only RBAC management) if no
           // auth domain configured.
           setPage("settings");
         }
-      }} title="Account settings">
+      }} title="Account settings · opens in new tab">
         <Avatar name={localPart} />
         <div className="who">
           <span className="n">
