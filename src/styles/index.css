@@ -1562,6 +1562,28 @@ html[data-levelstyle="text"] .alevel.l-write .lbl { background: var(--ok-soft); 
 html[data-levelstyle="text"] .alevel.l-manage .lbl { background: var(--warn-soft); color: var(--warn); }
 html[data-levelstyle="text"] .alevel.l-admin .lbl { background: var(--err-soft); color: var(--err); }
 
+/* Group matrix — sticky GROUP/USERS/edit columns; services scroll horizontally */
+.group-matrix-wrap { max-width: 100%; }
+.group-matrix { table-layout: auto; min-width: max-content; }
+.group-matrix .sticky-col,
+.group-matrix .sticky-col-right {
+  position: sticky;
+  background: var(--panel);
+  z-index: 1;
+}
+.group-matrix thead .sticky-col,
+.group-matrix thead .sticky-col-right {
+  background: var(--panel-2);
+  z-index: 2;
+}
+.group-matrix .sticky-col {
+  border-right: 1px solid var(--line);
+}
+.group-matrix .sticky-col-right {
+  border-left: 1px solid var(--line);
+  text-align: center;
+}
+
 /* Matrix coloring */
 html[data-matrixcolor="on"] .matrix-cell.lv-read { background: color-mix(in oklab, var(--info-soft) 40%, transparent); }
 html[data-matrixcolor="on"] .matrix-cell.lv-write { background: color-mix(in oklab, var(--ok-soft) 40%, transparent); }

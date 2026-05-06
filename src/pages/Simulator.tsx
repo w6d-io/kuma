@@ -1,8 +1,81 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
 import { Chip, Method, Avatar } from '../components/ui/Primitives';
-import { resolvePerms, matchRoute } from '../hooks/useRbac';
+import { resolvePerms } from '../hooks/useRbac';
+import { api, type SimulateResponse } from '../api/client';
+
+type TraceStep = { id: string; stage: string; label: string; detail: string; tone: string; body?: string };
+type Decision = { steps: TraceStep[]; allowed: boolean; reason: string; latency: number };
+
+// Maps the SimulateResponse from jinbe (which forwards to OPA's data.rbac.simulate
+// rule) into the trace step shape rendered below. The trace mirrors the runtime
+// pipeline (oathkeeper → opa) without re-deriving any authorization logic in JS,
+// so a green ALLOW here cannot drift from a request-time deny.
+function buildDecision(res: SimulateResponse, service: string, latency: number): Decision {
+  const steps: TraceStep[] = [];
+  const matched = res.matchedRule;
+
+  steps.push({
+    id: 'route',
+    stage: 'oathkeeper',
+    label: `Route map lookup · ${matched?.method ?? '?'} ${matched?.path ?? ''}`,
+    detail: matched ? `matched ${matched.method} ${matched.path}` : 'no match',
+    tone: matched ? 'ok' : 'warn',
+    body: matched
+      ? matched.permission ? `requires "${matched.permission}"` : 'public'
+      : 'falls through to deny',
+  });
+
+  if (!matched) {
+    return { steps, allowed: res.allowed, reason: 'route_not_found', latency };
+  }
+
+  if (!matched.permission) {
+    steps.push({
+      id: 'bypass', stage: 'oathkeeper',
+      label: 'Public endpoint — skipping OPA',
+      detail: 'no permission gate', tone: 'ok',
+    });
+    return { steps, allowed: true, reason: 'public', latency };
+  }
+
+  const groups = res.userInfo.groups;
+  steps.push({
+    id: 'kratos', stage: 'opa', label: 'Identity → groups',
+    detail: groups.length ? groups.join(', ') : '(none)',
+    tone: groups.length ? 'ok' : 'warn',
+  });
+
+  const roles = res.userInfo.roles;
+  steps.push({
+    id: 'roles', stage: 'opa', label: 'Groups → roles',
+    detail: roles.length ? roles.map(r => `${service}:${r}`).join(', ') : '(none)',
+    tone: roles.length ? 'ok' : 'err',
+  });
+
+  const perms = res.userInfo.permissions;
+  const hasWildcard = perms.includes('*');
+  const hasPerm = perms.includes(matched.permission) || hasWildcard;
+
+  steps.push({
+    id: 'check', stage: 'opa',
+    label: `Permission check · "${matched.permission}"`,
+    detail: hasPerm ? 'granted' : 'not granted',
+    tone: hasPerm ? 'ok' : 'err',
+    body: hasPerm
+      ? hasWildcard ? 'super_admin wildcard ("*")' : `permission present in user_permissions`
+      : `no role grants "${matched.permission}"`,
+  });
+
+  if (!res.allowed) {
+    return { steps, allowed: false, reason: 'not_authorized', latency };
+  }
+
+  steps.push({ id: 'opa_allow', stage: 'opa', label: 'OPA decision', detail: 'allow', tone: 'ok' });
+  steps.push({ id: 'forward', stage: 'upstream', label: `Forward to ${service}-upstream`, detail: 'with X-User / X-Groups headers', tone: 'ok' });
+  return { steps, allowed: true, reason: 'authorized', latency };
+}
 
 export function SimulatorPage() {
   const { state, setPage, setUserDrawer } = useApp();
@@ -14,52 +87,83 @@ export function SimulatorPage() {
   const user = state.users.find(u => u.id === userId);
   const services = state.services.map(s => s.name).filter(n => n !== "global");
 
-  const decision = useMemo(() => {
-    if (!user) return null;
-    const steps: { id: string; stage: string; label: string; detail: string; tone: string; body?: string }[] = [];
+  // Route picker filter — searchable list of every route in the selected
+  // service's route_map. Without this, the user is stuck guessing paths or
+  // typing them by hand.
+  const [routeFilter, setRouteFilter] = useState("");
+  const allRoutes = state.routeMaps[service] || [];
+  const filteredRoutes = routeFilter
+    ? allRoutes.filter(r =>
+        r.path.toLowerCase().includes(routeFilter.toLowerCase()) ||
+        r.method.toLowerCase().includes(routeFilter.toLowerCase()) ||
+        (r.permission ?? "").toLowerCase().includes(routeFilter.toLowerCase())
+      )
+    : allRoutes;
 
-    const rule = state.accessRules.find(r => r.service === service);
-    steps.push({ id: "rule", stage: "oathkeeper", label: `Access rule match · ${service}`, detail: rule ? rule.id : "no rule defined", tone: rule ? "ok" : "err" });
-    if (!rule) return { steps, allowed: false, reason: "no_rule", latency: 2 };
+  const [decision, setDecision] = useState<Decision | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const reqId = useRef(0);
 
-    const authed = rule.authenticators.includes("noop") ? "anonymous" : user.active ? "cookie_session" : "none";
-    const authOk = rule.authenticators.includes("noop") || user.active;
-    steps.push({ id: "auth", stage: "oathkeeper", label: "Authentication", detail: authed + (authOk ? " ✓" : " · rejected"), tone: authOk ? "ok" : "err" });
-    if (!authOk) return { steps, allowed: false, reason: "auth_failed", latency: 4 };
+  // Bulk-test state: query simulate for every route in the route_map at once
+  // and render a green/red matrix. Same OPA path as the per-route trace —
+  // verdicts cannot diverge.
+  type BulkResult = { method: string; path: string; permission?: string; allowed: boolean; error?: string };
+  const [bulkResults, setBulkResults] = useState<BulkResult[] | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
 
-    const routes = state.routeMaps[service] || [];
-    const match = matchRoute(routes, method, path);
-    steps.push({ id: "route", stage: "oathkeeper", label: `Route map lookup · ${method} ${path}`, detail: match ? `matched ${match.method} ${match.path}` : "no match", tone: match ? "ok" : "warn", body: match ? (match.permission ? `requires "${match.permission}"` : "public") : "falls through to deny" });
-    if (!match) return { steps, allowed: false, reason: "route_not_found", latency: 6 };
-    if (!match.permission) {
-      steps.push({ id: "bypass", stage: "oathkeeper", label: "Public endpoint — skipping OPA", tone: "ok", detail: "no permission gate" });
-      return { steps, allowed: true, reason: "public", latency: 8 };
+  async function runBulkTest() {
+    if (!user || allRoutes.length === 0) return;
+    const userEmail = user.email; // Capture for closure — narrows the optional in TS.
+    setBulkLoading(true);
+    setBulkResults(null);
+    // Concurrency 8 — keeps OPA latency tolerable on 70+ routes without
+    // stampeding the request bucket.
+    const queue = [...allRoutes];
+    const out: BulkResult[] = [];
+    async function worker() {
+      while (queue.length > 0) {
+        const r = queue.shift();
+        if (!r) return;
+        try {
+          const res = await api.simulate({ email: userEmail, service, method: r.method, path: r.path });
+          out.push({ method: r.method, path: r.path, permission: r.permission, allowed: res.allowed });
+        } catch (e) {
+          const status = (e as { status?: number }).status;
+          out.push({ method: r.method, path: r.path, permission: r.permission, allowed: false, error: status === 503 ? 'OPA unreachable' : 'request failed' });
+        }
+      }
     }
+    await Promise.all(Array.from({ length: 8 }, () => worker()));
+    out.sort((a, b) => (a.path === b.path ? a.method.localeCompare(b.method) : a.path.localeCompare(b.path)));
+    setBulkResults(out);
+    setBulkLoading(false);
+  }
 
-    const groups = user.groups;
-    steps.push({ id: "kratos", stage: "opa", label: "Identity → groups", detail: groups.length ? groups.join(", ") : "(none)", tone: groups.length ? "ok" : "warn" });
-
-    const { roles: userRoles, perms: userPerms, granters } = resolvePerms(user, state);
-    const relevantRoles = Array.from(new Set(
-      Object.entries(userRoles).filter(([svc]) => svc === service || svc === "global").flatMap(([svc, rs]) => rs.map(r => `${svc}:${r}`))
-    ));
-    steps.push({ id: "roles", stage: "opa", label: "Groups → roles", detail: relevantRoles.length ? relevantRoles.join(", ") : "(none)", tone: relevantRoles.length ? "ok" : "err" });
-
-    const svcPerms = userPerms[service] || new Set();
-    const globPerms = userPerms.global || new Set();
-    const hasPerm = svcPerms.has(match.permission) || svcPerms.has("*") || globPerms.has("*");
-
-    steps.push({
-      id: "check", stage: "opa", label: `Permission check · "${match.permission}"`,
-      detail: hasPerm ? "granted" : "not granted", tone: hasPerm ? "ok" : "err",
-      body: hasPerm ? `granted by ${(granters[`${service}:${match.permission}`] || granters[`${service}:*`] || granters[`global:*`] || ["unknown"]).join(", ")}` : `no role grants "${match.permission}"`
-    });
-    if (!hasPerm) return { steps, allowed: false, reason: "not_authorized", latency: 11 };
-
-    steps.push({ id: "opa_allow", stage: "opa", label: "OPA decision", detail: "allow", tone: "ok" });
-    steps.push({ id: "forward", stage: "upstream", label: `Forward to ${rule.upstream}`, detail: "with X-User / X-Groups headers", tone: "ok" });
-    return { steps, allowed: true, reason: "authorized", latency: 13 };
-  }, [user, service, method, path, state]);
+  // Debounced live OPA query — fires on any input change.
+  useEffect(() => {
+    if (!user) { setDecision(null); return; }
+    const myId = ++reqId.current;
+    const t = setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+      const t0 = performance.now();
+      try {
+        const res = await api.simulate({ email: user.email, service, method, path });
+        if (myId !== reqId.current) return; // stale
+        const latency = Math.round(performance.now() - t0);
+        setDecision(buildDecision(res, service, latency));
+      } catch (e) {
+        if (myId !== reqId.current) return;
+        const status = (e as { status?: number }).status;
+        setError(status === 503 ? 'OPA unreachable — request-time decisions cannot be previewed.' : 'Simulator query failed.');
+        setDecision(null);
+      } finally {
+        if (myId === reqId.current) setLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [user, service, method, path]);
 
   const verdictTone = !decision ? "info" : decision.allowed ? "ok" : "err";
   const verdictText = !decision ? "—" : decision.allowed ? "ALLOW" : "DENY";
@@ -69,7 +173,7 @@ export function SimulatorPage() {
       <div className="page-head">
         <div>
           <h1>Permission simulator</h1>
-          <div className="sub">Dry-run any identity × route. Mirrors <span className="mono">oathkeeper → opa → opal</span> decision trace.</div>
+          <div className="sub">Live <span className="mono">oathkeeper → opa</span> decision via <span className="mono">POST /api/admin/rbac/simulate</span>. Same code path as request-time auth.</div>
         </div>
       </div>
       <div className="grid mb-12" style={{ gridTemplateColumns: "1fr 1.35fr", gap: 10 }}>
@@ -101,13 +205,53 @@ export function SimulatorPage() {
               </div>
             </div>
             <div>
-              <div className="input-label">Quick routes</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                {(state.routeMaps[service] || []).slice(0, 8).map((r, i) => (
-                  <button key={i} className="chip" style={{ cursor: "pointer", fontFamily: "var(--font-mono)" }} onClick={() => { setMethod(r.method); setPath(r.path); }}>
-                    <Method m={r.method} /> {r.path}
-                  </button>
-                ))}
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                <span className="input-label">All routes <span className="small muted">({filteredRoutes.length}/{allRoutes.length})</span></span>
+                <input
+                  className="input mono"
+                  style={{ maxWidth: 180, padding: "2px 6px", fontSize: 12 }}
+                  placeholder="filter…"
+                  value={routeFilter}
+                  onChange={e => setRouteFilter(e.target.value)}
+                />
+              </div>
+              {/* Scrollable picker — all route_map entries, not just the first 8.
+                  Click sets method+path on the request form. */}
+              <div style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                maxHeight: 220,
+                overflowY: "auto",
+                padding: 4,
+                background: "var(--panel-2)",
+                borderRadius: 6,
+              }}>
+                {filteredRoutes.length === 0 && (
+                  <span className="small muted" style={{ padding: 8 }}>no routes match filter</span>
+                )}
+                {filteredRoutes.map((r, i) => {
+                  const active = r.method === method && r.path === path;
+                  return (
+                    <button
+                      key={`${r.method}-${r.path}-${i}`}
+                      className="chip"
+                      style={{
+                        cursor: "pointer",
+                        fontFamily: "var(--font-mono)",
+                        textAlign: "left",
+                        justifyContent: "flex-start",
+                        background: active ? "var(--accent-soft)" : undefined,
+                        outline: active ? "1px solid var(--accent)" : undefined,
+                      }}
+                      onClick={() => { setMethod(r.method); setPath(r.path); }}
+                      title={r.permission ? `requires "${r.permission}"` : "public"}
+                    >
+                      <Method m={r.method} /> <span style={{ flex: 1 }}>{r.path}</span>
+                      {r.permission && <span className="small muted" style={{ marginLeft: 8 }}>{r.permission}</span>}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             {user && (
@@ -131,7 +275,7 @@ export function SimulatorPage() {
 
         <div className="panel">
           <div className="panel-head">
-            <div><h3>Decision</h3><div className="sub">Traced through pipeline</div></div>
+            <div><h3>Decision</h3><div className="sub">{loading ? 'Querying OPA…' : 'Live OPA decision'}</div></div>
             <div className="row" style={{ gap: 8 }}>
               {decision && <span className="mono small muted">{decision.latency} ms</span>}
               <div className={`verdict verdict-${verdictTone}`}>
@@ -140,7 +284,12 @@ export function SimulatorPage() {
               </div>
             </div>
           </div>
-          {decision && (
+          {error && (
+            <div className="panel-body">
+              <div className="small" style={{ color: 'var(--err, #ef4444)', padding: 12 }}>{error}</div>
+            </div>
+          )}
+          {!error && decision && (
             <div className="panel-body">
               <ol className="trace">
                 {decision.steps.map((s, i) => (
@@ -177,6 +326,60 @@ export function SimulatorPage() {
           )}
         </div>
       </div>
+
+      {/* Bulk test — runs simulate for every route in the selected service.
+          Same OPA path as the per-route trace, so green/red can never lie. */}
+      {user && allRoutes.length > 0 && (
+        <div className="panel mb-12">
+          <div className="panel-head">
+            <div>
+              <h3>Test all rules · {service}</h3>
+              <div className="sub">Runs <span className="mono">POST /api/admin/rbac/simulate</span> for each route in the route_map.</div>
+            </div>
+            <div className="row" style={{ gap: 8 }}>
+              {bulkResults && (() => {
+                const allowed = bulkResults.filter(r => r.allowed).length;
+                const denied = bulkResults.length - allowed;
+                return (
+                  <span className="small muted mono">
+                    <span style={{ color: "var(--ok, #22c55e)" }}>{allowed} allow</span>
+                    {" · "}
+                    <span style={{ color: "var(--err, #ef4444)" }}>{denied} deny</span>
+                    {" / "}
+                    {bulkResults.length}
+                  </span>
+                );
+              })()}
+              <button className="btn" onClick={runBulkTest} disabled={bulkLoading}>
+                {bulkLoading ? "Testing…" : (bulkResults ? "Re-test" : "Test all rules")}
+              </button>
+            </div>
+          </div>
+          {bulkResults && (
+            <div style={{ padding: 0, maxHeight: 360, overflowY: "auto" }}>
+              <table className="table">
+                <thead><tr><th style={{ width: 70 }}>Verdict</th><th>Method</th><th>Path</th><th>Required permission</th></tr></thead>
+                <tbody>
+                  {bulkResults.map((r, i) => (
+                    <tr key={`${r.method}-${r.path}-${i}`} style={{
+                      background: r.allowed
+                        ? "color-mix(in oklab, var(--ok-soft, #22c55e) 18%, transparent)"
+                        : "color-mix(in oklab, var(--err-soft, #ef4444) 18%, transparent)",
+                    }}>
+                      <td>
+                        <Chip tone={r.allowed ? "ok" : "err"}>{r.allowed ? "ALLOW" : "DENY"}</Chip>
+                      </td>
+                      <td className="mono small">{r.method}</td>
+                      <td className="mono small">{r.path}</td>
+                      <td className="mono small muted">{r.error ?? r.permission ?? "(public)"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {user && (() => {
         const { roles, perms } = resolvePerms(user, state);

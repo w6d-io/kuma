@@ -20,8 +20,24 @@ export function useApplyChange() {
           appendAudit(verb, target, setAudit);
           if (isLive) refetch();
         })
-        .catch((err: Error) => {
-          pushToast(`Failed: ${err.message}`, { err: true });
+        .catch((err: Error & { code?: string; status?: number; details?: { hint?: string } }) => {
+          // Special-case the MFA gate so the toast tells the operator what
+          // to do instead of dumping the raw error string.
+          if (err.code === 'mfa_required') {
+            pushToast(
+              'MFA required · target user has no second factor',
+              { err: true, sub: err.details?.hint || err.message },
+            );
+            return;
+          }
+          if (err.code === 'privilege_escalation_blocked') {
+            pushToast(
+              'Privilege escalation blocked · super_admin required',
+              { err: true, sub: err.details?.hint || err.message },
+            );
+            return;
+          }
+          pushToast(`${err.message}`, { err: true });
         });
     } else {
       // Sync local state mutation

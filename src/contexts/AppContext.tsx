@@ -5,7 +5,7 @@ import { api } from '../api/client';
 
 const EMPTY_STATE: AppState = {
   meta: { jinbeApi: '/api', opalServer: '', kratosAdmin: '', lastSync: '' },
-  services: [], roles: {}, groups: {}, users: [], routeMaps: {}, accessRules: [], audit: [],
+  services: [], roles: {}, groups: {}, groupsMeta: {}, users: [], routeMaps: {}, accessRules: [], audit: [],
 };
 
 const TWEAK_DEFAULTS: TweakDefaults = {
