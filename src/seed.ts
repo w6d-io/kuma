@@ -16,9 +16,9 @@ export const SEED: AppState = {
   roles: {
     jinbe: {
       admin: ["*"],
-      operator: ["clusters:list","clusters:read","clusters:create","clusters:update","databases:list","databases:read","databases:create"],
-      editor: ["databases:list","databases:read","databases:create","databases:update","clusters:list","clusters:read"],
-      viewer: ["databases:list","databases:read","clusters:list","clusters:read"],
+      operator: ["projects:list","projects:read","projects:create","projects:update"],
+      editor: ["projects:list","projects:read","projects:create","projects:update"],
+      viewer: ["projects:list","projects:read"],
       billing_reader: ["billing:read","billing:list"],
     },
     kuma_v2: {
@@ -74,16 +74,11 @@ export const SEED: AppState = {
   routeMaps: {
     jinbe: [
       { method: "GET", path: "/api/health" },
-      { method: "GET", path: "/api/clusters/", permission: "clusters:list" },
-      { method: "GET", path: "/api/clusters/:id", permission: "clusters:read" },
-      { method: "POST", path: "/api/clusters/", permission: "clusters:create" },
-      { method: "PATCH", path: "/api/clusters/:id", permission: "clusters:update" },
-      { method: "DELETE", path: "/api/clusters/:id", permission: "clusters:delete" },
-      { method: "GET", path: "/api/databases/", permission: "databases:list" },
-      { method: "GET", path: "/api/databases/:id", permission: "databases:read" },
-      { method: "POST", path: "/api/databases/", permission: "databases:create" },
-      { method: "PUT", path: "/api/databases/:id", permission: "databases:update" },
-      { method: "DELETE", path: "/api/databases/:id", permission: "databases:delete" },
+      { method: "GET", path: "/api/projects/", permission: "projects:list" },
+      { method: "GET", path: "/api/projects/:id", permission: "projects:read" },
+      { method: "POST", path: "/api/projects/", permission: "projects:create" },
+      { method: "PATCH", path: "/api/projects/:id", permission: "projects:update" },
+      { method: "DELETE", path: "/api/projects/:id", permission: "projects:delete" },
       { method: "GET", path: "/api/billing/invoices", permission: "billing:read" },
       { method: "GET", path: "/api/admin/git-config/:any*", permission: "admin:read" },
       { method: "GET", path: "/api/admin/rbac/:any*", permission: "admin:read" },
@@ -150,12 +145,12 @@ export const SEED: AppState = {
   ],
   groupsMeta: {},
   audit: [
-    { id: "e_201", when: "12s ago", ts: "2026-04-24 14:32:48", who: "felix@example.io", category: "access", verb: "allow", target: "GET /api/clusters", service: "jinbe", ip: "10.12.4.88", ua: "Chrome 124 / macOS" },
+    { id: "e_201", when: "12s ago", ts: "2026-04-24 14:32:48", who: "felix@example.io", category: "access", verb: "allow", target: "GET /api/projects", service: "jinbe", ip: "10.12.4.88", ua: "Chrome 124 / macOS" },
     { id: "e_200", when: "34s ago", ts: "2026-04-24 14:32:26", who: "felix@example.io", category: "auth", verb: "login", target: "oauth2 \u00b7 google", ip: "10.12.4.88", ua: "Chrome 124 / macOS", mfa: true },
     { id: "e_199", when: "1m ago", ts: "2026-04-24 14:31:40", who: "amelie@example.io", category: "rbac", verb: "assign", target: "omar@example.io \u2192 on_call", status: "applied" },
     { id: "e_198", when: "2m ago", ts: "2026-04-24 14:30:52", who: "system", category: "system", verb: "sync", target: "OPAL \u2192 OPA bundle v42", status: "applied" },
-    { id: "e_197", when: "3m ago", ts: "2026-04-24 14:29:11", who: "leo@example.io", category: "access", verb: "deny", target: "DELETE /api/databases/prod-eu-1", service: "jinbe", ip: "10.12.3.42", reason: "missing databases:delete" },
-    { id: "e_196", when: "5m ago", ts: "2026-04-24 14:27:03", who: "priya@example.io", category: "access", verb: "allow", target: "POST /api/clusters/kube-prod/restart", service: "jinbe", ip: "10.12.3.18" },
+    { id: "e_197", when: "3m ago", ts: "2026-04-24 14:29:11", who: "leo@example.io", category: "access", verb: "deny", target: "DELETE /api/projects/prod-eu-1", service: "jinbe", ip: "10.12.3.42", reason: "missing projects:delete" },
+    { id: "e_196", when: "5m ago", ts: "2026-04-24 14:27:03", who: "priya@example.io", category: "access", verb: "allow", target: "POST /api/projects/prod-1/restart", service: "jinbe", ip: "10.12.3.18" },
     { id: "e_195", when: "7m ago", ts: "2026-04-24 14:25:40", who: "jules@example.io", category: "auth", verb: "mfa", target: "totp challenge", ip: "10.12.3.9", ua: "Firefox 126 / Linux", mfa: true },
     { id: "e_194", when: "12m ago", ts: "2026-04-24 14:20:18", who: "amelie@example.io", category: "rbac", verb: "create", target: "group:finance", status: "applied" },
     { id: "e_193", when: "18m ago", ts: "2026-04-24 14:14:02", who: "system", category: "auth", verb: "expire", target: "session \u00b7 yassine@example.io", ip: "10.12.5.77" },
@@ -169,6 +164,6 @@ export const SEED: AppState = {
     { id: "e_185", when: "2h ago", ts: "2026-04-24 12:46:31", who: "sana@example.io", category: "auth", verb: "logout", target: "session ended", ip: "10.12.6.5" },
     { id: "e_184", when: "3h ago", ts: "2026-04-24 11:48:19", who: "amelie@example.io", category: "service", verb: "create", target: "service:reporting", status: "applied" },
     { id: "e_183", when: "4h ago", ts: "2026-04-24 10:42:00", who: "anon", category: "auth", verb: "fail", target: "login \u00b7 brute \u00b7 7 attempts", ip: "198.51.100.22", reason: "rate_limit" },
-    { id: "e_182", when: "5h ago", ts: "2026-04-24 09:31:26", who: "noor@example.io", category: "rbac", verb: "revoke", target: "viewers \u27c2 databases:read (jinbe)", status: "applied" },
+    { id: "e_182", when: "5h ago", ts: "2026-04-24 09:31:26", who: "noor@example.io", category: "rbac", verb: "revoke", target: "viewers \u27c2 projects:read (jinbe)", status: "applied" },
   ],
 };
