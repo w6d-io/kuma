@@ -82,7 +82,7 @@ export function SimulatorPage() {
   const [userId, setUserId] = useState(state.users[1]?.id || "");
   const [service, setService] = useState("jinbe");
   const [method, setMethod] = useState("GET");
-  const [path, setPath] = useState("/api/clusters/");
+  const [path, setPath] = useState("/api/projects/");
 
   const user = state.users.find(u => u.id === userId);
   const services = state.services.map(s => s.name).filter(n => n !== "global");
