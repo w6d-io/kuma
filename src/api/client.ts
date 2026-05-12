@@ -40,7 +40,7 @@ export const api = {
     request<{ email: string; groups: string[]; availableGroups: string[] }>(`/admin/users/${encodeURIComponent(email)}/groups`),
 
   setUserGroups: (email: string, groups: string[]) =>
-    request<{ commitId: string }>(`/admin/users/${encodeURIComponent(email)}/groups`, {
+    request<SetUserGroupsResponse>(`/admin/users/${encodeURIComponent(email)}/groups`, {
       method: 'PUT',
       body: JSON.stringify({ groups }),
     }),
@@ -173,16 +173,6 @@ export const api = {
     return request<{ events: AuditStreamEvent[]; total: number }>(`/admin/audit/events${q ? `?${q}` : ''}`)
   },
 
-  // ─── Bundle export / import ───
-  exportBundle: () =>
-    fetch(`${BASE}/admin/rbac/bundle/export`, { credentials: 'include' }),
-
-  importBundle: (bundle: unknown) =>
-    request<{ success: boolean; imported: BundleImportResult }>('/admin/rbac/bundle/import', {
-      method: 'POST',
-      body: JSON.stringify(bundle),
-    }),
-
   // ─── Permission simulator (live OPA query) ───
   simulate: (input: { email: string; service: string; method: string; path: string }) =>
     request<SimulateResponse>('/admin/rbac/simulate', {
@@ -204,6 +194,14 @@ export interface WhoamiResponse {
   groups: string[];
   roles: string[];
   permissions: string[];
+}
+
+export interface SetUserGroupsResponse {
+  id: string;
+  organizationId: string | null;
+  email: string;
+  groups: string[];
+  updatedAt: string;
 }
 
 export interface KratosIdentity {
@@ -279,11 +277,6 @@ export interface JinbeCommit {
   authorEmail: string;
   timestamp: string;
   filesChanged: string[];
-}
-
-export interface BundleImportResult {
-  rbac: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number };
-  identities: { created: number; updated: number; skipped: number };
 }
 
 export interface SimulateMatchedRule {
