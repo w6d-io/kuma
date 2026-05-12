@@ -40,7 +40,7 @@ export const api = {
     request<{ email: string; groups: string[]; availableGroups: string[] }>(`/admin/users/${encodeURIComponent(email)}/groups`),
 
   setUserGroups: (email: string, groups: string[]) =>
-    request<{ commitId: string }>(`/admin/users/${encodeURIComponent(email)}/groups`, {
+    request<SetUserGroupsResponse>(`/admin/users/${encodeURIComponent(email)}/groups`, {
       method: 'PUT',
       body: JSON.stringify({ groups }),
     }),
@@ -204,6 +204,14 @@ export interface WhoamiResponse {
   groups: string[];
   roles: string[];
   permissions: string[];
+}
+
+export interface SetUserGroupsResponse {
+  id: string;
+  organizationId: string | null;
+  email: string;
+  groups: string[];
+  updatedAt: string;
 }
 
 export interface KratosIdentity {
