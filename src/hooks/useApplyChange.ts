@@ -37,6 +37,13 @@ export function useApplyChange() {
             );
             return;
           }
+          if (err.status === 404) {
+            pushToast(
+              'User not found',
+              { err: true, sub: err.message },
+            );
+            return;
+          }
           pushToast(`${err.message}`, { err: true });
         });
     } else {
