@@ -6,6 +6,9 @@ import type { User, GroupsMap, RolesMap, AccessRule } from './types';
 // ─── Transform helpers: jinbe API shapes → Kuma UI shapes ───
 
 function kratosToUser(k: KratosIdentity): User {
+  const orgs = Array.isArray(k.metadata_admin?.organizations)
+    ? (k.metadata_admin!.organizations as string[])
+    : [];
   return {
     id: k.id,
     name: k.traits.name || k.traits.email,
@@ -14,6 +17,9 @@ function kratosToUser(k: KratosIdentity): User {
     title: '',
     active: k.state === 'active',
     last: k.updated_at ? timeAgo(k.updated_at) : 'never',
+    organizationId: k.organization_id ?? null,
+    organizations: orgs,
+    picture: k.traits.picture ?? null,
   };
 }
 

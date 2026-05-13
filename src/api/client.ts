@@ -75,6 +75,33 @@ export const api = {
       body: JSON.stringify({ organization_id: organizationId || null }),
     }),
 
+  /**
+   * Multi-org membership read. Returns the authoritative list of org
+   * UUIDs the user belongs to. Older backends without the endpoint
+   * return 404 — the caller should treat that as an empty array (the
+   * mapper still surfaces `metadata_admin.organizations` from the
+   * regular identity payload as a fallback).
+   */
+  getUserOrganizations: (email: string) =>
+    request<{ email: string; organizations: string[] }>(
+      `/admin/users/${encodeURIComponent(email)}/organizations`,
+    ),
+
+  /**
+   * Multi-org membership write. `super_admin` only on the backend.
+   * Body shape mirrors `setUserGroups`. 400 on invalid UUID, 404 when
+   * the user does not exist; the API client surfaces the server's
+   * `message` field so the toast can explain *why*.
+   */
+  setUserOrganizations: (email: string, organizations: string[]) =>
+    request<{ email: string; organizations: string[] }>(
+      `/admin/users/${encodeURIComponent(email)}/organizations`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ organizations }),
+      },
+    ),
+
   // ─── Groups ───
   getGroups: () =>
     request<{ groups: JinbeGroup[] }>(`/admin/rbac/groups`).then(r => r.groups),
@@ -191,6 +218,15 @@ export interface WhoamiResponse {
   identity_id: string | null;
   session_id: string | null;
   error: string | null;
+  /**
+   * Legacy single-org pointer. Pre-multi-org backends only emit this;
+   * post-multi-org backends emit both `organization_id` (primary) and
+   * `organizations` (authoritative list). Treat `organizations` as the
+   * source of truth and `organization_id` as a hint.
+   */
+  organization_id?: string | null;
+  /** Multi-org membership list (UUIDs). Absent on legacy backends. */
+  organizations?: string[];
   groups: string[];
   roles: string[];
   permissions: string[];
@@ -216,6 +252,13 @@ export interface KratosIdentity {
   };
   metadata_admin?: {
     groups?: string[];
+    /**
+     * Multi-org membership list (UUIDs). Authoritative source for
+     * multi-tenant assignment; jinbe mirrors writes through to this
+     * field. Older identities created before the multi-org migration
+     * have this absent — the mapper treats that as an empty array.
+     */
+    organizations?: string[];
     [key: string]: unknown;
   };
   organization_id?: string;

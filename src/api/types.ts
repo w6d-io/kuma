@@ -17,7 +17,24 @@ export interface User {
   title: string;
   active: boolean;
   last: string;
-  organizationId?: string;
+  /**
+   * Legacy single-organization pointer (Kratos native `organization_id`
+   * field). Kept for read-side back-compat; new code should treat
+   * `organizations[]` as authoritative and write through the multi-org
+   * endpoint when available.
+   */
+  organizationId?: string | null;
+  /**
+   * Multi-tenant membership list (UUIDs). Sourced from
+   * `metadata_admin.organizations`. Optional on the type for
+   * backward-compat with hand-written fixtures (e.g. SEED in dev mode),
+   * but the live `kratosToUser` mapper always sets it to an array
+   * (possibly empty), so production call sites can use
+   * `user.organizations ?? []` and treat `.length` as defined.
+   */
+  organizations?: string[];
+  /** Avatar URL from Kratos `traits.picture`. Empty / invalid → fall back to initials. */
+  picture?: string | null;
   /** True when the identity has at least one second factor (TOTP, WebAuthn, lookup_secret). */
   mfa?: boolean;
 }
