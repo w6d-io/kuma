@@ -23,8 +23,22 @@ function kratosToUser(k: KratosIdentity): User {
   };
   let mfa: boolean | undefined = enriched.mfa;
   if (mfa === undefined && enriched.credentials) {
-    const c = enriched.credentials;
-    if (c.totp || c.webauthn || c.lookup_secret) mfa = true;
+    // Kratos auto-creates credentials.webauthn with just a `user_handle`
+    // when the identity schema declares webauthn as an identifier — even
+    // though no security key has actually been registered. The presence
+    // of the credential key is therefore not a reliable enrollment
+    // signal. Look inside each credential's config for the real artefact
+    // a second-factor flow actually writes:
+    //   - totp:          config.totp_url           (set on enrol)
+    //   - webauthn:      config.credentials[]      (registered keys; user_handle alone doesn't count)
+    //   - lookup_secret: config.recovery_codes[]   (generated codes)
+    const c = enriched.credentials as Record<string, { config?: Record<string, unknown> } | undefined>;
+    const totpReg     = !!c.totp?.config?.totp_url;
+    const webauthnReg = Array.isArray((c.webauthn?.config as any)?.credentials) &&
+                        ((c.webauthn?.config as any).credentials.length > 0);
+    const lookupReg   = Array.isArray((c.lookup_secret?.config as any)?.recovery_codes) &&
+                        ((c.lookup_secret?.config as any).recovery_codes.length > 0);
+    if (totpReg || webauthnReg || lookupReg) mfa = true;
     else if (Object.keys(c).length > 0) mfa = false;
   }
   return {
