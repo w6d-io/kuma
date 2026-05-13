@@ -52,35 +52,57 @@ export function UsersPage() {
           <span className="small muted mono">{filtered.length} / {state.users.length}</span>
         </div>
         <table className="table">
-          <thead><tr><th>Identity</th><th>Groups</th><th>2FA</th><th>Last seen</th><th></th></tr></thead>
+          <thead><tr><th>Identity</th><th>Groups</th><th>Organizations</th><th>2FA</th><th>Last seen</th><th></th></tr></thead>
           <tbody>
-            {paged.map(u => (
-              <tr key={u.id} className="row-click" onClick={() => setUserDrawer({ mode: "edit", user: u })}>
-                <td>
-                  <div className="row" style={{ gap: 10 }}>
-                    <Avatar name={u.name} />
-                    <div>
-                      <div style={{ fontWeight: 500 }}>
-                        {u.name} {!u.active && <Chip tone="warn">inactive</Chip>}
+            {paged.map(u => {
+              // `organizations` is normalised to [] by the mapper but the
+              // seed fixture omits it; default defensively here.
+              const orgs = u.organizations ?? [];
+              const orgPreview = orgs.slice(0, 2);
+              const orgOverflow = orgs.length - orgPreview.length;
+              return (
+                <tr key={u.id} className="row-click" onClick={() => setUserDrawer({ mode: "edit", user: u })}>
+                  <td>
+                    <div className="row" style={{ gap: 10 }}>
+                      <Avatar name={u.name} src={u.picture ?? undefined} />
+                      <div>
+                        <div style={{ fontWeight: 500 }}>
+                          {u.name} {!u.active && <Chip tone="warn">inactive</Chip>}
+                        </div>
+                        <div className="small muted mono">{u.email}</div>
                       </div>
-                      <div className="small muted mono">{u.email}</div>
                     </div>
-                  </div>
-                </td>
-                <td>
-                  {u.groups.length === 0
-                    ? <span className="small muted">— no groups —</span>
-                    : <span style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{u.groups.map(g => <Chip key={g}>{g}</Chip>)}</span>}
-                </td>
-                <td>
-                  {u.mfa === true && <Chip tone="ok" title="Has second factor (TOTP / WebAuthn / backup codes)">🔐 enabled</Chip>}
-                  {u.mfa === false && <Chip tone="warn" title="No second factor — required before admin / super_admin assignment">⚠️ off</Chip>}
-                  {u.mfa === undefined && <span className="small muted">—</span>}
-                </td>
-                <td className="small muted nowrap">{u.last}</td>
-                <td style={{ width: 24, textAlign: "right" }}><span style={{ color: "var(--ink-4)" }}>{I.chev}</span></td>
-              </tr>
-            ))}
+                  </td>
+                  <td>
+                    {u.groups.length === 0
+                      ? <span className="small muted">— no groups —</span>
+                      : <span style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{u.groups.map(g => <Chip key={g}>{g}</Chip>)}</span>}
+                  </td>
+                  <td>
+                    {orgs.length === 0
+                      ? <span className="small muted">— none —</span>
+                      : (
+                        <span style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+                          <span className="small muted mono" title={`${orgs.length} organization${orgs.length === 1 ? "" : "s"}`}>{orgs.length}</span>
+                          {orgPreview.map(o => (
+                            <Chip key={o} title={o}>{o.length > 8 ? `${o.slice(0, 8)}…` : o}</Chip>
+                          ))}
+                          {orgOverflow > 0 && (
+                            <Chip tone="plain" title={orgs.slice(2).join("\n")}>+{orgOverflow} more</Chip>
+                          )}
+                        </span>
+                      )}
+                  </td>
+                  <td>
+                    {u.mfa === true && <Chip tone="ok" title="Has second factor (TOTP / WebAuthn / backup codes)">🔐 enabled</Chip>}
+                    {u.mfa === false && <Chip tone="warn" title="No second factor — required before admin / super_admin assignment">⚠️ off</Chip>}
+                    {u.mfa === undefined && <span className="small muted">—</span>}
+                  </td>
+                  <td className="small muted nowrap">{u.last}</td>
+                  <td style={{ width: 24, textAlign: "right" }}><span style={{ color: "var(--ink-4)" }}>{I.chev}</span></td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         {filtered.length > pg.pageSize && (
@@ -92,7 +114,7 @@ export function UsersPage() {
 }
 
 export function UserDrawer() {
-  const { userDrawer, setUserDrawer, state, setState, isLive, pushToast, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserOrganization, apiSendRecoveryEmail } = useApp();
+  const { userDrawer, setUserDrawer, state, setState, isLive, pushToast, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserOrganization, apiSetUserOrganizations, apiSendRecoveryEmail } = useApp();
   const applyChange = useApplyChange();
   const { data: session } = useSession();
   // Privilege-escalation guard mirror: only super_admin actors can grant
@@ -111,6 +133,10 @@ export function UserDrawer() {
   // metadata state
   const [organizationId, setOrganizationId] = useState(editing?.organizationId || "");
 
+  // multi-org state (authoritative, mirrors backend `metadata_admin.organizations`)
+  const [organizations, setOrganizationsState] = useState<string[]>(editing?.organizations ?? []);
+  const [orgNewUuid, setOrgNewUuid] = useState("");
+
   const [sendingRecovery, setSendingRecovery] = useState(false);
 
   // create state
@@ -121,6 +147,7 @@ export function UserDrawer() {
 
   useEffect(() => { setGroups(user?.groups || []); }, [user?.id]);
   useEffect(() => { setOrganizationId(user?.organizationId || ""); }, [user?.id]);
+  useEffect(() => { setOrganizationsState(user?.organizations ?? []); setOrgNewUuid(""); }, [user?.id]);
   useEffect(() => {
     setDrawerTab("groups");
     setConfirmDelete(false);
@@ -170,6 +197,61 @@ export function UserDrawer() {
       : () => { setState(s => ({ ...s, users: s.users.map(x => x.id === user.id ? { ...x, organizationId: organizationId || undefined } : x) })); };
     const ok = applyChange("metadata", user.email, mutator);
     if (ok) setUserDrawer(null);
+  };
+
+  // Pre-multi-org backends return 404 on the new endpoint. The toast
+  // path below surfaces the server message verbatim so the operator
+  // can tell "user not found" from "endpoint not available" from
+  // "invalid UUID" without losing their drafted org list.
+  const toggleOrganization = (orgId: string) => {
+    setOrganizationsState(prev =>
+      prev.includes(orgId) ? prev.filter(x => x !== orgId) : [...prev, orgId],
+    );
+  };
+
+  const addOrganization = () => {
+    const trimmed = orgNewUuid.trim();
+    if (!trimmed) return;
+    setOrganizationsState(prev => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
+    setOrgNewUuid("");
+  };
+
+  const saveOrganizations = async () => {
+    if (!user) return;
+    const current = user.organizations ?? [];
+    const changed = JSON.stringify([...organizations].sort()) !== JSON.stringify([...current].sort());
+    if (!changed) {
+      setUserDrawer(null);
+      return;
+    }
+    const summary = `${user.email} → orgs [${organizations.join(", ") || "none"}]`;
+    if (!isLive) {
+      const mutator = () => {
+        setState(s => ({
+          ...s,
+          users: s.users.map(x => (x.id === user.id ? { ...x, organizations: [...organizations] } : x)),
+        }));
+      };
+      const ok = applyChange("organizations", summary, mutator);
+      if (ok) setUserDrawer(null);
+      return;
+    }
+    // Live: call jinbe directly so we can keep the drafted list on
+    // failure instead of bouncing through applyChange's optimistic path.
+    try {
+      await apiSetUserOrganizations(user.email, organizations);
+      pushToast(`Organizations updated for ${user.email}`);
+      setUserDrawer(null);
+    } catch (err) {
+      const e = err as Error & { status?: number };
+      const sub =
+        e.status === 404
+          ? "Endpoint not available — backend may predate multi-org support"
+          : e.status === 400
+            ? "Invalid UUID in the list"
+            : e.message;
+      pushToast("Failed to update organizations", { err: true, sub });
+    }
   };
 
   const doDelete = () => {
@@ -300,10 +382,22 @@ export function UserDrawer() {
       title={editing ? `Edit · ${user?.name}` : "Assign user to group"}
       footer={
         <>
-          <span className="small muted mono">metadata_admin.groups</span>
+          <span className="small muted mono">
+            {drawerTab === "orgs" ? "metadata_admin.organizations" : "metadata_admin.groups"}
+          </span>
           <div className="row">
             <button className="btn" onClick={() => setUserDrawer(null)}>Cancel</button>
             {drawerTab === "groups" && <button className="btn primary" onClick={saveGroups} disabled={!user}>Apply change</button>}
+            {drawerTab === "orgs" && (
+              <button
+                className="btn primary"
+                onClick={saveOrganizations}
+                disabled={!user || !actorIsSuperAdmin}
+                title={!actorIsSuperAdmin ? "Multi-org assignment requires super_admin" : undefined}
+              >
+                Apply change
+              </button>
+            )}
           </div>
         </>
       }
@@ -320,7 +414,7 @@ export function UserDrawer() {
       {user && (
         <>
           <div className="panel mb-12" style={{ padding: 14, display: "flex", gap: 12, alignItems: "center" }}>
-            <Avatar name={user.name} size={36} />
+            <Avatar name={user.name} src={user.picture ?? undefined} size={36} />
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 500 }}>{user.name}</div>
               <div className="small muted mono">{user.email}</div>
@@ -330,6 +424,7 @@ export function UserDrawer() {
           {editing && (
             <div className="drawer-tabs">
               <button className={drawerTab === "groups" ? "on" : ""} onClick={() => setDrawerTab("groups")}>Groups</button>
+              <button className={drawerTab === "orgs" ? "on" : ""} onClick={() => setDrawerTab("orgs")}>Organizations</button>
               <button className={drawerTab === "tree" ? "on" : ""} onClick={() => setDrawerTab("tree")}>Access</button>
               <button className={drawerTab === "metadata" ? "on" : ""} onClick={() => setDrawerTab("metadata")}>Metadata</button>
               <button className={drawerTab === "danger" ? "on" : ""} onClick={() => { setDrawerTab("danger"); setConfirmDelete(false); }}>Danger</button>
@@ -364,6 +459,89 @@ export function UserDrawer() {
               </div>
             </>
           )}
+          {drawerTab === "orgs" && (() => {
+            // Available orgs = union of all known org UUIDs across users.
+            // Until jinbe ships `GET /admin/organizations`, this is the
+            // best source of suggestion; admins can still paste a fresh
+            // UUID below to assign one that no one else has yet.
+            const knownOrgs = Array.from(
+              new Set(state.users.flatMap(x => x.organizations ?? [])),
+            ).sort();
+            // Selection set = drafted state + anything already on the user
+            // but not yet in the union (defensive).
+            const candidates = Array.from(new Set([...knownOrgs, ...organizations])).sort();
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div className="small muted">
+                  Multi-tenant membership. Authoritative list of organization UUIDs the user
+                  belongs to (stored in <span className="mono">metadata_admin.organizations</span>).
+                </div>
+                {candidates.length === 0
+                  ? (
+                    <div className="panel" style={{ padding: 14 }}>
+                      <span className="small muted">No organizations known yet. Paste a UUID below to assign one.</span>
+                    </div>
+                  )
+                  : (
+                    <div className="panel" style={{ padding: 0 }}>
+                      {candidates.map((orgId, i) => {
+                        const on = organizations.includes(orgId);
+                        return (
+                          <label
+                            key={orgId}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              padding: "10px 14px",
+                              borderBottom: i < candidates.length - 1 ? "1px solid var(--line)" : "none",
+                              cursor: "pointer",
+                              background: on ? "var(--accent-soft)" : "transparent",
+                            }}
+                            title={orgId}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={() => toggleOrganization(orgId)}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div className="mono small" style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis" }}>{orgId}</div>
+                            </div>
+                            {on && <Chip tone="ok">member</Chip>}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                <div className="panel" style={{ padding: 12 }}>
+                  <div className="input-label">Add by UUID</div>
+                  <div className="row" style={{ gap: 8 }}>
+                    <input
+                      className="input mono"
+                      style={{ flex: 1 }}
+                      placeholder="e.g. 8f3a1c2e-…"
+                      value={orgNewUuid}
+                      onChange={e => setOrgNewUuid(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addOrganization(); } }}
+                    />
+                    <button className="btn" onClick={addOrganization} disabled={!orgNewUuid.trim()}>
+                      Add
+                    </button>
+                  </div>
+                  <div className="small muted" style={{ marginTop: 6 }}>
+                    Backend validates the UUID format; invalid entries are rejected with a 400.
+                    {/*
+                     * TODO follow-up: when jinbe exposes
+                     * `GET /admin/organizations` (org catalog with display
+                     * names), replace this free-text input with a typeahead
+                     * picker keyed on display name.
+                     */}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           {drawerTab === "tree" && <PermTree user={{ ...user, groups }} state={state} />}
           {drawerTab === "metadata" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

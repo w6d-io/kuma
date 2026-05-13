@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { I } from './Icons';
 import { accessLevelOf, LevelMeta } from '../../hooks/useRbac';
 
@@ -14,13 +14,35 @@ export function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) =
   return <button className={`switch ${on ? "on" : ""}`} onClick={() => onChange(!on)} aria-pressed={on} aria-label="Toggle" />;
 }
 
-export function Avatar({ name, email, size = 22 }: { name?: string; email?: string; size?: number }) {
-  const src = name || email || "?";
-  const initials = src.split(/\s+|@/).filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join("");
-  const h = [...src].reduce((a, c) => a + c.charCodeAt(0), 0);
+export function Avatar({ name, email, src, size = 22 }: { name?: string; email?: string; src?: string; size?: number }) {
+  // If a picture URL is supplied, render an <img>; on load error
+  // (broken URL, CORS, 4xx) fall through to the initials bubble so the
+  // avatar never collapses to a blank box.
+  const [imgFailed, setImgFailed] = useState(false);
+  // Reset the failure flag when the src changes (different user).
+  useEffect(() => { setImgFailed(false); }, [src]);
+
+  const key = name || email || "?";
+  const initials = key.split(/\s+|@/).filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join("");
+  const h = [...key].reduce((a, c) => a + c.charCodeAt(0), 0);
   const hue = h % 360;
   const bg = `oklch(62% 0.13 ${hue})`;
   const bg2 = `oklch(52% 0.13 ${(hue + 30) % 360})`;
+
+  if (src && !imgFailed) {
+    return (
+      <img
+        className="avatar"
+        src={src}
+        alt={key}
+        width={size}
+        height={size}
+        style={{ width: size, height: size, objectFit: "cover" }}
+        onError={() => setImgFailed(true)}
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
   return <span className="avatar" style={{ width: size, height: size, background: `linear-gradient(135deg, ${bg}, ${bg2})`, fontSize: Math.max(9, size * 0.42) }}>{initials}</span>;
 }
 
