@@ -53,7 +53,12 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
   const { data: session } = useSession();
   const email = session?.email || "you@console";
   const role  = session?.roles?.[0] || "";
+  const picture = session?.picture || undefined;
   const [localPart, domain] = email.includes("@") ? [email.split("@")[0], "@" + email.split("@")[1]] : [email, ""];
+  // Authoritative multi-org list, falls back to legacy single-org pointer
+  // for pre-multi-org backends so the chip still renders.
+  const sessionOrgs: string[] = session?.organizations
+    ?? (session?.organization_id ? [session.organization_id] : []);
 
   // Filter nav by user permissions — non-admins only see Overview + Settings.
   const visibleNav = NAV.filter((n) => hasAnyPerm(session?.permissions, n.perms))
@@ -109,13 +114,34 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
           setPage("settings");
         }
       }} title="Account settings · opens in new tab">
-        <Avatar name={localPart} />
+        <Avatar name={localPart} src={picture} />
         <div className="who">
           <span className="n">
             <span className="user-local">{localPart}</span>
             {domain && <span className="user-domain">{domain}</span>}
           </span>
-          <span className="e">{role}</span>
+          <span className="e">
+            {role}
+            {sessionOrgs.length > 1 && (
+              <span
+                className="org-chip"
+                title={`Member of ${sessionOrgs.length} organizations:\n${sessionOrgs.join("\n")}`}
+                style={{
+                  marginLeft: 6,
+                  padding: "1px 6px",
+                  borderRadius: 8,
+                  fontSize: 10,
+                  fontWeight: 500,
+                  background: "var(--accent-soft)",
+                  color: "var(--accent)",
+                  border: "1px solid color-mix(in srgb, var(--accent) 30%, var(--line))",
+                  cursor: "help",
+                }}
+              >
+                {sessionOrgs.length} orgs
+              </span>
+            )}
+          </span>
           <button
             type="button"
             className="logout-link"

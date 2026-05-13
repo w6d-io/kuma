@@ -12,7 +12,7 @@ function classifyError(err: unknown): Error {
   return Object.assign(new Error('NetworkError'), { status: 0 });
 }
 
-function kratosToUser(k: KratosIdentity): User {
+export function kratosToUser(k: KratosIdentity): User {
   // jinbe's enriched users response carries credential presence as
   // top-level `mfa: boolean`. The raw Kratos identity may also have a
   // `credentials` object when listIdentities was called with
@@ -41,6 +41,15 @@ function kratosToUser(k: KratosIdentity): User {
     if (totpReg || webauthnReg || lookupReg) mfa = true;
     else if (Object.keys(c).length > 0) mfa = false;
   }
+  // Multi-org list comes from `metadata_admin.organizations` (authoritative
+  // on post-migration backends). Pre-migration identities have no such
+  // field — default to an empty array so call sites can do `.length`
+  // without guarding against undefined. The legacy single-org pointer
+  // (`organization_id`) is preserved alongside, but new UI should drive
+  // off `organizations`.
+  const orgs = Array.isArray(k.metadata_admin?.organizations)
+    ? (k.metadata_admin!.organizations as string[])
+    : [];
   return {
     id: k.id,
     name: k.traits.name || k.traits.email,
@@ -49,7 +58,9 @@ function kratosToUser(k: KratosIdentity): User {
     title: '',
     active: k.state === 'active',
     last: k.updated_at ? timeAgo(k.updated_at) : 'never',
-    organizationId: k.organization_id,
+    organizationId: k.organization_id ?? null,
+    organizations: orgs,
+    picture: k.traits.picture ?? null,
     ...(mfa !== undefined ? { mfa } : {}),
   };
 }
