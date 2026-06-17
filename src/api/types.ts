@@ -85,6 +85,11 @@ export interface AppState {
   /** Per-group metadata (system flag, description). Indexed by group name. */
   groupsMeta: GroupsMetaMap;
   users: User[];
+  /** Keyset token for the next unfetched users page. Set when the directory is
+   *  still streaming in the background; undefined once fully loaded. */
+  usersNextPageToken?: string;
+  /** True while remaining user pages load in the background after first paint. */
+  usersLoading?: boolean;
   routeMaps: RouteMapsMap;
   accessRules: AccessRule[];
   audit: AuditEvent[];
