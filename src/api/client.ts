@@ -32,24 +32,31 @@ export const api = {
   session: () => request<WhoamiResponse>('/whoami'),
 
   // ─── Users (Kratos identities) ───
-  // Kratos paginates with keyset tokens (no total count), and defaults to a
-  // single 250-row page. Follow next_page_token to the end so the UI's
-  // client-side search/sort/pagination see the whole directory. page_size=1000
-  // (Kratos/jinbe max) keeps small directories to one round trip; the loop only
-  // kicks in past 1000 users. Hard cap at 100 pages (100k users) as a runaway
-  // guard.
-  getUsers: async (): Promise<KratosIdentity[]> => {
+  // Kratos paginates with keyset tokens (no total count) and defaults to a
+  // single 250-row page. page_size=1000 (Kratos/jinbe max) keeps directories
+  // up to 1000 users to one round trip.
+  getUsersPage: (pageToken?: string, pageSize = 1000) => {
+    const qs = new URLSearchParams({ page_size: String(pageSize) });
+    if (pageToken) qs.set('page_token', pageToken);
+    return request<{ data: KratosIdentity[]; next_page_token?: string }>(
+      `/admin/users?${qs.toString()}`,
+    ).then(r => ({ data: r.data, nextPageToken: r.next_page_token }));
+  },
+
+  // Fetch the whole directory by following next_page_token. onPage fires after
+  // each page so callers can render progressively instead of blocking on the
+  // full walk. Hard cap at 100 pages (100k users) as a runaway guard.
+  getUsers: async (
+    onPage?: (page: KratosIdentity[], all: KratosIdentity[]) => void,
+  ): Promise<KratosIdentity[]> => {
     const all: KratosIdentity[] = [];
     let pageToken: string | undefined;
     for (let page = 0; page < 100; page++) {
-      const qs = new URLSearchParams({ page_size: '1000' });
-      if (pageToken) qs.set('page_token', pageToken);
-      const res = await request<{ data: KratosIdentity[]; next_page_token?: string }>(
-        `/admin/users?${qs.toString()}`,
-      );
-      all.push(...res.data);
-      if (!res.next_page_token) break;
-      pageToken = res.next_page_token;
+      const { data, nextPageToken } = await api.getUsersPage(pageToken);
+      all.push(...data);
+      onPage?.(data, all);
+      if (!nextPageToken) break;
+      pageToken = nextPageToken;
     }
     return all;
   },

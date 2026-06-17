@@ -162,7 +162,7 @@ export function DashboardPage() {
           </div>
         </button>
         <div className="grid g4" style={{ gap: 10 }}>
-          <StatBtn lbl="Users" val={totalUsers} sub={`${activeUsers} active · ${totalUsers - activeUsers} inactive`} onClick={() => setPage("users")} />
+          <StatBtn lbl="Users" val={state.usersLoading ? `${totalUsers}+` : totalUsers} sub={state.usersLoading ? 'loading more…' : `${activeUsers} active · ${totalUsers - activeUsers} inactive`} onClick={() => setPage("users")} />
           <StatBtn lbl="Groups" val={totalGroups} sub="assigned via Kratos" onClick={() => setPage("groups")} />
           <StatBtn lbl="Services" val={totalServices} sub="behind Oathkeeper" onClick={() => setPage("services")} />
           <StatBtn lbl="Permissions" val={totalPermissions} sub={`across ${Object.keys(state.roles).length} role files`} onClick={() => setPage("roles")} />
@@ -321,7 +321,7 @@ export function DashboardPage() {
   );
 }
 
-function StatBtn({ lbl, val, sub, onClick }: { lbl: string; val: number; sub: string; onClick: () => void }) {
+function StatBtn({ lbl, val, sub, onClick }: { lbl: string; val: number | string; sub: string; onClick: () => void }) {
   return (
     <button className="stat stat-btn" onClick={onClick}>
       <div className="lbl">{lbl}</div>
