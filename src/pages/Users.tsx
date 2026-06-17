@@ -25,7 +25,7 @@ export function UsersPage() {
       <div className="page-head">
         <div>
           <h1>Users</h1>
-          <div className="sub">{state.users.length} identities · Kratos <span className="mono">metadata_admin.groups</span></div>
+          <div className="sub">{state.users.length}{state.usersLoading ? '+' : ''} identities{state.usersLoading ? ' · loading more…' : ''} · Kratos <span className="mono">metadata_admin.groups</span></div>
         </div>
         <div className="page-actions">
           <button className="btn" onClick={() => setUserDrawer({ mode: "assign" })}>

@@ -12,7 +12,7 @@ function classifyError(err: unknown): Error {
   return Object.assign(new Error('NetworkError'), { status: 0 });
 }
 
-function kratosToUser(k: KratosIdentity): User {
+export function kratosToUser(k: KratosIdentity): User {
   // jinbe's enriched users response carries credential presence as
   // top-level `mfa: boolean`. The raw Kratos identity may also have a
   // `credentials` object when listIdentities was called with
@@ -84,7 +84,10 @@ function jinbeRuleToUi(r: JinbeAccessRule): AccessRule {
 async function fetchAllRbacData(): Promise<AppState> {
   console.log('[useRbacData] fetching...');
   const [usersResult, groupsResult, servicesResult, rulesResult] = await Promise.allSettled([
-    api.getUsers(),
+    // Only the first page here — it doubles as the auth probe (a 401/403 throws
+    // and gates the whole UI) and gives the dashboard instant initial numbers.
+    // Remaining pages stream in via the background loader in AppContext.
+    api.getUsersPage(),
     api.getGroups(),
     api.getServices(),
     api.getAccessRules(),
@@ -102,7 +105,8 @@ async function fetchAllRbacData(): Promise<AppState> {
     }
   }
 
-  const usersRaw = usersResult.value as KratosIdentity[];
+  const usersPage = usersResult.value as { data: KratosIdentity[]; nextPageToken?: string };
+  const usersRaw = usersPage.data;
   const groupsRaw = (groupsResult as PromiseFulfilledResult<JinbeGroup[]>).value;
   const servicesRaw = (servicesResult as PromiseFulfilledResult<any[]>).value;
   const rulesRaw = (rulesResult as PromiseFulfilledResult<JinbeAccessRule[]>).value;
@@ -257,6 +261,8 @@ async function fetchAllRbacData(): Promise<AppState> {
     groups,
     groupsMeta,
     users,
+    usersNextPageToken: usersPage.nextPageToken,
+    usersLoading: !!usersPage.nextPageToken,
     routeMaps,
     accessRules,
     audit,
