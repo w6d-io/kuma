@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { AppState, PageId, AuditEvent, User, TweakDefaults } from '../api/types';
-import { useRbacData, useInvalidateRbac } from '../api/useRbacData';
+import { useRbacData, useInvalidateRbac, kratosToUser } from '../api/useRbacData';
 import { api } from '../api/client';
 
 const EMPTY_STATE: AppState = {
@@ -173,6 +173,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }, [liveData, isSuccess, isLoading, error]);
+
+  // Progressive user loading: the rbac-all query only fetches page 1 of users
+  // (instant dashboard). Once it lands, stream the rest of the directory in the
+  // background, following the keyset token and appending each page to state so
+  // counts/tables fill in without blocking first paint. Keyed on liveData so it
+  // re-runs after every refetch (which resets users to page 1); cancellation
+  // guards against overlapping runs.
+  useEffect(() => {
+    const startToken = liveData?.usersNextPageToken;
+    if (!startToken) return;
+    let cancelled = false;
+    (async () => {
+      let token: string | undefined = startToken;
+      for (let page = 0; page < 100 && token && !cancelled; page++) {
+        let res: { data: Parameters<typeof kratosToUser>[0][]; nextPageToken?: string };
+        try {
+          res = await api.getUsersPage(token);
+        } catch {
+          break; // best-effort: page 1 is already shown
+        }
+        if (cancelled) return;
+        const batch = res.data.map(kratosToUser);
+        setState(s => {
+          const seen = new Set(s.users.map(u => u.id));
+          const fresh = batch.filter(u => !seen.has(u.id));
+          return { ...s, users: [...s.users, ...fresh] };
+        });
+        token = res.nextPageToken;
+      }
+      if (!cancelled) setState(s => ({ ...s, usersLoading: false, usersNextPageToken: undefined }));
+    })();
+    return () => { cancelled = true; };
+  }, [liveData]);
 
   const isLive = isSuccess && !error && !!liveData && liveData.users.length >= 0;
   const apiError = (error as Error | null) ?? null;
