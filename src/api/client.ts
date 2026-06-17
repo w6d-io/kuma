@@ -32,7 +32,27 @@ export const api = {
   session: () => request<WhoamiResponse>('/whoami'),
 
   // ─── Users (Kratos identities) ───
-  getUsers: () => request<{ data: KratosIdentity[] }>('/admin/users').then(r => r.data),
+  // Kratos paginates with keyset tokens (no total count), and defaults to a
+  // single 250-row page. Follow next_page_token to the end so the UI's
+  // client-side search/sort/pagination see the whole directory. page_size=1000
+  // (Kratos/jinbe max) keeps small directories to one round trip; the loop only
+  // kicks in past 1000 users. Hard cap at 100 pages (100k users) as a runaway
+  // guard.
+  getUsers: async (): Promise<KratosIdentity[]> => {
+    const all: KratosIdentity[] = [];
+    let pageToken: string | undefined;
+    for (let page = 0; page < 100; page++) {
+      const qs = new URLSearchParams({ page_size: '1000' });
+      if (pageToken) qs.set('page_token', pageToken);
+      const res = await request<{ data: KratosIdentity[]; next_page_token?: string }>(
+        `/admin/users?${qs.toString()}`,
+      );
+      all.push(...res.data);
+      if (!res.next_page_token) break;
+      pageToken = res.next_page_token;
+    }
+    return all;
+  },
 
   getUser: (id: string) => request<KratosIdentity>(`/admin/users/${id}`),
 
