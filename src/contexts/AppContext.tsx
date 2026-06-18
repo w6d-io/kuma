@@ -88,6 +88,14 @@ interface AppContextType {
   apiSetUserState: (id: string, state: 'active' | 'inactive') => Promise<void>;
   apiSetUserMetadata: (id: string, metadata: Record<string, unknown>) => Promise<void>;
   apiSetUserOrganization: (id: string, organizationId: string | undefined) => Promise<void>;
+  /**
+   * Multi-tenant org assignment. Mirrors `apiSetUserGroups` in shape:
+   * keyed on email, replaces the whole list. The backend requires
+   * super_admin; UI mirrors the gate. Errors propagate so callers can
+   * keep the user's drafted list on failure (e.g. 404 on legacy
+   * backends without the endpoint).
+   */
+  apiSetUserOrganizations: (email: string, organizations: string[]) => Promise<void>;
   apiCreateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
   apiUpdateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
   apiDeleteGroup: (name: string) => Promise<void>;
@@ -274,6 +282,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     invalidateRbac();
   }, [invalidateRbac]);
 
+  const apiSetUserOrganizations = useCallback(async (email: string, organizations: string[]) => {
+    // Let exceptions bubble — the Users drawer needs to distinguish
+    // 404 (legacy backend) from 400 (invalid UUID) from 500 to surface
+    // the right toast without dropping the operator's drafted list.
+    await api.setUserOrganizations(email, organizations);
+    invalidateRbac();
+  }, [invalidateRbac]);
+
   const apiCreateGroup = useCallback(async (name: string, services: Record<string, string[]>) => {
     await api.createGroup({ name, services });
     invalidateRbac();
@@ -317,7 +333,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     pushToast, toasts, pipeline,
     theme, setTheme, persona, setPersona,
     tweaks, setTweak,
-    apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata, apiSetUserOrganization, apiSendRecoveryEmail,
+    apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata, apiSetUserOrganization, apiSetUserOrganizations, apiSendRecoveryEmail,
     apiCreateGroup, apiUpdateGroup, apiDeleteGroup,
     apiCreateService, apiUpdateService, apiDeleteService,
   };

@@ -1,8 +1,15 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    // Node env is enough: tests stub `window` and `fetch` themselves; we
+    // deliberately avoid pulling in jsdom + RTL until a real DOM-level
+    // test exists.
+    environment: 'node',
+    include: ['src/**/__tests__/**/*.test.{ts,tsx}'],
+  },
   server: {
     proxy: {
       '/api/kratos': {
