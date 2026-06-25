@@ -200,6 +200,30 @@ export const api = {
     return request<{ events: AuditStreamEvent[]; total: number }>(`/admin/audit/events${q ? `?${q}` : ''}`)
   },
 
+  // ─── Bundle export / import ───
+  exportBundle: async (): Promise<void> => {
+    const res = await fetch(`${BASE}/admin/rbac/bundle/export`, { credentials: 'include' });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw Object.assign(new Error(body.message || `HTTP ${res.status}`), { status: res.status });
+    }
+    const bundle = await res.json();
+    const filename = `auth-bundle-${new Date().toISOString().slice(0, 10)}.json`;
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  importBundle: (bundle: unknown) =>
+    request<{ success: boolean; imported: BundleImportResult }>('/admin/rbac/bundle/import', {
+      method: 'POST',
+      body: JSON.stringify(bundle),
+    }),
+
   // ─── Permission simulator (live OPA query) ───
   simulate: (input: { email: string; service: string; method: string; path: string }) =>
     request<SimulateResponse>('/admin/rbac/simulate', {
@@ -323,6 +347,11 @@ export interface SimulateResponse {
     roles: string[];
     permissions: string[];
   };
+}
+
+export interface BundleImportResult {
+  rbac: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number };
+  identities: { created: number; updated: number; skipped: number };
 }
 
 export interface AuditStreamEvent {
