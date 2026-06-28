@@ -48,7 +48,8 @@ export function SettingsPage() {
       }
       const res = await api.importBundle(bundle);
       setImportResult(res.imported);
-      pushToast('Bundle imported', { sub: `${res.imported.identities.created} created, ${res.imported.identities.updated} updated` });
+      const r = res.imported.rbac;
+      pushToast('Bundle imported', { sub: `${r.services} services, ${r.groups} groups, ${r.roles} roles` });
       refetch();
     } catch (e: any) {
       pushToast(e.message || 'Import failed', { err: true });
@@ -82,7 +83,7 @@ export function SettingsPage() {
       <div className="panel" style={{ marginBottom: 14, padding: 14 }}>
         <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>RBAC bundle</div>
         <div className="small muted" style={{ marginBottom: 14 }}>
-          Export or import a full snapshot of RBAC configuration (services, groups, roles, route maps, Oathkeeper rules) and identities.
+          Export or import a full snapshot of RBAC configuration (services, groups, roles, route maps, Oathkeeper rules).
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button className="btn" onClick={handleExport} disabled={exporting}>
@@ -97,8 +98,7 @@ export function SettingsPage() {
         {importResult && (
           <div style={{ marginTop: 14, fontSize: 12, color: "var(--ink-2)" }}>
             <div style={{ fontWeight: 500, marginBottom: 4 }}>Import summary</div>
-            <div>RBAC: {importResult.rbac.services} services, {importResult.rbac.groups} groups, {importResult.rbac.roles} roles, {importResult.rbac.routeMaps} route maps, {importResult.rbac.oathkeeperRules} rules</div>
-            <div>Identities: {importResult.identities.created} created, {importResult.identities.updated} updated, {importResult.identities.skipped} skipped</div>
+            <div>{importResult.rbac.services} services, {importResult.rbac.groups} groups, {importResult.rbac.roles} roles, {importResult.rbac.routeMaps} route maps, {importResult.rbac.oathkeeperRules} Oathkeeper rules</div>
           </div>
         )}
       </div>
