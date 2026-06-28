@@ -351,7 +351,6 @@ export interface SimulateResponse {
 
 export interface BundleImportResult {
   rbac: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number };
-  identities: { created: number; updated: number; skipped: number };
 }
 
 export interface AuditStreamEvent {
