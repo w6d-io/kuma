@@ -224,6 +224,21 @@ export const api = {
       body: JSON.stringify(bundle),
     }),
 
+  // ─── Org → Service map ───
+  getOrgServiceMap: () =>
+    request<{ mappings: Record<string, string> }>('/admin/rbac/org-service-map').then(r => r.mappings),
+
+  setOrgServiceMapping: (organizationId: string, serviceName: string) =>
+    request<{ success: boolean; message: string }>('/admin/rbac/org-service-map', {
+      method: 'POST',
+      body: JSON.stringify({ organizationId, serviceName }),
+    }),
+
+  deleteOrgServiceMapping: (organizationId: string) =>
+    request<{ success: boolean; message: string }>(`/admin/rbac/org-service-map/${organizationId}`, {
+      method: 'DELETE',
+    }),
+
   // ─── Permission simulator (live OPA query) ───
   simulate: (input: { email: string; service: string; method: string; path: string }) =>
     request<SimulateResponse>('/admin/rbac/simulate', {
