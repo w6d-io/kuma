@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
 import { api } from '../api/client';
@@ -16,6 +16,53 @@ export function SettingsPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<BundleImportResult | null>(null);
 
+  // ─── Org → Service map ───
+  const [mappings, setMappings] = useState<Record<string, string>>({});
+  const [mapLoading, setMapLoading] = useState(true);
+  const [newOrgId, setNewOrgId] = useState('');
+  const [newService, setNewService] = useState('');
+  const [mapSaving, setMapSaving] = useState(false);
+
+  useEffect(() => {
+    api.getOrgServiceMap()
+      .then(setMappings)
+      .catch(() => {})
+      .finally(() => setMapLoading(false));
+  }, []);
+
+  async function handleAddMapping() {
+    const orgId = newOrgId.trim();
+    const svc = newService.trim();
+    if (!orgId || !svc) return;
+    setMapSaving(true);
+    try {
+      await api.setOrgServiceMapping(orgId, svc);
+      setMappings(m => ({ ...m, [orgId]: svc }));
+      setNewOrgId('');
+      setNewService('');
+      pushToast('Mapping saved', { sub: `${orgId.slice(0, 8)}… → ${svc}` });
+    } catch (e: any) {
+      pushToast(e.message || 'Failed to save mapping', { err: true });
+    } finally {
+      setMapSaving(false);
+    }
+  }
+
+  async function handleDeleteMapping(orgId: string) {
+    try {
+      await api.deleteOrgServiceMapping(orgId);
+      setMappings(m => {
+        const next = { ...m };
+        delete next[orgId];
+        return next;
+      });
+      pushToast('Mapping removed');
+    } catch (e: any) {
+      pushToast(e.message || 'Failed to remove mapping', { err: true });
+    }
+  }
+
+  // ─── Bundle export/import ───
   async function handleExport() {
     setExporting(true);
     try {
@@ -58,6 +105,9 @@ export function SettingsPage() {
     }
   }
 
+  const serviceNames = state.services.map(s => s.name).filter(n => n !== 'global');
+  const mapEntries = Object.entries(mappings);
+
   return (
     <>
       <div className="page-head">
@@ -80,6 +130,73 @@ export function SettingsPage() {
         </div>
       )}
 
+      {/* ─── Org → Service map ─── */}
+      <div className="panel" style={{ marginBottom: 14, padding: 14 }}>
+        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Organization → Service mapping</div>
+        <div className="small muted" style={{ marginBottom: 14 }}>
+          Maps organization UUIDs to RBAC service names so org-scoped endpoints resolve permissions correctly.
+        </div>
+
+        {mapLoading ? (
+          <div className="small muted">Loading…</div>
+        ) : (
+          <>
+            {mapEntries.length > 0 && (
+              <table style={{ width: '100%', fontSize: 12, marginBottom: 14, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--line)', textAlign: 'left' }}>
+                    <th style={{ padding: '6px 8px', fontWeight: 500, color: 'var(--ink-2)' }}>Organization ID</th>
+                    <th style={{ padding: '6px 8px', fontWeight: 500, color: 'var(--ink-2)' }}>Service</th>
+                    <th style={{ padding: '6px 8px', width: 40 }} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {mapEntries.map(([orgId, svc]) => (
+                    <tr key={orgId} style={{ borderBottom: '1px solid var(--line)' }}>
+                      <td className="mono" style={{ padding: '6px 8px' }}>{orgId}</td>
+                      <td className="mono" style={{ padding: '6px 8px', fontWeight: 500 }}>{svc}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                        <button className="btn ghost sm" onClick={() => handleDeleteMapping(orgId)} title="Remove mapping">
+                          {I.trash}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                placeholder="Organization UUID"
+                value={newOrgId}
+                onChange={e => setNewOrgId(e.target.value)}
+                style={{ flex: '1 1 280px', minWidth: 200 }}
+              />
+              <select
+                value={newService}
+                onChange={e => setNewService(e.target.value)}
+                style={{ flex: '0 1 180px', minWidth: 140 }}
+              >
+                <option value="">Select service…</option>
+                {serviceNames.map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+              <button
+                className="btn primary"
+                onClick={handleAddMapping}
+                disabled={mapSaving || !newOrgId.trim() || !newService}
+              >
+                {mapSaving ? 'Saving…' : 'Add mapping'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ─── RBAC bundle ─── */}
       <div className="panel" style={{ marginBottom: 14, padding: 14 }}>
         <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>RBAC bundle</div>
         <div className="small muted" style={{ marginBottom: 14 }}>
