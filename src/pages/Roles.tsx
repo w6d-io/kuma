@@ -132,7 +132,11 @@ function PermPicker({ svc, allRoles, apiPerms, current, onToggle, onAdd }: PermP
 export function RolesPage() {
   const { state, setState, activeService, setActiveService, isLive } = useApp();
   const applyChange = useApplyChange();
-  const svc = activeService || state.services[0].name;
+  // Guard against an empty services list (still loading, 403, or empty tenant):
+  // `state.services[0].name` used to throw here. Prefer the active service when
+  // it still exists, else the first available, else "" (renders empty state).
+  const serviceNames = state.services.map(s => s.name);
+  const svc = serviceNames.includes(activeService) ? activeService : (serviceNames[0] ?? "");
   const svcRoles = state.roles[svc] || {};
   const [selectedRole, setSelectedRole] = useState(Object.keys(svcRoles)[0] || "");
   const [newRoleName, setNewRoleName] = useState("");
@@ -200,6 +204,20 @@ export function RolesPage() {
   };
 
   const validNewRole = newRoleName.trim().length > 0 && svcRoles[newRoleName.trim()] === undefined;
+
+  // No services yet (loading / 403 / empty tenant): render an empty state
+  // rather than a broken selector. Placed after all hooks so hook order stays
+  // stable across renders.
+  if (serviceNames.length === 0) {
+    return (
+      <>
+        <div className="page-head">
+          <div><h1>Roles & permissions</h1><div className="sub">No services registered yet.</div></div>
+        </div>
+        <div className="panel"><EmptyHint>Register a service first to define its roles.</EmptyHint></div>
+      </>
+    );
+  }
 
   return (
     <>
