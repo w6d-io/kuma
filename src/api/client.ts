@@ -245,6 +245,42 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+
+  // ─── Delegated org-admin (self-service; scoped to the caller's orgs) ───
+  // The organizations the caller may administer (delegation manageable_orgs).
+  myOrganizations: () =>
+    request<{ organizations: string[] }>('/me/organizations').then(r => r.organizations),
+
+  // Groups the caller may assign within an org — already narrowed by jinbe to the
+  // org's service + containment (never the full catalog).
+  getAssignableGroups: (orgId: string) =>
+    request<{ groups: string[] }>(`/organizations/${orgId}/assignable-groups`).then(r => r.groups),
+
+  // Users in an org (scoped). credentials_identifier is an exact-match filter.
+  getOrgUsers: (orgId: string, opts?: { search?: string; pageSize?: number }) => {
+    const qs = new URLSearchParams();
+    if (opts?.search) qs.set('credentials_identifier', opts.search);
+    if (opts?.pageSize) qs.set('page_size', String(opts.pageSize));
+    const q = qs.toString();
+    return request<{ data: KratosIdentity[]; total: number }>(
+      `/organizations/${orgId}/users${q ? `?${q}` : ''}`,
+    );
+  },
+
+  createOrgUser: (
+    orgId: string,
+    payload: { email: string; name?: string; sendInvite?: boolean; groups?: string[] },
+  ) =>
+    request<KratosIdentity>(`/organizations/${orgId}/users`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  setOrgUserGroups: (orgId: string, userId: string, groups: string[]) =>
+    request<OrgUserGroupsResponse>(`/organizations/${orgId}/users/${userId}/groups`, {
+      method: 'PUT',
+      body: JSON.stringify({ groups }),
+    }),
 };
 
 // ─── Types matching jinbe API responses ───
@@ -263,6 +299,14 @@ export interface WhoamiResponse {
 }
 
 export interface SetUserGroupsResponse {
+  id: string;
+  organizationId: string | null;
+  email: string;
+  groups: string[];
+  updatedAt: string;
+}
+
+export interface OrgUserGroupsResponse {
   id: string;
   organizationId: string | null;
   email: string;
