@@ -7,7 +7,7 @@
 // STORE-6). This module is the canonical, richer implementation.
 
 import type { KratosIdentity, JinbeGroup, JinbeAccessRule } from './client';
-import type { User, GroupsMap, AccessRule } from './types';
+import type { User, GroupsMap, AccessRule, AuditEvent } from './types';
 
 /** Relative "x ago" formatting for updated_at / audit timestamps. */
 export function timeAgo(dateStr: string): string {
@@ -88,4 +88,88 @@ export function jinbeRuleToUi(r: JinbeAccessRule): AccessRule {
     upstream: r.upstream?.url,
     stripPath: r.upstream?.strip_path,
   };
+}
+
+/**
+ * Normalize a raw audit list (from either /admin/audit/events enriched format
+ * or the legacy /admin/rbac/history commit format) into UI AuditEvent rows.
+ * Kept as one function so every audit consumer parses identically.
+ * (The dual-format handling is tracked for simplification in PROBLEM-MAP API-5.)
+ */
+export function normalizeAuditEvents(events: any[]): AuditEvent[] {
+  return events
+    .map((e: any): AuditEvent => {
+      // New enriched format (has who/verb/category directly)
+      if (e.who || e.verb) {
+        return {
+          id:             e.id,
+          when:           e.when || timeAgo(e.ts || ''),
+          ts:             e.ts,
+          who:            e.who || '',
+          actorName:      e.actorName,
+          category:       e.category || 'system',
+          verb:           e.verb || 'unknown',
+          target:         e.target || '',
+          status:         e.result === 'applied' ? 'applied' : e.result === 'ok' ? undefined : e.result,
+          service:        e.service,
+          ip:             e.ip,
+          ua:             e.ua,
+          reason:         e.reason,
+          method:         e.method,
+          path:           e.path,
+          statusCode:     e.statusCode,
+          responseTimeMs: e.responseTimeMs,
+        };
+      }
+      // Old format: { id, event: { type, timestamp, actor: JSON, details: JSON } }
+      const ev = e.event || e;
+      const actor = typeof ev.actor === 'string' ? JSON.parse(ev.actor) : ev.actor || {};
+      const details = typeof ev.details === 'string' ? JSON.parse(ev.details) : ev.details || {};
+      const target = typeof ev.target === 'string' ? (ev.target.startsWith('{') ? JSON.parse(ev.target) : { id: ev.target }) : ev.target || {};
+      const type = ev.type || '';
+      const [cat, verb] = type.includes('.') ? type.split('.', 2) : ['system', type];
+      return {
+        id:             e.id || ev.id || '',
+        when:           timeAgo(ev.timestamp || ''),
+        ts:             ev.timestamp,
+        who:            actor.email || ev.author || 'system',
+        actorName:      actor.name,
+        category:       cat,
+        verb:           verb,
+        target:         ev.message || details.path || target.id || type,
+        status:         details.statusCode && details.statusCode >= 400 ? 'failed' : undefined,
+        service:        target.type === 'service' ? target.id : undefined,
+        ip:             actor.ip || details.ip,
+        ua:             actor.ua,
+        reason:         details.reason,
+        method:         details.method,
+        path:           details.path,
+        statusCode:     details.statusCode,
+        responseTimeMs: details.responseTimeMs,
+      };
+    })
+    .filter((e: AuditEvent) => e.id);
+}
+
+/**
+ * Fetch + normalize the audit stream: enriched endpoint first, legacy history
+ * fallback. Requires an `api`-shaped client injected by the caller to avoid a
+ * transforms→client import cycle.
+ */
+export async function fetchAuditEvents(client: {
+  getAuditEvents: (p?: { limit?: number }) => Promise<{ events?: any[] }>;
+  getHistory: () => Promise<any[]>;
+}): Promise<AuditEvent[]> {
+  let events: any[] = [];
+  try {
+    const raw = await client.getAuditEvents({ limit: 200 });
+    events = (raw.events || []).filter((e: any) => e && Object.keys(e).length > 0);
+  } catch { /* enriched endpoint may not exist */ }
+  if (events.length === 0) {
+    try {
+      const commits = await client.getHistory();
+      events = commits.map((c: any) => ({ ...c, _legacy: true }));
+    } catch { /* history may also fail */ }
+  }
+  return normalizeAuditEvents(events);
 }
