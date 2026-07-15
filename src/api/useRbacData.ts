@@ -3,7 +3,7 @@ import { SEED } from '../seed';
 import { api } from './client';
 import type { KratosIdentity, JinbeGroup, JinbeAccessRule } from './client';
 import type { AppState, User, GroupsMap, RolesMap, RouteMapsMap, AccessRule, AuditEvent, Service } from './types';
-import { kratosToUser, jinbeRuleToUi, timeAgo } from './transforms';
+import { kratosToUser, jinbeRuleToUi, fetchAuditEvents } from './transforms';
 
 // Re-exported for existing importers (e.g. AppContext background loader).
 export { kratosToUser } from './transforms';
@@ -105,72 +105,11 @@ async function fetchAllRbacData(): Promise<AppState> {
     if (rule?.upstream) svc.upstreamUrl = rule.upstream;
   }
 
-  // Audit events — try enriched endpoint first, fall back to history
+  // Audit events — enriched endpoint first, legacy history fallback (shared
+  // with useAudit via transforms.fetchAuditEvents).
   let audit: AuditEvent[] = [];
   try {
-    let events: any[] = [];
-    // Try /admin/audit/events first (new enriched format)
-    try {
-      const raw = await api.getAuditEvents({ limit: 200 });
-      events = (raw.events || []).filter((e: any) => e && Object.keys(e).length > 0);
-    } catch { /* endpoint may not exist */ }
-    // Fallback: /admin/rbac/history (old format, always works)
-    if (events.length === 0) {
-      try {
-        const commits = await api.getHistory();
-        events = commits.map((c: any) => ({ ...c, _legacy: true }));
-      } catch { /* history may also fail */ }
-    }
-    audit = events.map((e: any) => {
-      // New enriched format (has who/verb/category directly)
-      if (e.who || e.verb) {
-        return {
-          id:             e.id,
-          when:           e.when || timeAgo(e.ts || ''),
-          ts:             e.ts,
-          who:            e.who || '',
-          actorName:      e.actorName,
-          category:       e.category || 'system',
-          verb:           e.verb || 'unknown',
-          target:         e.target || '',
-          status:         e.result === 'applied' ? 'applied' : e.result === 'ok' ? undefined : e.result,
-          service:        e.service,
-          ip:             e.ip,
-          ua:             e.ua,
-          reason:         e.reason,
-          method:         e.method,
-          path:           e.path,
-          statusCode:     e.statusCode,
-          responseTimeMs: e.responseTimeMs,
-        };
-      }
-      // Old format: { id, event: { type, timestamp, actor: JSON, details: JSON } }
-      const ev = e.event || e;
-      const actor = typeof ev.actor === 'string' ? JSON.parse(ev.actor) : ev.actor || {};
-      const details = typeof ev.details === 'string' ? JSON.parse(ev.details) : ev.details || {};
-      const target = typeof ev.target === 'string' ? (ev.target.startsWith('{') ? JSON.parse(ev.target) : { id: ev.target }) : ev.target || {};
-      const type = ev.type || '';
-      const [cat, verb] = type.includes('.') ? type.split('.', 2) : ['system', type];
-      return {
-        id:             e.id || ev.id || '',
-        when:           timeAgo(ev.timestamp || ''),
-        ts:             ev.timestamp,
-        who:            actor.email || ev.author || 'system',
-        actorName:      actor.name,
-        category:       cat,
-        verb:           verb,
-        target:         ev.message || details.path || target.id || type,
-        status:         details.statusCode && details.statusCode >= 400 ? 'failed' : undefined,
-        service:        target.type === 'service' ? target.id : undefined,
-        ip:             actor.ip || details.ip,
-        ua:             actor.ua,
-        reason:         details.reason,
-        method:         details.method,
-        path:           details.path,
-        statusCode:     details.statusCode,
-        responseTimeMs: details.responseTimeMs,
-      };
-    }).filter((e: AuditEvent) => e.id);
+    audit = await fetchAuditEvents(api);
   } catch {
     // fall back to empty
   }

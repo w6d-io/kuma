@@ -1,10 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
-import type { RolesMap } from './types';
-import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi } from './transforms';
+import type { RolesMap, AuditEvent } from './types';
+import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents } from './transforms';
 
 // Transforms (jinbe API shape → Kuma UI shape) live in ./transforms — the
 // single source of truth. See PROBLEM-MAP STORE-6 for why they were merged.
+//
+// These are the scoped, per-entity query hooks that pages consume directly
+// (PROBLEM-MAP STORE-2). Query keys are the canonical cache identity; scoped
+// mutations invalidate only the keys they touch (STORE-3). Default staleTime
+// (30s) comes from the QueryClient in main.tsx; overridden per hook where the
+// data is effectively static within a session.
 
 // ─── Query hooks ───
 
@@ -51,8 +57,13 @@ export function useRoles(serviceName: string) {
 }
 
 export function useAllRoles(serviceNames: string[]) {
+  // Stable key: a single sorted, joined token rather than spreading the array
+  // into the key. Spreading made the key change on service reordering, busting
+  // the cache on every render (PROBLEM-MAP PERF-6). The service list drives the
+  // fetch inside queryFn; a sorted signature keeps the identity stable.
+  const signature = [...serviceNames].sort().join(',');
   return useQuery({
-    queryKey: ['all-roles', ...serviceNames],
+    queryKey: ['all-roles', signature],
     queryFn: async (): Promise<RolesMap> => {
       const results = await Promise.all(
         serviceNames.map(async name => {
@@ -89,6 +100,13 @@ export function useAccessRules() {
       const rules = await api.getAccessRules();
       return rules.map(jinbeRuleToUi);
     },
+  });
+}
+
+export function useAudit() {
+  return useQuery<AuditEvent[]>({
+    queryKey: ['audit'],
+    queryFn: () => fetchAuditEvents(api),
   });
 }
 
