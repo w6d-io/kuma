@@ -120,7 +120,9 @@ export function ServiceDrawer() {
     if (!validName || !validUrl) return;
     const mutator = isLive
       ? () => apiCreateService({
-          name, upstreamUrl: upstream,
+          name,
+          displayName: description || undefined,
+          upstreamUrl: upstream,
           matchUrl: matchUrl || `<https?://${name}\\.example\\.io/.*>`,
           matchMethods,
           stripPath: stripPath || undefined,
