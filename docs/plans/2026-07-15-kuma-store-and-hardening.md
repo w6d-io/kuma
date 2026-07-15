@@ -32,8 +32,13 @@ Each touches the RBAC backend → quality-gate flags jinbe sensitive → needs
 - **API-4 (jinbe) — authDomain.** Replace kuma's regex-scrape of a kratos rule
   match URL with a real `meta.authDomain` on the whoami response (jinbe has
   AUTH_DOMAIN env). Additive, low risk.
-- **API-2 — create-service description.** jinbe ALREADY accepts `displayName`;
-  this is a **kuma-only** fix (done in the safe-fixes phase), no jinbe change.
+- **API-2 — create-service description.** kuma now plumbs `description`→
+  `displayName` through `apiCreateService` (done, safe-fixes phase). BUT jinbe's
+  `createService` accepts `displayName` and then **drops it** — `addService(name)`
+  never calls `setServiceMetadata`, so the description is not persisted and
+  `getServices` returns none. jinbe change (deferred): persist
+  displayName/description via setServiceMetadata in createService so it round-
+  trips. Low risk (metadata only, not authz).
 - **🔒 PERF-2 (jinbe) — user-directory N+1.** `enrichWithRbac` per-identity ×
   uncached `resolveUserRbac` × client `page_size=1000`. This is fail-closed
   authz resolution — its own TDD + `w6d-security-audit` pass, bundled with
