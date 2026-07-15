@@ -165,7 +165,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Sync live data into state when it arrives
   useEffect(() => {
-    console.log('[AppContext] liveData changed:', { isSuccess, isLoading, hasError: !!error, hasData: !!liveData, userCount: liveData?.users?.length });
     if (liveData) {
       setState(liveData);
       if (liveData.audit.length > 0) {
