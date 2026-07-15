@@ -12,6 +12,35 @@
 
 ---
 
+## ⚠️ DEFERRED — jinbe changes (do these LAST, after all kuma-only work)
+
+Investigation (2026-07-15, against live cluster redis) confirmed these require
+coordinated **jinbe** edits and MUST NOT be started until the kuma-only safe
+fixes are done and the API-3/API-4 contract approach is explicitly approved.
+Each touches the RBAC backend → quality-gate flags jinbe sensitive → needs
+`quality_gate action=security-ok` + verification on dev-local.
+
+- **API-3 (jinbe) — rule→service field.** kuma CANNOT derive this client-side:
+  real rule ids use `-` while service names use `_` (`stairwage-studio` rule vs
+  `stairwage_studio` service); services own multiple rules (`kuma-api`,
+  `kuma-settings`, `kuma-app`); bootstrap rules (`kratos-public`,
+  `selfservice-root`) map to no service; existing rules carry no
+  `authorizer.config.payload.app`. jinbe must add a nullable `service` field to
+  each rule in the `/access-rules` response (set at read time). Then kuma drops
+  `id.split('-')[0]`. Consumers today: Rules page display + route preview,
+  Services upstream enrichment, Services drawer edit-rule lookup.
+- **API-4 (jinbe) — authDomain.** Replace kuma's regex-scrape of a kratos rule
+  match URL with a real `meta.authDomain` on the whoami response (jinbe has
+  AUTH_DOMAIN env). Additive, low risk.
+- **API-2 — create-service description.** jinbe ALREADY accepts `displayName`;
+  this is a **kuma-only** fix (done in the safe-fixes phase), no jinbe change.
+- **🔒 PERF-2 (jinbe) — user-directory N+1.** `enrichWithRbac` per-identity ×
+  uncached `resolveUserRbac` × client `page_size=1000`. This is fail-closed
+  authz resolution — its own TDD + `w6d-security-audit` pass, bundled with
+  nothing else, done LAST.
+
+---
+
 ## Ground rules (read before starting)
 
 - **Build-green invariant:** after every task, `cd kuma && npm run build` must pass. This is the gate; never commit red.
