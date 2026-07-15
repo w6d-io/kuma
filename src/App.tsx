@@ -37,6 +37,14 @@ const NAV: NavItem[] = [
   { id: "settings",  name: "Settings",  ico: I.cog,     section: "Changes",  perms: [] },
 ]
 
+// The "Forbidden" tweak fakes a 403 across the whole app (blanks the UI). It is
+// a development aid only — never let it take effect in a production build
+// (UX-3). Gate every read through this helper.
+const DEV = import.meta.env.DEV;
+function simulatingForbidden(tweaks: { simulateForbidden?: boolean } | undefined): boolean {
+  return DEV && !!tweaks?.simulateForbidden;
+}
+
 /** True if user has any of the required permissions or holds the wildcard "*". */
 function hasAnyPerm(userPerms: string[] | undefined, required: string[]): boolean {
   if (required.length === 0) return true
@@ -48,7 +56,7 @@ function hasAnyPerm(userPerms: string[] | undefined, required: string[]): boolea
 function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
   const { page, setPage, state, tweaks, apiError } = useApp();
   const showCounts = tweaks?.showCounts !== false;
-  const isForbidden = tweaks?.simulateForbidden || (apiError as any)?.status === 403;
+  const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
 
   const { data: session } = useSession();
   const email = session?.email || "you@console";
@@ -165,7 +173,7 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
   const { page, pipeline, theme, setTheme, persona, tweaks, isLive, isLoading, apiError, state } = useApp();
   const title = NAV.find(n => n.id === page)?.name || "Console";
   const showPipe = tweaks?.showPipeline !== false;
-  const isForbidden = tweaks?.simulateForbidden || (apiError as any)?.status === 403;
+  const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
 
   useEffect(() => {
     if ((apiError as any)?.status === 401) {
@@ -201,10 +209,10 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
             {isLive ? "live" : "offline"}
           </span>
         )}
-        {!isLoading && (apiError || tweaks?.simulateForbidden) && (
+        {!isLoading && (apiError || simulatingForbidden(tweaks)) && (
           <span className="sync-pill err" title={apiError?.message || "simulated 403"}>
             <span className="d" />
-            {tweaks?.simulateForbidden || (apiError as any)?.status === 403 ? "forbidden" :
+            {simulatingForbidden(tweaks) || (apiError as any)?.status === 403 ? "forbidden" :
              (apiError as any)?.status === 401 ? "session expired" : "offline"}
           </span>
         )}
@@ -348,10 +356,12 @@ function TweaksPanel({ open, onClose }: { open: boolean; onClose: () => void }) 
         <div className="tweak-row"><span className="lbl">Collapse nav</span><Switch on={!!tweaks.navCollapsed} onChange={v => setTweak("navCollapsed", v)} /></div>
         <div className="tweak-row"><span className="lbl">Pipeline</span><Switch on={!!tweaks.showPipeline} onChange={v => setTweak("showPipeline", v)} /></div>
         <div className="tweak-row"><span className="lbl">Counts</span><Switch on={!!tweaks.showCounts} onChange={v => setTweak("showCounts", v)} /></div>
-        <div className="tweak-row">
-          <span className="lbl" style={tweaks.simulateForbidden ? { color: "var(--red, #ef4444)" } : {}}>Forbidden</span>
-          <Switch on={!!tweaks.simulateForbidden} onChange={v => setTweak("simulateForbidden", v)} />
-        </div>
+        {DEV && (
+          <div className="tweak-row">
+            <span className="lbl" style={tweaks.simulateForbidden ? { color: "var(--red, #ef4444)" } : {}}>Forbidden <span className="small muted">(dev)</span></span>
+            <Switch on={!!tweaks.simulateForbidden} onChange={v => setTweak("simulateForbidden", v)} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -405,7 +415,7 @@ function AppShell() {
       <div className="main">
         <Topbar onOpenCmdk={() => setCmdkOpen(true)} />
         <div className="content">
-          {(tweaks?.simulateForbidden || (apiError as any)?.status === 403) ? <ForbiddenPage /> : <>
+          {(simulatingForbidden(tweaks) || (apiError as any)?.status === 403) ? <ForbiddenPage /> : <>
             {page === "dashboard" && <DashboardPage />}
             {page === "simulator" && <SimulatorPage />}
             {page === "users" && <UsersPage />}
