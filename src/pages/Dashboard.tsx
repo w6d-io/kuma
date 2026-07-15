@@ -117,7 +117,6 @@ export function DashboardPage() {
           <button className="btn" onClick={() => setPage("simulator")}>
             <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.sparkle}</span>
             Simulate access
-            <span className="kbd" style={{ marginLeft: 6 }}>⌘⇧T</span>
           </button>
           <button className="btn" onClick={() => { pipeline.run("manual resync"); pushToast("OPAL notify sent", { sub: "re-evaluating policies" }); }}>
             <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.sync}</span>
