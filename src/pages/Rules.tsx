@@ -34,10 +34,22 @@ export function RulesPage() {
   const patchRule = (patch: Partial<AccessRule>, summary: string) => {
     if (!rule) return;
     const updated = { ...rule, ...patch };
-    applyChange('update', summary, () => {
-      setState(s => ({ ...s, accessRules: s.accessRules.map(r => r.id === rule.id ? updated : r) }));
-    });
-    if (isLive) updateRule.mutate({ id: rule.id, rule: uiToJinbe(updated) });
+    if (isLive) {
+      // Route the real PUT through applyChange's async path: a failed request
+      // now toasts the error and a success triggers refetch (server truth).
+      // Previously a synchronous setState took applyChange's sync branch (→
+      // unconditional "Applied" toast + audit row) while a fire-and-forget
+      // updateRule.mutate() swallowed backend failures — so a rejected edit
+      // (e.g. setting authorizer=allow) falsely reported success.
+      applyChange('update', summary, async () => {
+        await updateRule.mutateAsync({ id: rule.id, rule: uiToJinbe(updated) });
+      });
+    } else {
+      // Demo/local mode: optimistic local state only.
+      applyChange('update', summary, () => {
+        setState(s => ({ ...s, accessRules: s.accessRules.map(r => r.id === rule.id ? updated : r) }));
+      });
+    }
   };
 
   const commitUrl = () => {
