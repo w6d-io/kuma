@@ -1,7 +1,16 @@
 # Audit Compliance Contract — layer responsibilities & decisions
 
-Status: DRAFT for ratification (Phase 0 of `docs/plans/2026-07-15-audit-compliance.md`).
+Status: RATIFIED 2026-07-15 (Phase 0 of `docs/plans/2026-07-15-audit-compliance.md`).
 Grounded in source investigation 2026-07-15.
+
+## Ratified summary (user decisions)
+- **D1** three-layer model: ACCEPTED (Kratos authN / Gateway access telemetry / jinbe change+authZ record).
+- **D2 + D2.a** ACCEPTED: externalize the access flood off the audit stream; keep **deny-only** access events in the audit stream for correlation, allows → logs.
+- **D3** ACCEPTED = **(a) reference/correlate by `sessionId`**. The UI gets a **direct link per event → metrics/Grafana** to trace all actions for a session/user. No Kratos ingest.
+- **UI** ACCEPTED: **three log tabs** surfacing the three layers — Auth (Kratos), Access (gateway telemetry), Changes (jinbe compliance record) — each event deep-links to Grafana by sessionId/actor.
+- **D4** integrity: proceeding with **hash-chain baseline** (HMAC deferred unless third-party verifiability is later required).
+- **D5** retention: **DEFERRED to Phase 3** — period + export target still to set; not blocking Phases 1–2.
+- **D6** ACCEPTED default: allow-but-flag, with **fail-closed** for {privilege grant, bundle import, session revoke}.
 
 ## Decision D1 — WHERE each kind of audit lives (three-layer model)
 
@@ -87,9 +96,10 @@ revoke). Confirm the fail-closed set.
   block jinbe compliance work.
 
 ## Sign-off
-- [ ] D1 three-layer model
-- [ ] D2 externalize access flood (+ D2.a deny-only?)
-- [ ] D3 Kratos authN (a reference / b ingest)
-- [ ] D4 integrity (hash chain / + HMAC)
-- [ ] D5 retention period + export target
-- [ ] D6 fail-closed set for audit-emit failure
+- [x] D1 three-layer model
+- [x] D2 externalize access flood + D2.a **deny-only** in audit stream
+- [x] D3 Kratos authN = **(a) reference by sessionId** + UI Grafana deep-link
+- [x] UI: three log tabs (Auth / Access / Changes) with per-event Grafana trace link
+- [x] D4 integrity = hash-chain baseline (HMAC deferred)
+- [ ] D5 retention period + export target (DEFERRED to Phase 3)
+- [x] D6 allow-but-flag + fail-closed {privilege grant, bundle import, session revoke}
