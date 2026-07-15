@@ -373,18 +373,23 @@ function ForbiddenPage() {
 
 function AppShell() {
   const { page, setPage, toasts, apiError, tweaks } = useApp();
-  const { data: session } = useSession();
+  const { data: session, isSuccess: sessionReady } = useSession();
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [tweaksOpen, setTweaksOpen] = useState(false);
 
-  // If user landed on a page they cannot access (direct URL), bounce to Overview.
+  // If the user landed on a page they cannot access (direct URL / reload),
+  // bounce to Overview. Only act once the session query has SUCCESSFULLY
+  // resolved: while it is still loading, session.permissions is undefined and
+  // bouncing here would wrongly redirect every reload/navigation to the
+  // dashboard. A failed/401 session is handled by the Topbar redirect, not here.
   useEffect(() => {
+    if (!sessionReady) return
     const nav = NAV.find((n) => n.id === page)
     if (!nav) return
     if (!hasAnyPerm(session?.permissions, nav.perms)) {
       setPage('dashboard')
     }
-  }, [page, session?.permissions, setPage])
+  }, [page, sessionReady, session?.permissions, setPage])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
