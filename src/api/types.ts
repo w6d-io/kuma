@@ -49,6 +49,10 @@ export interface AuditEvent {
   ts?: string;
   who: string;
   actorName?: string;
+  /** access | change | auth | system — separates telemetry from the change record. */
+  kind?: string;
+  /** Kratos session id for Grafana/session correlation (contract D3). */
+  sessionId?: string;
   category: string;
   verb: string;
   target: string;
