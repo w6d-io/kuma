@@ -1,13 +1,16 @@
 import React, { useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession } from '../api/hooks';
+import { useSession, useAudit } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Pipeline, } from '../components/ui/Primitives';
 import { ROLE_LEVEL } from '../hooks/useRbac';
 
 export function DashboardPage() {
   const app = useApp();
-  const { state, audit, setPage, setUserDrawer, setGroupDrawer, setServiceDrawer, pushToast, pipeline, apiError } = app;
+  const { state, setPage, setUserDrawer, setGroupDrawer, setServiceDrawer, pushToast, pipeline, apiError } = app;
+  // Real audit stream (not the SEED-polluted AppContext.audit mirror — same
+  // fix as the Audit page; "Recent changes" must show real events only).
+  const { data: audit = [] } = useAudit();
   const { data: session } = useSession();
   const hasAdmin = !!session?.permissions?.some((p) => p === '*' || p === 'admin:read');
   const isForbidden = !hasAdmin || (apiError as { status?: number } | null)?.status === 403;
