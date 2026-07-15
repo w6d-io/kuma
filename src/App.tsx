@@ -6,6 +6,7 @@ import { Avatar, Switch, Toasts, EmptyHint } from './components/ui/Primitives';
 import { DashboardPage } from './pages/Dashboard';
 import { SimulatorPage } from './pages/Simulator';
 import { UsersPage, UserDrawer } from './pages/Users';
+import { OrgAdminPage } from './pages/OrgAdmin';
 import { GroupsPage, GroupDrawer } from './pages/Groups';
 import { ServicesPage, ServiceDrawer } from './pages/Services';
 import { RolesPage } from './pages/Roles';
@@ -35,6 +36,9 @@ const NAV: NavItem[] = [
   { id: "rules",     name: "Oathkeeper", ico: I.gate,   section: "Gateway",  perms: ["admin:read"] },
   { id: "audit",     name: "Audit log", ico: I.audit,   section: "Changes",  perms: ["admin:read"] },
   { id: "settings",  name: "Settings",  ico: I.cog,     section: "Changes",  perms: [] },
+  // Delegated org-admin self-service. perms [] = visible to any authenticated
+  // user; the page itself shows an empty state when you administer no orgs.
+  { id: "orgadmin",  name: "Org Admin", ico: I.globe,   section: "My org",   perms: [] },
 ]
 
 // The "Forbidden" tweak fakes a 403 across the whole app (blanks the UI). It is
@@ -426,6 +430,7 @@ function AppShell() {
             {page === "rules" && <RulesPage />}
             {page === "audit" && <AuditPage />}
             {page === "settings" && <SettingsPage />}
+            {page === "orgadmin" && <OrgAdminPage />}
           </>}
         </div>
       </div>

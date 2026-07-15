@@ -181,14 +181,19 @@ export function UserDrawer() {
     if (ok) setUserDrawer(null);
   };
 
-  // A group is "privileged" when its mapping yields the global super_admin
-  // role OR a service-scoped admin role. Membership grants admin power, so
-  // jinbe will refuse to add an MFA-less identity to it.
+  // A group is "privileged" when its RESOLVED permissions grant admin power:
+  // the global super_admin role, a global role resolving to "*", or any
+  // service role resolving to "*". Derived purely from resolved perms — NOT the
+  // `system` metadata flag (finding K8): a non-system group that grants "*" is
+  // still privileged and must be gated, and jinbe enforces it as 422 regardless.
   const isPrivilegedGroup = (g: string): boolean => {
-    const meta = state.groupsMeta?.[g];
-    if (!meta?.system) return false;
     const map = state.groups[g] || {};
-    if ((map.global ?? []).includes('super_admin')) return true;
+    const globalRoles = map.global ?? [];
+    if (globalRoles.includes('super_admin')) return true;
+    const globalDefs = state.roles.global || {};
+    for (const r of globalRoles) {
+      if ((globalDefs[r] ?? []).includes('*')) return true;
+    }
     for (const [svc, roles] of Object.entries(map)) {
       if (svc === 'global' || !roles?.length) continue;
       const allRoles = state.roles[svc] || {};
