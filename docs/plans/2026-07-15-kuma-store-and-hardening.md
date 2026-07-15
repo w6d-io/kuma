@@ -12,6 +12,26 @@
 
 ---
 
+## AUDIT-1 (kuma) — audit page uses server-side filtering (found during review)
+
+Symptom seen in dev-local: the Audit page shows ~200 events, all `access` /
+"Dev User", burying real change history. Root cause is legitimate jinbe
+behavior (the `auditLogger` onResponse hook emits an `access.allow` event for
+every `/api/admin/*` request), amplified by kuma's mega-query + aggressive
+refetch traffic (PERF-1/STORE-2). kuma fetches a flat `limit:200` newest-first
+and filters **client-side** (`Audit.tsx:40`), so the category pills only filter
+within the newest 200 — real `rbac.*`/`service.*` change events are never
+reached.
+
+Fix (kuma, safe-ish, do with the audit page work): use jinbe's existing
+server-side `category` + `since`/`until` query params (client already types
+them in `getAuditEvents`), and paginate server-side. Consider a default view
+that de-emphasises `access` read-logs vs change events. Reduces once the store
+re-architecture cuts kuma's self-traffic. Note: this is display/query only, no
+authz impact.
+
+---
+
 ## ⚠️ DEFERRED — jinbe changes (do these LAST, after all kuma-only work)
 
 Investigation (2026-07-15, against live cluster redis) confirmed these require
