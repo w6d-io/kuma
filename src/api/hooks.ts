@@ -1,55 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
-import type { KratosIdentity, JinbeGroup, JinbeAccessRule } from './client';
-import type { User, GroupsMap, RolesMap, AccessRule } from './types';
+import type { RolesMap } from './types';
+import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi } from './transforms';
 
-// ─── Transform helpers: jinbe API shapes → Kuma UI shapes ───
-
-function kratosToUser(k: KratosIdentity): User {
-  return {
-    id: k.id,
-    name: k.traits.name || k.traits.email,
-    email: k.traits.email,
-    groups: k.metadata_admin?.groups || [],
-    title: '',
-    active: k.state === 'active',
-    last: k.updated_at ? timeAgo(k.updated_at) : 'never',
-  };
-}
-
-function jinbeGroupsToMap(groups: JinbeGroup[]): GroupsMap {
-  const map: GroupsMap = {};
-  for (const g of groups) {
-    map[g.name] = g.services;
-  }
-  return map;
-}
-
-function jinbeRuleToUi(r: JinbeAccessRule): AccessRule {
-  return {
-    id: r.id,
-    service: r.id.replace(/-authenticated$|-health$/, ''),
-    match: { url: r.match.url, methods: r.match.methods },
-    authenticators: r.authenticators.map(a => a.handler),
-    authorizer: r.authorizer.handler,
-    opaUrl: typeof r.authorizer.config === 'object' && r.authorizer.config !== null
-      ? (r.authorizer.config as Record<string, unknown>).remote_json_url as string || undefined
-      : undefined,
-    mutators: r.mutators.map(m => m.handler),
-    upstream: r.upstream.url,
-  };
-}
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
+// Transforms (jinbe API shape → Kuma UI shape) live in ./transforms — the
+// single source of truth. See PROBLEM-MAP STORE-6 for why they were merged.
 
 // ─── Query hooks ───
 
