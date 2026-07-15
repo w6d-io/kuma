@@ -16,9 +16,16 @@ export function useApplyChange() {
       // Async API call
       result
         .then(() => {
+          // Live path: jinbe records the real audit event for every RBAC
+          // mutation (rbac.service invalidateBundle → auditEventService.emit),
+          // so refetch surfaces the authoritative row. Do NOT synthesize a
+          // fake "applied" audit entry here — it lied about the backend result
+          // (always "applied", fake id, who="you@console") even when jinbe
+          // recorded something else (UX-1). The pipeline animation fires only
+          // now, on real success.
           pipeline.run(target);
-          appendAudit(verb, target, setAudit);
           if (isLive) refetch();
+          else appendAudit(verb, target, setAudit);
         })
         .catch((err: Error & { code?: string; status?: number; details?: { hint?: string } }) => {
           // Special-case the MFA gate so the toast tells the operator what
