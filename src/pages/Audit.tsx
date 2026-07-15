@@ -1,8 +1,21 @@
 import { useState } from 'react';
-import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Method, EmptyHint } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
+import { useAudit } from '../api/hooks';
+import type { AuditEvent } from '../api/types';
+
+// Grafana base for per-event trace deep-links (correlate by sessionId/actor,
+// contract D3). Runtime-injected like __API_BASE__; empty = no link rendered.
+function grafanaTraceUrl(e: AuditEvent): string | null {
+  const base = ((window as any).__GRAFANA_URL__ as string | undefined)?.replace(/\/$/, '');
+  if (!base || base.startsWith('${')) return null; // unset / un-substituted placeholder
+  const sid = (e as AuditEvent & { sessionId?: string }).sessionId;
+  const params = new URLSearchParams();
+  if (sid) params.set('var-sessionId', sid);
+  if (e.who && e.who !== 'anon' && e.who !== 'system') params.set('var-actor', e.who);
+  return `${base}/d/auth-audit?${params.toString()}`;
+}
 
 const AUDIT_CATS: Record<string, { label: string; icon: keyof typeof I }> = {
   auth: { label: "Auth", icon: "key" },
@@ -31,7 +44,11 @@ function statusTone(code?: number) {
 }
 
 export function AuditPage() {
-  const { audit } = useApp();
+  // Read the real audit stream directly (live query), NOT AppContext.audit —
+  // that mirror was seeded with SEED placeholder demo events in DEV and a
+  // `> 0` guard kept the fake rows when live audit was empty (GHOST-3). The
+  // audit log must never show fabricated entries.
+  const { data: audit = [] } = useAudit();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("all");
   const [statusF, setStatusF] = useState("all");
@@ -220,6 +237,13 @@ export function AuditPage() {
                         <button className="btn ghost sm" onClick={() => {
                           navigator.clipboard?.writeText(JSON.stringify(e, null, 2));
                         }}>Copy JSON</button>
+                        {(() => {
+                          const url = grafanaTraceUrl(e);
+                          return url ? (
+                            <a className="btn ghost sm" href={url} target="_blank" rel="noopener noreferrer"
+                               title="Trace this actor/session in Grafana">Trace in Grafana ↗</a>
+                          ) : null;
+                        })()}
                       </div>
                     </div>
                   )}

@@ -22,14 +22,17 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 #              https://jinbe.dev.w6d.io → SPA calls jinbe directly on a separate domain.
 # AUTH_DOMAIN: bare hostname of the auth/login UI, e.g. auth.dev.w6d.io.
 #              Used for redirect on 401 responses. Empty → falls back to in-app default.
+# GRAFANA_URL: base URL of Grafana for per-event audit trace deep-links.
+#              Empty (default) → no trace link rendered.
 ENV API_BASE=""
 ENV AUTH_DOMAIN=""
+ENV GRAFANA_URL=""
 
 EXPOSE 8080
 
 # Inject runtime config into index.html, then start nginx.
 # envsubst whitelist: only the listed vars are substituted (preserves other ${...} content).
 CMD ["/bin/sh", "-c", \
-  "envsubst '${API_BASE} ${AUTH_DOMAIN}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
+  "envsubst '${API_BASE} ${AUTH_DOMAIN} ${GRAFANA_URL}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
    mv /tmp/index.html /usr/share/nginx/html/index.html && \
    nginx -g 'daemon off;'"]
