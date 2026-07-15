@@ -107,6 +107,8 @@ export function normalizeAuditEvents(events: any[]): AuditEvent[] {
           ts:             e.ts,
           who:            e.who || '',
           actorName:      e.actorName,
+          kind:           e.kind,
+          sessionId:      e.sessionId,
           category:       e.category || 'system',
           verb:           e.verb || 'unknown',
           target:         e.target || '',

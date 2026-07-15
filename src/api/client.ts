@@ -372,6 +372,8 @@ export interface AuditStreamEvent {
   id:             string;
   ts:             string;
   when:           string;
+  kind?:          string;
+  sessionId?:     string;
   category:       string;
   verb:           string;
   target:         string;
