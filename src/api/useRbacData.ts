@@ -17,7 +17,6 @@ function classifyError(err: unknown): Error {
 }
 
 async function fetchAllRbacData(): Promise<AppState> {
-  console.log('[useRbacData] fetching...');
   const [usersResult, groupsResult, servicesResult, rulesResult] = await Promise.allSettled([
     // Only the first page here — it doubles as the auth probe (a 401/403 throws
     // and gates the whole UI) and gives the dashboard instant initial numbers.
@@ -141,7 +140,6 @@ async function fetchAllRbacData(): Promise<AppState> {
     accessRules,
     audit,
   };
-  console.log('[useRbacData] fetched:', { users: users.length, groups: Object.keys(groups).length, services: services.length, rules: accessRules.length });
   return result;
 }
 
