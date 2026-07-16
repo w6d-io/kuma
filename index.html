@@ -15,9 +15,12 @@
     <!--              Leave empty to use relative /api (Oathkeeper proxies /api on same domain). -->
     <!-- AUTH_DOMAIN: bare hostname of the auth login UI, e.g. auth.dev.w6d.io -->
     <!--              Used for redirect on 401 responses. Required in env-isolated test/dev. -->
+    <!-- GRAFANA_URL: base URL of Grafana for per-event audit trace deep-links. -->
+    <!--              Empty → no trace link rendered. -->
     <script>
       window.__API_BASE__ = "${API_BASE}";
       window.__AUTH_DOMAIN__ = "${AUTH_DOMAIN}";
+      window.__GRAFANA_URL__ = "${GRAFANA_URL}";
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

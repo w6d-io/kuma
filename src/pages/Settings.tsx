@@ -1,8 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { useOrgServiceMap, useSetOrgServiceMapping, useDeleteOrgServiceMapping } from '../api/hooks';
 import { I } from '../components/ui/Icons';
+import { Modal } from '../components/ui/Primitives';
 import { api } from '../api/client';
 import type { BundleImportResult } from '../api/client';
+
+// Shape of a bundle we can preview before importing. Counts drive the confirm
+// dialog; the raw parsed object is POSTed on confirm.
+interface PendingBundle {
+  bundle: unknown;
+  fileName: string;
+  counts: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number };
+}
 
 export function SettingsPage() {
   const { state, pushToast, refetch } = useApp();
@@ -15,51 +25,39 @@ export function SettingsPage() {
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<BundleImportResult | null>(null);
+  const [pending, setPending] = useState<PendingBundle | null>(null);
 
-  // ─── Org → Service map ───
-  const [mappings, setMappings] = useState<Record<string, string>>({});
-  const [mapLoading, setMapLoading] = useState(true);
+  // ─── Org → Service map (cached Query hook, PERF-4; optimistic mutations) ───
+  const { data: fetchedMappings, isLoading: mapLoading } = useOrgServiceMap();
+  const setMapping = useSetOrgServiceMapping();
+  const deleteMapping = useDeleteOrgServiceMapping();
+  const mappings: Record<string, string> = fetchedMappings ?? {};
   const [newOrgId, setNewOrgId] = useState('');
   const [newService, setNewService] = useState('');
-  const [mapSaving, setMapSaving] = useState(false);
+  const mapSaving = setMapping.isPending;
 
-  useEffect(() => {
-    api.getOrgServiceMap()
-      .then(setMappings)
-      .catch(() => {})
-      .finally(() => setMapLoading(false));
-  }, []);
-
-  async function handleAddMapping() {
+  function handleAddMapping() {
     const orgId = newOrgId.trim();
     const svc = newService.trim();
     if (!orgId || !svc) return;
-    setMapSaving(true);
-    try {
-      await api.setOrgServiceMapping(orgId, svc);
-      setMappings(m => ({ ...m, [orgId]: svc }));
-      setNewOrgId('');
-      setNewService('');
-      pushToast('Mapping saved', { sub: `${orgId.slice(0, 8)}… → ${svc}` });
-    } catch (e: any) {
-      pushToast(e.message || 'Failed to save mapping', { err: true });
-    } finally {
-      setMapSaving(false);
-    }
+    setMapping.mutate(
+      { organizationId: orgId, serviceName: svc },
+      {
+        onSuccess: () => {
+          setNewOrgId('');
+          setNewService('');
+          pushToast('Mapping saved', { sub: `${orgId.slice(0, 8)}… → ${svc}` });
+        },
+        onError: (e: Error) => pushToast(e.message || 'Failed to save mapping', { err: true }),
+      },
+    );
   }
 
-  async function handleDeleteMapping(orgId: string) {
-    try {
-      await api.deleteOrgServiceMapping(orgId);
-      setMappings(m => {
-        const next = { ...m };
-        delete next[orgId];
-        return next;
-      });
-      pushToast('Mapping removed');
-    } catch (e: any) {
-      pushToast(e.message || 'Failed to remove mapping', { err: true });
-    }
+  function handleDeleteMapping(orgId: string) {
+    deleteMapping.mutate(orgId, {
+      onSuccess: () => pushToast('Mapping removed'),
+      onError: (e: Error) => pushToast(e.message || 'Failed to remove mapping', { err: true }),
+    });
   }
 
   // ─── Bundle export/import ───
@@ -79,21 +77,43 @@ export function SettingsPage() {
     fileRef.current?.click();
   }
 
+  // Parse + validate the selected file and open a confirm dialog. Import is a
+  // full-snapshot overwrite of RBAC config, so it must never fire on file
+  // selection alone (UX-8) — the user confirms after seeing what it contains.
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const fileName = file.name;
     e.target.value = '';
-
-    setImporting(true);
     setImportResult(null);
     try {
-      const text = await file.text();
-      const bundle = JSON.parse(text);
+      const bundle: any = JSON.parse(await file.text());
       if (!bundle?.version || !bundle?.rbac) {
         pushToast('Invalid bundle file', { err: true, sub: 'Missing version or rbac fields' });
         return;
       }
-      const res = await api.importBundle(bundle);
+      const rbac = bundle.rbac;
+      setPending({
+        bundle,
+        fileName,
+        counts: {
+          services:        Array.isArray(rbac.services) ? rbac.services.length : Object.keys(rbac.services ?? {}).length,
+          groups:          Object.keys(rbac.groups ?? {}).length,
+          roles:           Object.keys(rbac.roles ?? {}).length,
+          routeMaps:       Object.keys(rbac.routeMaps ?? {}).length,
+          oathkeeperRules: Array.isArray(rbac.oathkeeperRules) ? rbac.oathkeeperRules.length : 0,
+        },
+      });
+    } catch (err: any) {
+      pushToast(err.message || 'Could not read bundle file', { err: true, sub: 'Not valid JSON?' });
+    }
+  }
+
+  async function confirmImport() {
+    if (!pending) return;
+    setImporting(true);
+    try {
+      const res = await api.importBundle(pending.bundle);
       setImportResult(res.imported);
       const r = res.imported.rbac;
       pushToast('Bundle imported', { sub: `${r.services} services, ${r.groups} groups, ${r.roles} roles` });
@@ -102,6 +122,7 @@ export function SettingsPage() {
       pushToast(e.message || 'Import failed', { err: true });
     } finally {
       setImporting(false);
+      setPending(null);
     }
   }
 
@@ -219,6 +240,37 @@ export function SettingsPage() {
           </div>
         )}
       </div>
+
+      {/* Confirm before a full-snapshot overwrite (UX-8). */}
+      <Modal
+        open={!!pending}
+        onClose={() => { if (!importing) setPending(null); }}
+        eyebrow="POST /admin/rbac/bundle/import"
+        title="Import RBAC bundle?"
+        footer={
+          <>
+            <button className="btn" onClick={() => setPending(null)} disabled={importing}>Cancel</button>
+            <button className="btn primary" onClick={confirmImport} disabled={importing}>
+              {importing ? 'Importing…' : 'Overwrite RBAC config'}
+            </button>
+          </>
+        }
+      >
+        {pending && (
+          <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="panel" style={{ padding: 10, borderColor: 'var(--warn, #d97706)', color: 'var(--warn, #d97706)' }}>
+              <div style={{ fontWeight: 600, marginBottom: 2 }}>This replaces your RBAC configuration</div>
+              <div className="small">Services, groups, roles, route maps and Oathkeeper rules will be overwritten from <span className="mono">{pending.fileName}</span>. This cannot be undone.</div>
+            </div>
+            <div>
+              <div className="small muted" style={{ marginBottom: 4 }}>Bundle contents</div>
+              <div className="mono" style={{ fontSize: 12 }}>
+                {pending.counts.services} services · {pending.counts.groups} groups · {pending.counts.roles} role sets · {pending.counts.routeMaps} route maps · {pending.counts.oathkeeperRules} Oathkeeper rules
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
     </>
   );
 }

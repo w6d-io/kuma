@@ -1,13 +1,16 @@
 import React, { useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession } from '../api/hooks';
+import { useSession, useAudit } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Pipeline, } from '../components/ui/Primitives';
 import { ROLE_LEVEL } from '../hooks/useRbac';
 
 export function DashboardPage() {
   const app = useApp();
-  const { state, audit, setPage, setUserDrawer, setGroupDrawer, setServiceDrawer, pushToast, pipeline, apiError } = app;
+  const { state, setPage, setUserDrawer, setGroupDrawer, setServiceDrawer, pushToast, pipeline, apiError } = app;
+  // Real audit stream (not the SEED-polluted AppContext.audit mirror — same
+  // fix as the Audit page; "Recent changes" must show real events only).
+  const { data: audit = [] } = useAudit();
   const { data: session } = useSession();
   const hasAdmin = !!session?.permissions?.some((p) => p === '*' || p === 'admin:read');
   const isForbidden = !hasAdmin || (apiError as { status?: number } | null)?.status === 403;
@@ -117,7 +120,6 @@ export function DashboardPage() {
           <button className="btn" onClick={() => setPage("simulator")}>
             <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.sparkle}</span>
             Simulate access
-            <span className="kbd" style={{ marginLeft: 6 }}>⌘⇧T</span>
           </button>
           <button className="btn" onClick={() => { pipeline.run("manual resync"); pushToast("OPAL notify sent", { sub: "re-evaluating policies" }); }}>
             <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.sync}</span>

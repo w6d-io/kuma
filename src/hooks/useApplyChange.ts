@@ -1,10 +1,11 @@
 import { useApp } from '../contexts/AppContext';
-import type { AuditEvent } from '../api/types';
 
 export function useApplyChange() {
-  const { pushToast, pipeline, setAudit, persona, isLive, refetch } = useApp();
+  const { pushToast, pipeline, persona, refreshAudit } = useApp();
 
-  return (verb: string, target: string, mutator?: () => void | Promise<void>) => {
+  // `verb` is retained in the signature for call-site readability and future
+  // per-verb handling; the audit record itself comes from jinbe, not the client.
+  return (_verb: string, target: string, mutator?: () => void | Promise<void>) => {
     if (persona === "viewer") {
       pushToast("Read-only persona · change blocked", { err: true });
       return false;
@@ -13,12 +14,15 @@ export function useApplyChange() {
     const result = mutator?.();
 
     if (result instanceof Promise) {
-      // Async API call
+      // Async API call. jinbe records the authoritative audit event for every
+      // RBAC mutation (rbac.service invalidateBundle → auditEventService.emit),
+      // so a scoped refetch surfaces the real row — we never synthesize a fake
+      // "applied" entry (UX-1). The pipeline animation fires only on real
+      // success.
       result
         .then(() => {
           pipeline.run(target);
-          appendAudit(verb, target, setAudit);
-          if (isLive) refetch();
+          refreshAudit();
         })
         .catch((err: Error & { code?: string; status?: number; details?: { hint?: string } }) => {
           // Special-case the MFA gate so the toast tells the operator what
@@ -47,29 +51,10 @@ export function useApplyChange() {
           pushToast(`${err.message}`, { err: true });
         });
     } else {
-      // Sync local state mutation
+      // Sync mutator (rare — a few UI-only paths). Just run the pipeline echo.
       pipeline.run(target);
-      appendAudit(verb, target, setAudit);
     }
 
     return true;
   };
-}
-
-function appendAudit(
-  verb: string,
-  target: string,
-  setAudit: React.Dispatch<React.SetStateAction<AuditEvent[]>>
-) {
-  const entry: AuditEvent = {
-    id: "c_" + Math.floor(100 + Math.random() * 900),
-    when: "just now",
-    ts: new Date().toISOString().replace('T', ' ').slice(0, 19),
-    who: "you@console",
-    verb,
-    target,
-    status: "applied",
-    category: "rbac",
-  };
-  setAudit(a => [entry, ...a]);
 }

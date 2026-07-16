@@ -6,6 +6,7 @@ import { Avatar, Switch, Toasts, EmptyHint } from './components/ui/Primitives';
 import { DashboardPage } from './pages/Dashboard';
 import { SimulatorPage } from './pages/Simulator';
 import { UsersPage, UserDrawer } from './pages/Users';
+import { OrgAdminPage } from './pages/OrgAdmin';
 import { GroupsPage, GroupDrawer } from './pages/Groups';
 import { ServicesPage, ServiceDrawer } from './pages/Services';
 import { RolesPage } from './pages/Roles';
@@ -35,7 +36,18 @@ const NAV: NavItem[] = [
   { id: "rules",     name: "Oathkeeper", ico: I.gate,   section: "Gateway",  perms: ["admin:read"] },
   { id: "audit",     name: "Audit log", ico: I.audit,   section: "Changes",  perms: ["admin:read"] },
   { id: "settings",  name: "Settings",  ico: I.cog,     section: "Changes",  perms: [] },
+  // Delegated org-admin self-service. perms [] = visible to any authenticated
+  // user; the page itself shows an empty state when you administer no orgs.
+  { id: "orgadmin",  name: "Org Admin", ico: I.globe,   section: "My org",   perms: [] },
 ]
+
+// The "Forbidden" tweak fakes a 403 across the whole app (blanks the UI). It is
+// a development aid only — never let it take effect in a production build
+// (UX-3). Gate every read through this helper.
+const DEV = import.meta.env.DEV;
+function simulatingForbidden(tweaks: { simulateForbidden?: boolean } | undefined): boolean {
+  return DEV && !!tweaks?.simulateForbidden;
+}
 
 /** True if user has any of the required permissions or holds the wildcard "*". */
 function hasAnyPerm(userPerms: string[] | undefined, required: string[]): boolean {
@@ -48,7 +60,7 @@ function hasAnyPerm(userPerms: string[] | undefined, required: string[]): boolea
 function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
   const { page, setPage, state, tweaks, apiError } = useApp();
   const showCounts = tweaks?.showCounts !== false;
-  const isForbidden = tweaks?.simulateForbidden || (apiError as any)?.status === 403;
+  const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
 
   const { data: session } = useSession();
   const email = session?.email || "you@console";
@@ -165,7 +177,7 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
   const { page, pipeline, theme, setTheme, persona, tweaks, isLive, isLoading, apiError, state } = useApp();
   const title = NAV.find(n => n.id === page)?.name || "Console";
   const showPipe = tweaks?.showPipeline !== false;
-  const isForbidden = tweaks?.simulateForbidden || (apiError as any)?.status === 403;
+  const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
 
   useEffect(() => {
     if ((apiError as any)?.status === 401) {
@@ -201,10 +213,10 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
             {isLive ? "live" : "offline"}
           </span>
         )}
-        {!isLoading && (apiError || tweaks?.simulateForbidden) && (
+        {!isLoading && (apiError || simulatingForbidden(tweaks)) && (
           <span className="sync-pill err" title={apiError?.message || "simulated 403"}>
             <span className="d" />
-            {tweaks?.simulateForbidden || (apiError as any)?.status === 403 ? "forbidden" :
+            {simulatingForbidden(tweaks) || (apiError as any)?.status === 403 ? "forbidden" :
              (apiError as any)?.status === 401 ? "session expired" : "offline"}
           </span>
         )}
@@ -271,6 +283,8 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
       { name: "Groups", items: grps },
       { name: "Services", items: svcs },
     ].filter(g => g.items.length > 0);
+    // Context setters are stable; results recompute on q/state/theme only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, state, theme]);
 
   const flat = groups.flatMap(g => g.items);
@@ -286,6 +300,10 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // `fire`/`onClose` are recreated each render but only read on keypress;
+    // re-subscribing on every render would thrash the listener. Keyed on the
+    // inputs that change behaviour (open/idx/result count).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, idx, flat.length]);
 
   if (!open) return null;
@@ -348,10 +366,12 @@ function TweaksPanel({ open, onClose }: { open: boolean; onClose: () => void }) 
         <div className="tweak-row"><span className="lbl">Collapse nav</span><Switch on={!!tweaks.navCollapsed} onChange={v => setTweak("navCollapsed", v)} /></div>
         <div className="tweak-row"><span className="lbl">Pipeline</span><Switch on={!!tweaks.showPipeline} onChange={v => setTweak("showPipeline", v)} /></div>
         <div className="tweak-row"><span className="lbl">Counts</span><Switch on={!!tweaks.showCounts} onChange={v => setTweak("showCounts", v)} /></div>
-        <div className="tweak-row">
-          <span className="lbl" style={tweaks.simulateForbidden ? { color: "var(--red, #ef4444)" } : {}}>Forbidden</span>
-          <Switch on={!!tweaks.simulateForbidden} onChange={v => setTweak("simulateForbidden", v)} />
-        </div>
+        {DEV && (
+          <div className="tweak-row">
+            <span className="lbl" style={tweaks.simulateForbidden ? { color: "var(--red, #ef4444)" } : {}}>Forbidden <span className="small muted">(dev)</span></span>
+            <Switch on={!!tweaks.simulateForbidden} onChange={v => setTweak("simulateForbidden", v)} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -373,18 +393,23 @@ function ForbiddenPage() {
 
 function AppShell() {
   const { page, setPage, toasts, apiError, tweaks } = useApp();
-  const { data: session } = useSession();
+  const { data: session, isSuccess: sessionReady } = useSession();
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [tweaksOpen, setTweaksOpen] = useState(false);
 
-  // If user landed on a page they cannot access (direct URL), bounce to Overview.
+  // If the user landed on a page they cannot access (direct URL / reload),
+  // bounce to Overview. Only act once the session query has SUCCESSFULLY
+  // resolved: while it is still loading, session.permissions is undefined and
+  // bouncing here would wrongly redirect every reload/navigation to the
+  // dashboard. A failed/401 session is handled by the Topbar redirect, not here.
   useEffect(() => {
+    if (!sessionReady) return
     const nav = NAV.find((n) => n.id === page)
     if (!nav) return
     if (!hasAnyPerm(session?.permissions, nav.perms)) {
       setPage('dashboard')
     }
-  }, [page, session?.permissions, setPage])
+  }, [page, sessionReady, session?.permissions, setPage])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -400,7 +425,7 @@ function AppShell() {
       <div className="main">
         <Topbar onOpenCmdk={() => setCmdkOpen(true)} />
         <div className="content">
-          {(tweaks?.simulateForbidden || (apiError as any)?.status === 403) ? <ForbiddenPage /> : <>
+          {(simulatingForbidden(tweaks) || (apiError as any)?.status === 403) ? <ForbiddenPage /> : <>
             {page === "dashboard" && <DashboardPage />}
             {page === "simulator" && <SimulatorPage />}
             {page === "users" && <UsersPage />}
@@ -411,6 +436,7 @@ function AppShell() {
             {page === "rules" && <RulesPage />}
             {page === "audit" && <AuditPage />}
             {page === "settings" && <SettingsPage />}
+            {page === "orgadmin" && <OrgAdminPage />}
           </>}
         </div>
       </div>

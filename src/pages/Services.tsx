@@ -73,7 +73,7 @@ export function ServicesPage() {
 }
 
 export function ServiceDrawer() {
-  const { serviceDrawer, setServiceDrawer, state, setState, isLive, apiCreateService, apiUpdateService, apiDeleteService, setPage } = useApp();
+  const { serviceDrawer, setServiceDrawer, state, apiCreateService, apiUpdateService, apiDeleteService, setPage } = useApp();
   const applyChange = useApplyChange();
 
   const isEdit = serviceDrawer?.mode === "edit";
@@ -93,6 +93,9 @@ export function ServiceDrawer() {
   // edit danger
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Seed form when the drawer opens (keyed on mode+serviceName). editSvc/editRule
+  // derive from the live cache and would re-seed on optimistic edits, wiping the
+  // operator's changes — intentionally excluded.
   useEffect(() => {
     if (!serviceDrawer) return;
     setConfirmDelete(false);
@@ -106,6 +109,7 @@ export function ServiceDrawer() {
       setMatchMethods(editRule?.match.methods || ["GET", "POST", "PUT", "PATCH", "DELETE"]);
       setStripPath(editRule?.stripPath || "");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceDrawer?.mode, serviceDrawer?.serviceName]);
 
   if (!serviceDrawer) return null;
@@ -118,29 +122,14 @@ export function ServiceDrawer() {
 
   const saveCreate = () => {
     if (!validName || !validUrl) return;
-    const mutator = isLive
-      ? () => apiCreateService({
-          name, upstreamUrl: upstream,
-          matchUrl: matchUrl || `<https?://${name}\\.example\\.io/.*>`,
-          matchMethods,
-          stripPath: stripPath || undefined,
-        })
-      : () => {
-          setState(s => ({
-            ...s,
-            services: [...s.services, { name, upstreamUrl: upstream, description, createdAt: new Date().toISOString().slice(0, 10), routes: 1, roles: 3 }],
-            roles: { ...s.roles, [name]: { admin: ["*"], editor: [], viewer: [] } },
-            routeMaps: { ...s.routeMaps, [name]: [{ method: "GET", path: "/api/health" }] },
-            accessRules: [...s.accessRules, {
-              id: `${name}-authenticated`, service: name,
-              match: { url: matchUrl || `<http|https>://api.example.io/${name}/<**>`, methods: matchMethods },
-              authenticators: ["cookie_session", "bearer_token"], authorizer: "remote_json",
-              opaUrl: "http://opa:8181/v1/data/authz/allow", mutators: ["header"], upstream,
-              stripPath: stripPath || undefined,
-            }],
-          }));
-        };
-    const ok = applyChange("create", `service:${name} registered`, mutator);
+    const ok = applyChange("create", `service:${name} registered`, () => apiCreateService({
+      name,
+      displayName: description || undefined,
+      upstreamUrl: upstream,
+      matchUrl: matchUrl || `<https?://${name}\\.example\\.io/.*>`,
+      matchMethods,
+      stripPath: stripPath || undefined,
+    }));
     if (ok) setServiceDrawer(null);
   };
 
@@ -152,37 +141,14 @@ export function ServiceDrawer() {
       matchMethods: matchMethods.length ? matchMethods : undefined,
       stripPath: stripPath || null,
     };
-    const mutator = isLive
-      ? () => apiUpdateService(editSvc.name, payload)
-      : () => {
-          setState(s => ({
-            ...s,
-            services: s.services.map(sv => sv.name === editSvc.name ? { ...sv, upstreamUrl: upstream, description } : sv),
-            accessRules: s.accessRules.map(r => r.service === editSvc.name ? {
-              ...r, upstream, match: { url: matchUrl || r.match.url, methods: matchMethods },
-              stripPath: stripPath || undefined,
-            } : r),
-          }));
-        };
-    const ok = applyChange("update", `service:${editSvc.name} updated`, mutator);
+    const ok = applyChange("update", `service:${editSvc.name} updated`, () => apiUpdateService(editSvc.name, payload));
     if (ok) setServiceDrawer(null);
   };
 
   const doDelete = () => {
     if (!editSvc) return;
     const svcName = editSvc.name;
-    const mutator = isLive
-      ? () => apiDeleteService(svcName)
-      : () => {
-          setState(s => ({
-            ...s,
-            services: s.services.filter(sv => sv.name !== svcName),
-            roles: Object.fromEntries(Object.entries(s.roles).filter(([k]) => k !== svcName)),
-            routeMaps: Object.fromEntries(Object.entries(s.routeMaps).filter(([k]) => k !== svcName)),
-            accessRules: s.accessRules.filter(r => r.service !== svcName),
-          }));
-        };
-    const ok = applyChange("delete", `service:${svcName} removed`, mutator);
+    const ok = applyChange("delete", `service:${svcName} removed`, () => apiDeleteService(svcName));
     if (ok) { setServiceDrawer(null); setPage("services"); }
   };
 

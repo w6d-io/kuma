@@ -35,30 +35,16 @@ export const api = {
   // Kratos paginates with keyset tokens (no total count) and defaults to a
   // single 250-row page. page_size=1000 (Kratos/jinbe max) keeps directories
   // up to 1000 users to one round trip.
-  getUsersPage: (pageToken?: string, pageSize = 1000) => {
+  // `search` maps to Kratos `credentials_identifier` — an EXACT identifier
+  // (email) match, not a substring/name search (jinbe/Kratos limitation, J9).
+  // Callers that need name search filter client-side over loaded pages.
+  getUsersPage: (pageToken?: string, pageSize = 1000, search?: string) => {
     const qs = new URLSearchParams({ page_size: String(pageSize) });
     if (pageToken) qs.set('page_token', pageToken);
+    if (search) qs.set('credentials_identifier', search);
     return request<{ data: KratosIdentity[]; next_page_token?: string }>(
       `/admin/users?${qs.toString()}`,
     ).then(r => ({ data: r.data, nextPageToken: r.next_page_token }));
-  },
-
-  // Fetch the whole directory by following next_page_token. onPage fires after
-  // each page so callers can render progressively instead of blocking on the
-  // full walk. Hard cap at 100 pages (100k users) as a runaway guard.
-  getUsers: async (
-    onPage?: (page: KratosIdentity[], all: KratosIdentity[]) => void,
-  ): Promise<KratosIdentity[]> => {
-    const all: KratosIdentity[] = [];
-    let pageToken: string | undefined;
-    for (let page = 0; page < 100; page++) {
-      const { data, nextPageToken } = await api.getUsersPage(pageToken);
-      all.push(...data);
-      onPage?.(data, all);
-      if (!nextPageToken) break;
-      pageToken = nextPageToken;
-    }
-    return all;
   },
 
   getUser: (id: string) => request<KratosIdentity>(`/admin/users/${id}`),
@@ -182,10 +168,6 @@ export const api = {
   deleteAccessRule: (id: string) =>
     request<void>(`/admin/rbac/access-rules/${id}`, { method: 'DELETE' }),
 
-  // ─── Matrix / Bindings ───
-  getUsersMatrix: () =>
-    request<{ users: JinbeUserMatrix[] }>(`/admin/rbac/users`).then(r => r.users),
-
   // ─── History (git commits) ───
   getHistory: () =>
     request<{ commits: JinbeCommit[] }>(`/admin/rbac/history`).then(r => r.commits),
@@ -245,6 +227,42 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+
+  // ─── Delegated org-admin (self-service; scoped to the caller's orgs) ───
+  // The organizations the caller may administer (delegation manageable_orgs).
+  myOrganizations: () =>
+    request<{ organizations: string[] }>('/me/organizations').then(r => r.organizations),
+
+  // Groups the caller may assign within an org — already narrowed by jinbe to the
+  // org's service + containment (never the full catalog).
+  getAssignableGroups: (orgId: string) =>
+    request<{ groups: string[] }>(`/organizations/${orgId}/assignable-groups`).then(r => r.groups),
+
+  // Users in an org (scoped). credentials_identifier is an exact-match filter.
+  getOrgUsers: (orgId: string, opts?: { search?: string; pageSize?: number }) => {
+    const qs = new URLSearchParams();
+    if (opts?.search) qs.set('credentials_identifier', opts.search);
+    if (opts?.pageSize) qs.set('page_size', String(opts.pageSize));
+    const q = qs.toString();
+    return request<{ data: KratosIdentity[]; total: number }>(
+      `/organizations/${orgId}/users${q ? `?${q}` : ''}`,
+    );
+  },
+
+  createOrgUser: (
+    orgId: string,
+    payload: { email: string; name?: string; sendInvite?: boolean; groups?: string[] },
+  ) =>
+    request<KratosIdentity>(`/organizations/${orgId}/users`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  setOrgUserGroups: (orgId: string, userId: string, groups: string[]) =>
+    request<OrgUserGroupsResponse>(`/organizations/${orgId}/users/${userId}/groups`, {
+      method: 'PUT',
+      body: JSON.stringify({ groups }),
+    }),
 };
 
 // ─── Types matching jinbe API responses ───
@@ -263,6 +281,14 @@ export interface WhoamiResponse {
 }
 
 export interface SetUserGroupsResponse {
+  id: string;
+  organizationId: string | null;
+  email: string;
+  groups: string[];
+  updatedAt: string;
+}
+
+export interface OrgUserGroupsResponse {
   id: string;
   organizationId: string | null;
   email: string;
@@ -331,12 +357,6 @@ export interface JinbeAccessRule {
   mutators: { handler: string; config?: unknown }[];
 }
 
-export interface JinbeUserMatrix {
-  email: string;
-  name: string;
-  groupMembership: Record<string, boolean>;
-}
-
 export interface JinbeCommit {
   id: string;
   message: string;
@@ -372,6 +392,8 @@ export interface AuditStreamEvent {
   id:             string;
   ts:             string;
   when:           string;
+  kind?:          string;
+  sessionId?:     string;
   category:       string;
   verb:           string;
   target:         string;
