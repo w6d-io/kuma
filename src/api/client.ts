@@ -31,6 +31,9 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
 export const api = {
   session: () => request<WhoamiResponse>('/whoami'),
 
+  // ─── Directory stats (cached server-side counts; no directory walk) ───
+  getStats: () => request<DirectoryStats>('/admin/stats'),
+
   // ─── Users (Kratos identities) ───
   // Kratos paginates with keyset tokens (no total count) and defaults to a
   // single 250-row page. page_size=1000 (Kratos/jinbe max) keeps directories
@@ -266,6 +269,16 @@ export const api = {
 };
 
 // ─── Types matching jinbe API responses ───
+
+export interface DirectoryStats {
+  total: number;
+  active: number;
+  fullAccess: number;
+  unassigned: number;
+  perGroup: Record<string, number>;
+  perOrg: Record<string, number>;
+  computedAt: string;
+}
 
 export interface WhoamiResponse {
   authenticated: boolean;

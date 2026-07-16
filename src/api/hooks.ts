@@ -253,6 +253,18 @@ export function useSession() {
   });
 }
 
+// Directory counts (total/active/fullAccess/unassigned/perGroup/perOrg) from the
+// cached server endpoint — replaces walking the whole user directory client-side
+// (PERF: 9k users was ~45s). Server serves in ~1ms warm; 60s staleTime here
+// matches its freshness window. Mutations invalidate ['stats'] for prompt refresh.
+export function useStats() {
+  return useQuery({
+    queryKey: ['stats'],
+    queryFn: () => api.getStats(),
+    staleTime: 60_000,
+  });
+}
+
 // ─── Mutation hooks ───
 // User/group/service mutations live in AppContext (optimistic wrappers); the
 // hooks below cover config edits pages call directly + delegated org-admin.

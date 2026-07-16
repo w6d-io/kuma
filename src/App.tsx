@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, Fragment } from 'react';
 import { AppProvider, useApp } from './contexts/AppContext';
-import { useSession } from './api/hooks';
+import { useSession, useStats } from './api/hooks';
 import { I } from './components/ui/Icons';
 import { Avatar, Switch, Toasts, EmptyHint } from './components/ui/Primitives';
 import { DashboardPage } from './pages/Dashboard';
@@ -60,6 +60,7 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
   const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
 
   const { data: session } = useSession();
+  const { data: stats } = useStats();
   const email = session?.email || "you@console";
   const role  = session?.roles?.[0] || "";
   const [localPart, domain] = email.includes("@") ? [email.split("@")[0], "@" + email.split("@")[1]] : [email, ""];
@@ -89,7 +90,7 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
             <div className="nav-section">{sec}</div>
             {visibleNav.filter(n => n.section === sec).map(n => {
               const count =
-                n.id === "users" ? state.users.length :
+                n.id === "users" ? (stats?.total ?? state.users.length) :
                 n.id === "groups" ? Object.keys(state.groups).length :
                 n.id === "services" ? state.services.length :
                 null;

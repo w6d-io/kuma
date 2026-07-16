@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession, useAudit } from '../api/hooks';
+import { useSession, useAudit, useStats } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar } from '../components/ui/Primitives';
 import { ROLE_LEVEL } from '../hooks/useRbac';
@@ -12,11 +12,13 @@ export function DashboardPage() {
   // fix as the Audit page; "Recent changes" must show real events only).
   const { data: audit = [] } = useAudit();
   const { data: session } = useSession();
+  // Directory counts from the cached stats endpoint — no full-directory walk.
+  const { data: stats } = useStats();
   const hasAdmin = !!session?.permissions?.some((p) => p === '*' || p === 'admin:read');
   const isForbidden = !hasAdmin || (apiError as { status?: number } | null)?.status === 403;
 
-  const totalUsers = state.users.length;
-  const activeUsers = state.users.filter(u => u.active).length;
+  const totalUsers = stats?.total ?? state.users.length;
+  const activeUsers = stats?.active ?? state.users.filter(u => u.active).length;
   const totalGroups = Object.keys(state.groups).length;
   const totalServices = state.services.length;
 
@@ -39,9 +41,6 @@ export function DashboardPage() {
         }
       });
     });
-    state.users.forEach(u => {
-      u.groups.forEach(g => { if (!state.groups[g]) out.push({ kind: "err", msg: `user ${u.email} → group "${g}" does not exist`, where: u.email }); });
-    });
     return out;
   }, [state]);
 
@@ -50,18 +49,18 @@ export function DashboardPage() {
   // — cut until there is a real last-active timestamp to key on.)
   const signals = useMemo(() => {
     const out: { id: string; label: string; value: number; total: number; tone: string; hint: string; onClick: () => void }[] = [];
-    const wildcardHolders = state.users.filter(u => u.groups.some(g => {
-      const gm = state.groups[g] || {};
-      return Object.entries(gm).some(([svc, roles]) => roles.some(r => (state.roles[svc]?.[r] || []).includes("*")));
-    }));
-    out.push({ id: "super", label: "Full-access users", value: wildcardHolders.length, total: state.users.length, tone: wildcardHolders.length > 3 ? "warn" : "ok", hint: wildcardHolders.length ? "Hold a wildcard (*) permission — review periodically" : "No user holds a wildcard", onClick: () => setPage("users") });
-    const orphans = state.users.filter(u => u.groups.length === 0);
-    out.push({ id: "orphan", label: "Users without groups", value: orphans.length, total: state.users.length, tone: orphans.length ? "warn" : "ok", hint: orphans.length ? "Can't reach anything until assigned" : "Every user is assigned", onClick: () => setPage("users") });
+    // Full-access users: hold a group granting a wildcard (*). From the cached
+    // stats walk — no client-side directory scan.
+    const fullAccess = stats?.fullAccess ?? 0;
+    out.push({ id: "super", label: "Full-access users", value: fullAccess, total: stats?.total ?? state.users.length, tone: fullAccess > 3 ? "warn" : "ok", hint: fullAccess ? "Hold a wildcard (*) permission — review periodically" : "No user holds a wildcard", onClick: () => setPage("users") });
+    // Empty groups: defined but with no members — cleanup candidates.
+    const emptyGroups = stats ? Object.keys(state.groups).filter(g => !stats.perGroup[g]) : [];
+    out.push({ id: "empty", label: "Empty groups", value: emptyGroups.length, total: Object.keys(state.groups).length, tone: emptyGroups.length ? "info" : "ok", hint: emptyGroups.length ? "No members — candidates for cleanup" : "Every group has members", onClick: () => setPage("groups") });
     let wildcards = 0;
     Object.entries(state.roles).forEach(([, m]) => { Object.entries(m).forEach(([, perms]) => { if (perms.includes("*")) wildcards++; }); });
     out.push({ id: "wild", label: "Wildcard (*) roles", value: wildcards, total: Object.values(state.roles).reduce((a, m) => a + Object.keys(m).length, 0), tone: wildcards ? "info" : "ok", hint: "Grant every permission in their service", onClick: () => setPage("services") });
     return out;
-  }, [state, setPage]);
+  }, [state, stats, setPage]);
 
   const matrixServices = state.services.map(s => s.name).filter(n => n !== "global");
   const groupRows = Object.entries(state.groups)
@@ -72,7 +71,7 @@ export function DashboardPage() {
         return { svc, roles, level: highest };
       });
       const sum = cells.reduce((a, c) => a + (c.level + 1), 0);
-      return { g, cells, sum, usersCount: state.users.filter(u => u.groups.includes(g)).length };
+      return { g, cells, sum, usersCount: stats?.perGroup?.[g] ?? 0 };
     })
     .sort((a, b) => b.sum - a.sum);
 
@@ -115,7 +114,7 @@ export function DashboardPage() {
 
       {/* KPIs — real, actionable counts only */}
       <div className="grid g3 mb-12" style={{ gap: 10 }}>
-        <StatBtn lbl="Users" val={state.usersLoading ? `${totalUsers}+` : totalUsers} sub={`${activeUsers} active · ${totalUsers - activeUsers} inactive`} onClick={() => setPage("users")} />
+        <StatBtn lbl="Users" val={totalUsers} sub={`${activeUsers} active · ${totalUsers - activeUsers} inactive`} onClick={() => setPage("users")} />
         <StatBtn lbl="Groups" val={totalGroups} sub="bundles of roles across services" onClick={() => setPage("groups")} />
         <StatBtn lbl="Services" val={totalServices} sub="apps with their own roles" onClick={() => setPage("services")} />
       </div>
