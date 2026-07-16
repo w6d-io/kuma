@@ -41,6 +41,11 @@ export interface AccessRule {
   mutators: string[];
   upstream?: string;
   stripPath?: string;
+  // The original jinbe rule, kept so an edit can overlay changed fields onto it
+  // (the update endpoint REPLACES the whole rule — reconstructing from the UI
+  // shape alone would drop authenticator/mutator/upstream config). Cast to
+  // JinbeAccessRule at the edit site.
+  raw?: unknown;
 }
 
 export interface AuditEvent {
