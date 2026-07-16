@@ -4,9 +4,11 @@ import { I } from '../components/ui/Icons';
 import { Chip, Drawer, AccessLevel, ConfirmDialog } from '../components/ui/Primitives';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
+import { useStats } from '../api/hooks';
 
 export function GroupsPage() {
   const { state, setGroupDrawer } = useApp();
+  const { data: stats } = useStats();
   const services = state.services.map(s => s.name);
 
   return (
@@ -38,7 +40,7 @@ export function GroupsPage() {
           </thead>
           <tbody>
             {Object.entries(state.groups).map(([g, map]) => {
-              const users = state.users.filter(u => u.groups.includes(g)).length;
+              const users = stats?.perGroup?.[g] ?? 0;
               return (
                 <tr key={g}>
                   <td className="sticky-col" style={{ left: 0, fontWeight: 500 }}>
@@ -83,6 +85,7 @@ export function GroupsPage() {
 
 export function GroupDrawer() {
   const { groupDrawer, setGroupDrawer, state, apiCreateGroup, apiUpdateGroup, apiDeleteGroup } = useApp();
+  const { data: stats } = useStats();
   const applyChange = useApplyChange();
   const isEdit = groupDrawer?.mode === "edit";
   const existing = isEdit && groupDrawer.name ? state.groups[groupDrawer.name] : null;
@@ -218,7 +221,9 @@ export function GroupDrawer() {
         confirmLabel="Delete group"
         body={<>Members immediately lose the access this group grants. This can't be undone.</>}
         blastRadius={(() => {
-          const n = state.users.filter(u => groupDrawer?.name && u.groups.includes(groupDrawer.name)).length;
+          // Accurate member count from the cached stats endpoint (state.users is
+          // only page 1 here, so filtering it would undercount).
+          const n = groupDrawer?.name ? (stats?.perGroup?.[groupDrawer.name] ?? 0) : 0;
           return n > 0 ? <><b>{n}</b> user{n !== 1 ? "s" : ""} will lose this group.</> : undefined;
         })()}
         onCancel={() => setConfirmDelete(false)}

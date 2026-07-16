@@ -141,15 +141,15 @@ const ALL_ENTITY_KEYS = [
   ['all-roles'], ['all-routes'], ['access-rules'], ['audit'],
 ] as const;
 
-// Pages that consume directory-wide user aggregates (counts, posture signals,
-// full identity dropdown) and therefore need the whole directory streamed in.
-// Everywhere else the store holds only page 1 — no mass fetching on Audit,
-// Settings, Roles, Routes, Rules, or the org-admin tab. NOTE: the Users page is
-// deliberately absent — it manages its own lazy "Load more" pagination, so
-// auto-streaming the whole directory behind it would be the very mass-fetch
-// we're eliminating.
+// Pages that still stream the whole user directory for per-user views the stats
+// endpoint doesn't cover yet: Simulator's user picker and the Services
+// workspace's per-service member counts. Dashboard and Groups used to be here
+// but now read cached counts from GET /admin/stats (rbacService.getDirectoryStats),
+// so they no longer walk the ~10k-identity directory (was ~45s). Users/Audit/
+// Settings/etc. were never here. Simulator + Services move to server-side search
+// in Phase 2, after which this set can empty out entirely.
 const DIRECTORY_PAGES: ReadonlySet<PageId> = new Set<PageId>([
-  'dashboard', 'groups', 'services', 'simulator',
+  'services', 'simulator',
 ]);
 
 const pageFromHash = (): PageId => {
@@ -240,18 +240,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // (PERF-1/STORE-3).
 
   const apiSetUserGroups = useCallback(async (email: string, groups: string[]) => {
-    await withOptimism(qc, [['users'], ['groups-map']],
+    await withOptimism(qc, [['users'], ['groups-map'], ['stats']],
       () => cachePatch.patchUserGroupsByEmail(qc, email, groups),
       () => api.setUserGroups(email, groups));
   }, [qc]);
 
   const apiCreateUser = useCallback(async (payload: { email: string; name: string; groups?: string[]; sendInvite?: boolean }) => {
     // Create → server assigns the id; invalidate-only (no fabricated row).
-    await withOptimism(qc, [['users']], undefined, () => api.createUser(payload));
+    await withOptimism(qc, [['users'], ['stats']], undefined, () => api.createUser(payload));
   }, [qc]);
 
   const apiDeleteUser = useCallback(async (id: string) => {
-    await withOptimism(qc, [['users']],
+    await withOptimism(qc, [['users'], ['stats']],
       () => cachePatch.removeUser(qc, id),
       () => api.deleteUser(id));
   }, [qc]);
@@ -262,7 +262,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const apiSetUserState = useCallback(async (id: string, state: 'active' | 'inactive') => {
-    await withOptimism(qc, [['users']],
+    await withOptimism(qc, [['users'], ['stats']],
       () => cachePatch.patchUser(qc, id, { active: state === 'active' }),
       () => api.setUserState(id, state));
   }, [qc]);
@@ -272,7 +272,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [qc]);
 
   const apiSetUserOrganization = useCallback(async (id: string, organizationId: string | undefined) => {
-    await withOptimism(qc, [['users']],
+    await withOptimism(qc, [['users'], ['stats']],
       () => cachePatch.patchUser(qc, id, { organizationId }),
       () => api.setUserOrganization(id, organizationId));
   }, [qc]);
@@ -290,7 +290,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [qc]);
 
   const apiDeleteGroup = useCallback(async (name: string) => {
-    await withOptimism(qc, [['groups'], ['groups-map'], ['users']],
+    await withOptimism(qc, [['groups'], ['groups-map'], ['users'], ['stats']],
       () => cachePatch.removeGroup(qc, name),
       () => api.deleteGroup(name));
   }, [qc]);
