@@ -87,6 +87,7 @@ export function jinbeRuleToUi(r: JinbeAccessRule): AccessRule {
     mutators: r.mutators.map(m => m.handler),
     upstream: r.upstream?.url,
     stripPath: r.upstream?.strip_path,
+    raw: r,
   };
 }
 
