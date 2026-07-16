@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { I } from './Icons';
 import { accessLevelOf, LevelMeta } from '../../hooks/useRbac';
 
@@ -81,6 +81,47 @@ export function Modal({ open, onClose, title, eyebrow, children, footer, size = 
         {footer && <div className="modal-foot">{footer}</div>}
       </div>
     </div>
+  );
+}
+
+// Standard confirmation for destructive actions. Optional blast-radius line
+// ("affects N users") and optional type-to-confirm for high-impact actions.
+// One dialog for every delete/deactivate across the app (UX consistency).
+export function ConfirmDialog({
+  open, title, body, blastRadius, confirmLabel = "Confirm", danger = false,
+  requireText, onConfirm, onCancel, busy = false,
+}: {
+  open: boolean; title: string; body?: React.ReactNode; blastRadius?: React.ReactNode;
+  confirmLabel?: string; danger?: boolean; requireText?: string;
+  onConfirm: () => void; onCancel: () => void; busy?: boolean;
+}) {
+  const [typed, setTyped] = useState("");
+  useEffect(() => { if (open) setTyped(""); }, [open]);
+  const ready = !requireText || typed.trim() === requireText;
+  const dangerStyle = danger ? { background: "var(--red, #ef4444)", borderColor: "var(--red, #ef4444)", color: "#fff" } : undefined;
+  return (
+    <Modal open={open} onClose={onCancel} title={title}
+      footer={<>
+        <button className="btn" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button className="btn primary" style={dangerStyle} onClick={onConfirm} disabled={!ready || busy}>
+          {busy ? "Working…" : confirmLabel}
+        </button>
+      </>}>
+      {body && <div className="small" style={{ lineHeight: 1.6, color: "var(--ink-2)" }}>{body}</div>}
+      {blastRadius && (
+        <div className="panel" style={{ padding: "10px 12px", marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ width: 14, height: 14, display: "grid", placeItems: "center", color: "var(--warn)", flexShrink: 0 }}>{I.alert}</span>
+          <span className="small">{blastRadius}</span>
+        </div>
+      )}
+      {requireText && (
+        <div style={{ marginTop: 12 }}>
+          <label className="input-label">Type <span className="mono">{requireText}</span> to confirm</label>
+          <input className="input mono" autoFocus value={typed} onChange={e => setTyped(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && ready && !busy) onConfirm(); }} style={{ width: "100%" }} />
+        </div>
+      )}
+    </Modal>
   );
 }
 
