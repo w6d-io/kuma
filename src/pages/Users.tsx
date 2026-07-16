@@ -154,7 +154,13 @@ export function UserDrawer() {
   const [newGroups, setNewGroups] = useState<string[]>([]);
   const [sendInvite, setSendInvite] = useState(true);
 
+  // Seed the form from the user ONLY when the drawer targets a different user
+  // (keyed on id). Deliberately NOT on user?.groups/organizationId: those change
+  // on optimistic refetch, and re-seeding would wipe the operator's in-progress
+  // edits. eslint-disable is the correct call here, not adding the deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setGroups(user?.groups || []); }, [user?.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setOrganizationId(user?.organizationId || ""); }, [user?.id]);
   useEffect(() => {
     setDrawerTab("groups");

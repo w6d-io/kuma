@@ -168,10 +168,6 @@ export const api = {
   deleteAccessRule: (id: string) =>
     request<void>(`/admin/rbac/access-rules/${id}`, { method: 'DELETE' }),
 
-  // ─── Matrix / Bindings ───
-  getUsersMatrix: () =>
-    request<{ users: JinbeUserMatrix[] }>(`/admin/rbac/users`).then(r => r.users),
-
   // ─── History (git commits) ───
   getHistory: () =>
     request<{ commits: JinbeCommit[] }>(`/admin/rbac/history`).then(r => r.commits),
@@ -359,12 +355,6 @@ export interface JinbeAccessRule {
   authenticators: { handler: string; config?: unknown }[];
   authorizer: { handler: string; config?: unknown };
   mutators: { handler: string; config?: unknown }[];
-}
-
-export interface JinbeUserMatrix {
-  email: string;
-  name: string;
-  groupMembership: Record<string, boolean>;
 }
 
 export interface JinbeCommit {

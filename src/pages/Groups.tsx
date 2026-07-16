@@ -89,9 +89,13 @@ export function GroupDrawer() {
   const [name, setName] = useState(isEdit && groupDrawer?.name ? groupDrawer.name : "");
   const [mapping, setMapping] = useState<Record<string, string[]>>(existing || {});
 
+  // Seed form when the drawer opens on a group (keyed on name+mode). `existing`
+  // is derived from the live cache and would re-seed on every optimistic edit,
+  // wiping in-progress changes — intentionally excluded.
   useEffect(() => {
     setName(isEdit && groupDrawer?.name ? groupDrawer.name : "");
     setMapping(existing || {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupDrawer?.name, groupDrawer?.mode]);
 
   if (!groupDrawer) return null;

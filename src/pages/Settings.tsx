@@ -48,7 +48,7 @@ export function SettingsPage() {
           setNewService('');
           pushToast('Mapping saved', { sub: `${orgId.slice(0, 8)}… → ${svc}` });
         },
-        onError: (e: any) => pushToast(e.message || 'Failed to save mapping', { err: true }),
+        onError: (e: Error) => pushToast(e.message || 'Failed to save mapping', { err: true }),
       },
     );
   }
@@ -56,7 +56,7 @@ export function SettingsPage() {
   function handleDeleteMapping(orgId: string) {
     deleteMapping.mutate(orgId, {
       onSuccess: () => pushToast('Mapping removed'),
-      onError: (e: any) => pushToast(e.message || 'Failed to remove mapping', { err: true }),
+      onError: (e: Error) => pushToast(e.message || 'Failed to remove mapping', { err: true }),
     });
   }
 

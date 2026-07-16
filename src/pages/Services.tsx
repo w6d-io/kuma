@@ -93,6 +93,9 @@ export function ServiceDrawer() {
   // edit danger
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Seed form when the drawer opens (keyed on mode+serviceName). editSvc/editRule
+  // derive from the live cache and would re-seed on optimistic edits, wiping the
+  // operator's changes — intentionally excluded.
   useEffect(() => {
     if (!serviceDrawer) return;
     setConfirmDelete(false);
@@ -106,6 +109,7 @@ export function ServiceDrawer() {
       setMatchMethods(editRule?.match.methods || ["GET", "POST", "PUT", "PATCH", "DELETE"]);
       setStripPath(editRule?.stripPath || "");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceDrawer?.mode, serviceDrawer?.serviceName]);
 
   if (!serviceDrawer) return null;
