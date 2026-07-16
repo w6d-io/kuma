@@ -328,11 +328,12 @@ export function UserDrawer() {
     <Drawer
       open={!!userDrawer}
       onClose={() => setUserDrawer(null)}
-      eyebrow="PATCH /admin/identities/{id}"
+      size="lg"
+      eyebrow={editing ? "Edit user" : "Assign access"}
       title={editing ? `Edit · ${user?.name}` : "Assign user to group"}
       footer={
         <>
-          <span className="small muted mono">metadata_admin.groups</span>
+          <span className="small muted">Changes apply immediately.</span>
           <div className="row">
             <button className="btn" onClick={() => setUserDrawer(null)}>Cancel</button>
             {drawerTab === "groups" && <button className="btn primary" onClick={saveGroups} disabled={!user}>Apply change</button>}
@@ -361,19 +362,27 @@ export function UserDrawer() {
           </div>
           {editing && (
             <div className="drawer-tabs">
-              <button className={drawerTab === "groups" ? "on" : ""} onClick={() => setDrawerTab("groups")}>Groups</button>
-              <button className={drawerTab === "tree" ? "on" : ""} onClick={() => setDrawerTab("tree")}>Access</button>
-              <button className={drawerTab === "metadata" ? "on" : ""} onClick={() => setDrawerTab("metadata")}>Metadata</button>
+              <button className={drawerTab === "groups" ? "on" : ""} onClick={() => setDrawerTab("groups")}>Access</button>
+              <button className={drawerTab === "metadata" ? "on" : ""} onClick={() => setDrawerTab("metadata")}>Organization</button>
               <button className={drawerTab === "danger" ? "on" : ""} onClick={() => { setDrawerTab("danger"); setConfirmDelete(false); }}>Danger</button>
             </div>
           )}
           {drawerTab === "groups" && (
             <>
-              <div className="panel" style={{ padding: 0 }}>{groupRows(groups, toggleGroup, user?.mfa)}</div>
-              <div className="panel" style={{ padding: 14, marginTop: 8, display: "flex", alignItems: "center", gap: 12 }}>
+              <div className="grid" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 12, alignItems: "start" }}>
+                <div>
+                  <label className="input-label">Groups</label>
+                  <div className="panel" style={{ padding: 0 }}>{groupRows(groups, toggleGroup, user?.mfa)}</div>
+                </div>
+                <div>
+                  <label className="input-label">Resulting access</label>
+                  <div className="panel" style={{ padding: 12 }}><PermTree user={{ ...user, groups }} state={state} /></div>
+                </div>
+              </div>
+              <div className="panel" style={{ padding: 14, marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 500, fontSize: 12.5 }}>Recovery email</div>
-                  <div className="small muted">Send password-reset link via Kratos</div>
+                  <div className="small muted">Send a password-reset link.</div>
                 </div>
                 <button
                   className="btn"
@@ -396,7 +405,6 @@ export function UserDrawer() {
               </div>
             </>
           )}
-          {drawerTab === "tree" && <PermTree user={{ ...user, groups }} state={state} />}
           {drawerTab === "metadata" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div>
