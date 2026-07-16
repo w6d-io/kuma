@@ -130,7 +130,7 @@ function PermPicker({ svc, allRoles, apiPerms, current, onToggle, onAdd }: PermP
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function RolesPage() {
-  const { state, setState, activeService, setActiveService, isLive } = useApp();
+  const { state, activeService, setActiveService, isLive } = useApp();
   const applyChange = useApplyChange();
   // Guard against an empty services list (still loading, 403, or empty tenant):
   // `state.services[0].name` used to throw here. Prefer the active service when
@@ -162,12 +162,11 @@ export function RolesPage() {
 
   const role = svcRoles[selectedRole];
 
-  const applyRoleUpdate = (updated: Record<string, string[]>) => {
-    if (isLive) return updateServiceRoles.mutateAsync(updated).then(() => {
-      setState(s => ({ ...s, roles: { ...s.roles, [svc]: updated } }));
-    }) as Promise<void>;
-    setState(s => ({ ...s, roles: { ...s.roles, [svc]: updated } }));
-  };
+  // The scoped mutation hook invalidates ['roles', svc] on success, so the
+  // composite store re-derives from the server truth. No local setState mirror
+  // (STORE-4) — avoids the double-write / rubber-band on refetch.
+  const applyRoleUpdate = (updated: Record<string, string[]>): Promise<void> =>
+    updateServiceRoles.mutateAsync(updated).then(() => undefined);
 
   const togglePerm = (p: string) => {
     if (!role || role.includes("*")) return;
@@ -192,12 +191,9 @@ export function RolesPage() {
     if (!name || svcRoles[name] !== undefined) return;
     applyChange("create", `role:${svc}.${name}`, () => {
       const updated = { ...svcRoles, [name]: [] as string[] };
-      if (isLive) return updateServiceRoles.mutateAsync(updated).then(() => {
-        setState(s => ({ ...s, roles: { ...s.roles, [svc]: updated } }));
+      return updateServiceRoles.mutateAsync(updated).then(() => {
         setSelectedRole(name);
-      }) as Promise<void>;
-      setState(s => ({ ...s, roles: { ...s.roles, [svc]: updated } }));
-      setSelectedRole(name);
+      });
     });
     setNewRoleName("");
     setAddingRole(false);

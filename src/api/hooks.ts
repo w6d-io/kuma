@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
-import type { RolesMap, AuditEvent } from './types';
+import type { RolesMap, RouteMapsMap, AuditEvent } from './types';
 import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents } from './transforms';
 
 // Transforms (jinbe API shape → Kuma UI shape) live in ./transforms — the
@@ -90,6 +90,32 @@ export function useServiceRoutes(serviceName: string) {
     queryKey: ['routes', serviceName],
     queryFn: () => api.getServiceRoutes(serviceName),
     enabled: !!serviceName,
+  });
+}
+
+export function useAllRoutes(serviceNames: string[]) {
+  // Stable key (same rationale as useAllRoles/PERF-6): a sorted signature, not
+  // the spread array. Fetches every service's route_map in parallel and folds
+  // them into a { service → RouteEntry[] } map for the composite store.
+  const signature = [...serviceNames].sort().join(',');
+  return useQuery({
+    queryKey: ['all-routes', signature],
+    queryFn: async (): Promise<RouteMapsMap> => {
+      const results = await Promise.all(
+        serviceNames.map(async name => {
+          try {
+            const { rules } = await api.getServiceRoutes(name);
+            return { name, rules: rules || [] };
+          } catch {
+            return { name, rules: [] };
+          }
+        })
+      );
+      const map: RouteMapsMap = {};
+      for (const r of results) map[r.name] = r.rules;
+      return map;
+    },
+    enabled: serviceNames.length > 0,
   });
 }
 
@@ -193,7 +219,12 @@ export function useUpdateServiceRoutes(serviceName: string) {
   return useMutation({
     mutationFn: (rules: { method: string; path: string; permission?: string }[]) =>
       api.updateServiceRoutes(serviceName, rules),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['routes', serviceName] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['routes', serviceName] });
+      // The composite store reads route maps via the aggregate ['all-routes']
+      // query, so it must be invalidated too or the UI won't reflect the edit.
+      qc.invalidateQueries({ queryKey: ['all-routes'] });
+    },
   });
 }
 
@@ -206,13 +237,19 @@ export function useUpdateAccessRule() {
   });
 }
 
+// NOTE on aggregate keys: the composite store (api/store.ts) reads roles/routes
+// through useAllRoles/useAllRoutes (keys ['all-roles']/['all-routes']). Mutation
+// hooks therefore invalidate BOTH the per-service key (for any page using the
+// scoped hook directly) and the aggregate key (for the store).
+
 export function useUpdateServiceRoles(serviceName: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (roles: Record<string, string[]>) => api.updateServiceRoles(serviceName, roles),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['roles', serviceName] });
-      qc.invalidateQueries({ queryKey: ['rbac-all'] });
+      // Composite store reads roles via the aggregate ['all-roles'] query.
+      qc.invalidateQueries({ queryKey: ['all-roles'] });
     },
   });
 }

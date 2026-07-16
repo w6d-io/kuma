@@ -92,7 +92,7 @@ export function UsersPage() {
 }
 
 export function UserDrawer() {
-  const { userDrawer, setUserDrawer, state, setState, isLive, pushToast, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserOrganization, apiSendRecoveryEmail } = useApp();
+  const { userDrawer, setUserDrawer, state, pushToast, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserOrganization, apiSendRecoveryEmail } = useApp();
   const applyChange = useApplyChange();
   const { data: session } = useSession();
   // Privilege-escalation guard mirror: only super_admin actors can grant
@@ -137,19 +137,13 @@ export function UserDrawer() {
     const changed = JSON.stringify(groups.sort()) !== JSON.stringify((user.groups || []).sort());
     if (!changed) { setUserDrawer(null); return; }
     const summary = `${user.email} → [${groups.join(", ") || "no groups"}]`;
-    const mutator = isLive
-      ? () => apiSetUserGroups(user.email, groups)
-      : () => { setState(s => ({ ...s, users: s.users.map(x => x.id === user.id ? { ...x, groups } : x) })); };
-    const ok = applyChange("assign", summary, mutator);
+    const ok = applyChange("assign", summary, () => apiSetUserGroups(user.email, groups));
     if (ok) setUserDrawer(null);
   };
 
   const create = () => {
     if (!newEmail || !newName) return;
-    const mutator = isLive
-      ? () => apiCreateUser({ email: newEmail, name: newName, groups: newGroups, sendInvite })
-      : () => { setState(s => ({ ...s, users: [...s.users, { id: `local-${Date.now()}`, name: newName, email: newEmail, groups: newGroups, title: "", active: true, last: "just now" }] })); };
-    const ok = applyChange("create", newEmail, mutator);
+    const ok = applyChange("create", newEmail, () => apiCreateUser({ email: newEmail, name: newName, groups: newGroups, sendInvite }));
     if (ok) setUserDrawer(null);
   };
 
@@ -157,27 +151,18 @@ export function UserDrawer() {
     if (!user) return;
     const next: 'active' | 'inactive' = user.active ? 'inactive' : 'active';
     const verb = next === 'inactive' ? 'deactivate' : 'reactivate';
-    const mutator = isLive
-      ? () => apiSetUserState(user.id, next)
-      : () => { setState(s => ({ ...s, users: s.users.map(x => x.id === user.id ? { ...x, active: next === 'active' } : x) })); };
-    applyChange(verb, user.email, mutator);
+    applyChange(verb, user.email, () => apiSetUserState(user.id, next));
   };
 
   const saveMetadata = () => {
     if (!user) return;
-    const mutator = isLive
-      ? () => apiSetUserOrganization(user.id, organizationId || undefined)
-      : () => { setState(s => ({ ...s, users: s.users.map(x => x.id === user.id ? { ...x, organizationId: organizationId || undefined } : x) })); };
-    const ok = applyChange("metadata", user.email, mutator);
+    const ok = applyChange("metadata", user.email, () => apiSetUserOrganization(user.id, organizationId || undefined));
     if (ok) setUserDrawer(null);
   };
 
   const doDelete = () => {
     if (!user) return;
-    const mutator = isLive
-      ? () => apiDeleteUser(user.id)
-      : () => { setState(s => ({ ...s, users: s.users.filter(x => x.id !== user.id) })); };
-    const ok = applyChange("delete", user.email, mutator);
+    const ok = applyChange("delete", user.email, () => apiDeleteUser(user.id));
     if (ok) setUserDrawer(null);
   };
 
@@ -350,7 +335,7 @@ export function UserDrawer() {
                 </div>
                 <button
                   className="btn"
-                  disabled={!isLive || sendingRecovery}
+                  disabled={sendingRecovery}
                   onClick={async () => {
                     if (!user) return;
                     setSendingRecovery(true);
