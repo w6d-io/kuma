@@ -37,10 +37,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export function RulesPage({ svc, embedded = false }: { svc?: string; embedded?: boolean } = {}) {
+export function RulesPage({ svc, embedded = false, unassigned = false }: { svc?: string; embedded?: boolean; unassigned?: boolean } = {}) {
   const { state, apiUpdateService } = useApp();
   const applyChange = useApplyChange();
-  const rules = svc ? state.accessRules.filter(r => r.service === svc) : state.accessRules;
+  const registered = new Set(state.services.map(s => s.name));
+  const rules = unassigned
+    ? state.accessRules.filter(r => !registered.has(r.service))
+    : svc ? state.accessRules.filter(r => r.service === svc) : state.accessRules;
   const [selectedId, setSelectedId] = useState(rules[0]?.id);
   const rule = rules.find(r => r.id === selectedId) || rules[0];
 
@@ -55,7 +58,7 @@ export function RulesPage({ svc, embedded = false }: { svc?: string; embedded?: 
   // ONE rule (its match/upstream ARE the service's routing). With multiple rules
   // (CORS preflight + protected API + app…), a service-level rewrite would
   // collapse the others — so multi-rule services are read-only here.
-  const canEdit = embedded && !!svc && svc !== 'global' && !svcObj?.system && rules.length === 1;
+  const canEdit = embedded && !!svc && svc !== 'global' && !svcObj?.system && rules.length === 1 && !unassigned;
 
   const [editing, setEditing] = useState(false);
   const [dMethods, setDMethods] = useState<string[]>([]);
@@ -95,7 +98,9 @@ export function RulesPage({ svc, embedded = false }: { svc?: string; embedded?: 
       <div className="panel mb-12" style={{ padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'center' }}>
         <span style={{ width: 15, height: 15, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', flexShrink: 0 }}>{I.info}</span>
         <span className="small muted">
-          {canEdit
+          {unassigned
+            ? <>These gateway rules aren't tied to a registered service (infrastructure or legacy rules) — read-only.</>
+            : canEdit
             ? <>Match &amp; upstream regenerate this service's gateway rule when you save. Authentication &amp; authorization are managed by your infrastructure.</>
             : svcObj?.system
               ? <>System service — its gateway rule is managed by the platform (read-only).</>
@@ -113,7 +118,7 @@ export function RulesPage({ svc, embedded = false }: { svc?: string; embedded?: 
         <div className="grid" style={{ gridTemplateColumns: "300px 1fr", gap: 14 }}>
           <div className="panel" style={{ padding: 0 }}>
             <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--ink-3)" }}>{svc ? `${rules.length} rule${rules.length !== 1 ? 's' : ''}` : 'Rules'}</div>
-            {embedded && rules.length > 1 && (
+            {embedded && !unassigned && rules.length > 1 && (
               <div className="small muted" style={{ padding: "8px 14px", borderBottom: "1px solid var(--line)", lineHeight: 1.5 }}>
                 This service's surface is split into {rules.length} rules (e.g. CORS preflight, the protected API, the app) — each matches its own paths and is protected independently.
               </div>
@@ -122,7 +127,7 @@ export function RulesPage({ svc, embedded = false }: { svc?: string; embedded?: 
               const s = authzStatus(r.authorizer);
               return (
                 <button key={r.id} onClick={() => setSelectedId(r.id)} style={{ width: "100%", textAlign: "left", padding: "10px 14px", border: "none", borderBottom: "1px solid var(--line)", background: r.id === rule?.id ? "var(--panel-2)" : "transparent", color: "var(--ink)", cursor: "pointer" }}>
-                  <div style={{ fontSize: 12.5, fontWeight: r.id === rule?.id ? 600 : 500 }}>{embedded ? ruleLabel(r.id, svc) : r.service}</div>
+                  <div className={unassigned ? "mono" : undefined} style={{ fontSize: 12.5, fontWeight: r.id === rule?.id ? 600 : 500 }}>{unassigned ? r.id : embedded ? ruleLabel(r.id, svc) : r.service}</div>
                   <div className="small mt-4"><Chip tone={s.tone} title={s.hint}>{s.label}</Chip></div>
                 </button>
               );
@@ -131,7 +136,7 @@ export function RulesPage({ svc, embedded = false }: { svc?: string; embedded?: 
           {rule && (
             <div className="panel">
               <div className="panel-head">
-                <div style={{ minWidth: 0, flex: 1 }}><h3>{embedded ? ruleLabel(rule.id, svc) : <span className="mono">{rule.service}</span>}</h3><div className="sub">Matches these methods &amp; paths, then forwards to the service</div></div>
+                <div style={{ minWidth: 0, flex: 1 }}><h3>{unassigned ? <span className="mono">{rule.id}</span> : embedded ? ruleLabel(rule.id, svc) : <span className="mono">{rule.service}</span>}</h3><div className="sub">Matches these methods &amp; paths, then forwards to the service</div></div>
                 <div className="row" style={{ gap: 8 }}>
                   <Chip tone={authzStatus(rule.authorizer).tone} title={authzStatus(rule.authorizer).hint}>{authzStatus(rule.authorizer).label}</Chip>
                   {canEdit && (editing ? (

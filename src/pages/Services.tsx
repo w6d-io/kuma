@@ -33,7 +33,12 @@ function svcSummary(state: ReturnType<typeof useApp>['state'], name: string) {
 export function ServicesPage() {
   const { state, setServiceDrawer, activeService, setActiveService, isLoading, apiError } = useApp();
   const names = state.services.map(s => s.name);
-  const sel = activeService && names.includes(activeService) ? activeService : (names[0] ?? "");
+  // Gateway rules whose (re-associated) service isn't in the registry — infra /
+  // legacy rules that would otherwise be invisible in every tab.
+  const orphanRules = state.accessRules.filter(r => !names.includes(r.service));
+  const UNASSIGNED = '__unassigned__';
+  const isUnassigned = activeService === UNASSIGNED && orphanRules.length > 0;
+  const sel = isUnassigned ? UNASSIGNED : (activeService && names.includes(activeService) ? activeService : (names[0] ?? ""));
   const service = state.services.find(s => s.name === sel);
   const [tab, setTab] = useState<SvcTab>('overview');
   const [q, setQ] = useState("");
@@ -98,6 +103,18 @@ export function ServicesPage() {
                 {regular.map(renderRow)}
                 {sys.length > 0 && <div className="nav-section" style={{ padding: '10px 12px 4px', borderTop: regular.length ? '1px solid var(--line)' : undefined }}>System</div>}
                 {sys.map(renderRow)}
+                {orphanRules.length > 0 && (
+                  <>
+                    <div className="nav-section" style={{ padding: '10px 12px 4px', borderTop: '1px solid var(--line)' }}>Other</div>
+                    <button onClick={() => setActiveService(UNASSIGNED)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderBottom: '1px solid var(--line)', background: isUnassigned ? 'var(--panel-2)' : 'transparent', color: 'var(--ink)', cursor: 'pointer', display: 'flex', gap: 9, alignItems: 'center' }}>
+                      <span style={{ color: 'var(--warn)', flexShrink: 0, display: 'grid', placeItems: 'center', width: 15, height: 15 }}>{I.alert}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontWeight: isUnassigned ? 600 : 500, fontSize: 12.5 }}>Unassigned rules</span>
+                        <div className="small muted mt-4" title="Gateway rules not tied to a registered service">{orphanRules.length} gateway rule{orphanRules.length !== 1 ? 's' : ''} with no service</div>
+                      </div>
+                    </button>
+                  </>
+                )}
               </>
             );
           })()}
@@ -105,7 +122,14 @@ export function ServicesPage() {
 
         {/* Right — the selected service and its nested config */}
         <div style={{ minWidth: 0 }}>
-          {service && (
+          {isUnassigned ? (
+            <>
+              <div className="panel-head" style={{ marginBottom: 12 }}>
+                <div><h3>Unassigned gateway rules</h3><div className="sub">Rules whose service isn't in your registry — infrastructure or legacy routing</div></div>
+              </div>
+              <RulesPage unassigned embedded />
+            </>
+          ) : service && (
             <>
               <div className="panel-head" style={{ marginBottom: 12 }}>
                 <div style={{ minWidth: 0 }}>
