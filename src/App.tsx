@@ -9,6 +9,7 @@ import { UsersPage, UserDrawer } from './pages/Users';
 import { OrgAdminPage } from './pages/OrgAdmin';
 import { GroupsPage, GroupDrawer } from './pages/Groups';
 import { ServicesPage, ServiceDrawer } from './pages/Services';
+import { OrganizationsPage } from './pages/Organizations';
 import { GrantAccess } from './pages/GrantAccess';
 import { AuditPage } from './pages/Audit';
 import { SettingsPage } from './pages/Settings';
@@ -29,6 +30,7 @@ const NAV: NavItem[] = [
   { id: "users",     name: "Users",     ico: I.users,   section: "Platform", perms: ["admin:read"] },
   { id: "groups",    name: "Groups",    ico: I.group,   section: "Platform", perms: ["admin:read"] },
   { id: "services",  name: "Services",  ico: I.service, section: "Policy",   perms: ["admin:read"] },
+  { id: "organizations", name: "Organizations", ico: I.globe, section: "Policy", perms: ["admin:read"] },
   { id: "audit",     name: "Audit log", ico: I.audit,   section: "Changes",  perms: ["admin:read"] },
   { id: "settings",  name: "Settings",  ico: I.cog,     section: "Changes",  perms: [] },
   // Delegated org-admin self-service. perms [] = visible to any authenticated
@@ -432,6 +434,7 @@ function AppShell() {
             {page === "users" && <UsersPage />}
             {page === "groups" && <GroupsPage />}
             {(page === "services" || page === "roles" || page === "routes" || page === "rules") && <ServicesPage />}
+            {page === "organizations" && <OrganizationsPage />}
             {page === "audit" && <AuditPage />}
             {page === "settings" && <SettingsPage />}
             {page === "orgadmin" && <OrgAdminPage />}

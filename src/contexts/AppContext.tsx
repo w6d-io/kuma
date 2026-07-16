@@ -154,7 +154,7 @@ const DIRECTORY_PAGES: ReadonlySet<PageId> = new Set<PageId>([
 
 const pageFromHash = (): PageId => {
   const hash = window.location.hash.replace(/^#\/?/, '');
-  const valid: PageId[] = ['dashboard','simulator','users','groups','services','roles','routes','rules','audit','settings','orgadmin'];
+  const valid: PageId[] = ['dashboard','simulator','users','groups','services','roles','routes','rules','audit','settings','orgadmin','organizations'];
   return valid.includes(hash as PageId) ? (hash as PageId) : 'dashboard';
 };
 
