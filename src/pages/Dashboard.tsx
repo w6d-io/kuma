@@ -2,12 +2,12 @@ import React, { useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useSession, useAudit } from '../api/hooks';
 import { I } from '../components/ui/Icons';
-import { Chip, Avatar, Pipeline, } from '../components/ui/Primitives';
+import { Chip, Avatar } from '../components/ui/Primitives';
 import { ROLE_LEVEL } from '../hooks/useRbac';
 
 export function DashboardPage() {
   const app = useApp();
-  const { state, setPage, setUserDrawer, setGroupDrawer, setServiceDrawer, pushToast, pipeline, apiError } = app;
+  const { state, setPage, setUserDrawer, setGroupDrawer, setServiceDrawer, apiError } = app;
   // Real audit stream (not the SEED-polluted AppContext.audit mirror — same
   // fix as the Audit page; "Recent changes" must show real events only).
   const { data: audit = [] } = useAudit();
@@ -19,17 +19,14 @@ export function DashboardPage() {
   const activeUsers = state.users.filter(u => u.active).length;
   const totalGroups = Object.keys(state.groups).length;
   const totalServices = state.services.length;
-  const totalPermissions = Object.values(state.roles).reduce((acc, svc) => {
-    return acc + Object.values(svc).reduce((a, perms) => a + (perms.includes("*") ? 1 : perms.length), 0);
-  }, 0);
 
   const issues = useMemo(() => {
     const out: { kind: string; msg: string; where: string }[] = [];
     Object.entries(state.groups).forEach(([g, map]) => {
       Object.entries(map).forEach(([svc, roles]) => {
         const svcRoles = state.roles[svc];
-        if (!svcRoles) { out.push({ kind: "err", msg: `group "${g}" references service "${svc}" which has no roles file`, where: "groups.json" }); return; }
-        roles.forEach(r => { if (!svcRoles[r]) out.push({ kind: "err", msg: `group "${g}" → ${svc}:${r} — role not defined`, where: "groups.json" }); });
+        if (!svcRoles) { out.push({ kind: "err", msg: `group "${g}" references service "${svc}" which has no roles`, where: svc }); return; }
+        roles.forEach(r => { if (!svcRoles[r]) out.push({ kind: "err", msg: `group "${g}" → ${svc}:${r} — role not defined`, where: `${g}` }); });
       });
     });
     Object.entries(state.routeMaps).forEach(([svc, routes]) => {
@@ -38,44 +35,33 @@ export function DashboardPage() {
       Object.values(svcRoles).forEach(perms => perms.forEach(p => allPerms.add(p)));
       routes.forEach(r => {
         if (r.permission && !allPerms.has(r.permission) && !Object.values(svcRoles).some(ps => ps.includes("*"))) {
-          out.push({ kind: "warn", msg: `${svc}: ${r.method} ${r.path} requires "${r.permission}" — no role grants it`, where: `route_map.${svc}.json` });
+          out.push({ kind: "warn", msg: `${svc}: ${r.method} ${r.path} requires "${r.permission}" — no role grants it`, where: svc });
         }
       });
     });
     state.users.forEach(u => {
-      u.groups.forEach(g => { if (!state.groups[g]) out.push({ kind: "err", msg: `user ${u.email} → group "${g}" does not exist`, where: "kratos" }); });
+      u.groups.forEach(g => { if (!state.groups[g]) out.push({ kind: "err", msg: `user ${u.email} → group "${g}" does not exist`, where: u.email }); });
     });
     return out;
   }, [state]);
 
+  // Real, permission-derived signals only. (The old "dormant > 7 days" signal
+  // was a regex over a display string that actually matched "≥ 1 day / never"
+  // — cut until there is a real last-active timestamp to key on.)
   const signals = useMemo(() => {
     const out: { id: string; label: string; value: number; total: number; tone: string; hint: string; onClick: () => void }[] = [];
-    const superAdmins = state.users.filter(u => u.groups.some(g => {
+    const wildcardHolders = state.users.filter(u => u.groups.some(g => {
       const gm = state.groups[g] || {};
-      return Object.values(gm).some(roles => roles.some(r => r === "admin" || r === "super_admin"));
+      return Object.entries(gm).some(([svc, roles]) => roles.some(r => (state.roles[svc]?.[r] || []).includes("*")));
     }));
-    out.push({ id: "super", label: "Super admin footprint", value: superAdmins.length, total: state.users.length, tone: superAdmins.length > 3 ? "warn" : "ok", hint: superAdmins.length > 3 ? "Above guideline of 3" : "Within guideline (≤3)", onClick: () => setPage("users") });
+    out.push({ id: "super", label: "Full-access users", value: wildcardHolders.length, total: state.users.length, tone: wildcardHolders.length > 3 ? "warn" : "ok", hint: wildcardHolders.length ? "Hold a wildcard (*) permission — review periodically" : "No user holds a wildcard", onClick: () => setPage("users") });
     const orphans = state.users.filter(u => u.groups.length === 0);
-    out.push({ id: "orphan", label: "Users without groups", value: orphans.length, total: state.users.length, tone: orphans.length ? "warn" : "ok", hint: orphans.length ? "Can't reach any route" : "Every user is assigned", onClick: () => setPage("users") });
+    out.push({ id: "orphan", label: "Users without groups", value: orphans.length, total: state.users.length, tone: orphans.length ? "warn" : "ok", hint: orphans.length ? "Can't reach anything until assigned" : "Every user is assigned", onClick: () => setPage("users") });
     let wildcards = 0;
     Object.entries(state.roles).forEach(([, m]) => { Object.entries(m).forEach(([, perms]) => { if (perms.includes("*")) wildcards++; }); });
-    out.push({ id: "wild", label: "Wildcard (*) roles", value: wildcards, total: Object.values(state.roles).reduce((a, m) => a + Object.keys(m).length, 0), tone: "info", hint: "Grants every permission — review periodically", onClick: () => setPage("services") });
-    const dormant = state.users.filter(u => /\d+d ago|never/.test(u.last)).length;
-    out.push({ id: "dormant", label: "Dormant > 7 days", value: dormant, total: state.users.length, tone: dormant > 3 ? "warn" : "info", hint: "Consider off-boarding review", onClick: () => setPage("users") });
+    out.push({ id: "wild", label: "Wildcard (*) roles", value: wildcards, total: Object.values(state.roles).reduce((a, m) => a + Object.keys(m).length, 0), tone: wildcards ? "info" : "ok", hint: "Grant every permission in their service", onClick: () => setPage("services") });
     return out;
   }, [state, setPage]);
-
-  const score = useMemo(() => {
-    let s = 100;
-    s -= issues.filter(i => i.kind === "err").length * 8;
-    s -= issues.filter(i => i.kind === "warn").length * 3;
-    const supers = signals.find(x => x.id === "super");
-    if (supers && supers.value > 3) s -= (supers.value - 3) * 4;
-    const orph = signals.find(x => x.id === "orphan");
-    if (orph) s -= orph.value * 2;
-    return Math.max(0, Math.min(100, s));
-  }, [issues, signals]);
-  const scoreTone = score >= 85 ? "ok" : score >= 65 ? "warn" : "err";
 
   const matrixServices = state.services.map(s => s.name).filter(n => n !== "global");
   const groupRows = Object.entries(state.groups)
@@ -90,20 +76,19 @@ export function DashboardPage() {
     })
     .sort((a, b) => b.sum - a.sum);
 
-  const scoreColor = scoreTone === "ok" ? "var(--ok)" : scoreTone === "warn" ? "var(--warn)" : "var(--err)";
-  const circ = 2 * Math.PI * 32;
-  const offset = circ * (1 - score / 100);
-
+  // A non-admin (e.g. a delegated org admin) legitimately has no access to the
+  // platform console — but their landing page must not be a red brick wall.
+  // Point them at the surface they *can* use instead of "Access denied".
   if (isForbidden) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', padding: 24 }}>
-        <div className="panel" style={{ maxWidth: 520, padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 14, borderColor: 'var(--red, #ef4444)' }}>
-          <span style={{ width: 44, height: 44, display: 'grid', placeItems: 'center', color: 'var(--red, #ef4444)' }}>{I.shield}</span>
-          <div style={{ fontWeight: 600, fontSize: 17 }}>Access denied</div>
+        <div className="panel" style={{ maxWidth: 520, padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 14 }}>
+          <span style={{ width: 44, height: 44, display: 'grid', placeItems: 'center', color: 'var(--accent)' }}>{I.globe}</span>
+          <div style={{ fontWeight: 600, fontSize: 17 }}>Manage your organization</div>
           <div className="small muted" style={{ lineHeight: 1.6 }}>
-            Your account does not have admin permissions. The RBAC console requires <code>admin:read</code>.
-            Ask an administrator to assign you to a group with that permission.
+            The platform console is for administrators. You can invite and manage the people in your organization from the Org Admin area.
           </div>
+          <button className="btn primary" onClick={() => setPage("orgadmin")}>Go to Org Admin</button>
         </div>
       </div>
     )
@@ -114,16 +99,12 @@ export function DashboardPage() {
       <div className="page-head">
         <div>
           <h1>Overview</h1>
-          <div className="sub">Authorization state · last synced {state.meta.lastSync}</div>
+          <div className="sub">{totalUsers} users · {totalGroups} groups · {totalServices} services</div>
         </div>
         <div className="page-actions">
           <button className="btn" onClick={() => setPage("simulator")}>
             <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.sparkle}</span>
             Simulate access
-          </button>
-          <button className="btn" onClick={() => { pipeline.run("manual resync"); pushToast("OPAL notify sent", { sub: "re-evaluating policies" }); }}>
-            <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.sync}</span>
-            Resync OPAL
           </button>
           <button className="btn primary" onClick={() => setUserDrawer({ mode: "assign" })}>
             <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.plus}</span>
@@ -132,51 +113,19 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Score + KPIs */}
-      <div className="grid mb-12" style={{ gridTemplateColumns: "1.15fr 2fr", gap: 10 }}>
-        <button className="panel security-score" onClick={() => setPage("audit")}>
-          <div className="sec-ring">
-            <svg width="88" height="88" viewBox="0 0 80 80">
-              <circle cx="40" cy="40" r="32" fill="none" stroke="var(--line)" strokeWidth="6" />
-              <circle cx="40" cy="40" r="32" fill="none" stroke={scoreColor} strokeWidth="6"
-                strokeDasharray={circ} strokeDashoffset={offset}
-                strokeLinecap="round" transform="rotate(-90 40 40)"
-                style={{ transition: "stroke-dashoffset 400ms ease" }} />
-            </svg>
-            <div className="sec-val" style={{ color: scoreColor }}>{score}</div>
-          </div>
-          <div className="sec-meta">
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-              <div>
-                <div className="small muted">Posture score</div>
-                <div style={{ fontSize: 15, fontWeight: 600, marginTop: 2 }}>
-                  {scoreTone === "ok" ? "Healthy" : scoreTone === "warn" ? "Needs review" : "Action required"}
-                </div>
-              </div>
-              <Chip tone={scoreTone}>{scoreTone === "ok" ? "ok" : scoreTone === "warn" ? "review" : "critical"}</Chip>
-            </div>
-            <div className="small muted mt-12">
-              {issues.filter(i => i.kind === "err").length} errors
-              <span className="dot"> · </span>
-              {issues.filter(i => i.kind === "warn").length} warnings
-              <span className="dot"> · </span> view audit →
-            </div>
-          </div>
-        </button>
-        <div className="grid g4" style={{ gap: 10 }}>
-          <StatBtn lbl="Users" val={state.usersLoading ? `${totalUsers}+` : totalUsers} sub={state.usersLoading ? 'loading more…' : `${activeUsers} active · ${totalUsers - activeUsers} inactive`} onClick={() => setPage("users")} />
-          <StatBtn lbl="Groups" val={totalGroups} sub="assigned via Kratos" onClick={() => setPage("groups")} />
-          <StatBtn lbl="Services" val={totalServices} sub="behind Oathkeeper" onClick={() => setPage("services")} />
-          <StatBtn lbl="Permissions" val={totalPermissions} sub={`across ${Object.keys(state.roles).length} role files`} onClick={() => setPage("roles")} />
-        </div>
+      {/* KPIs — real, actionable counts only */}
+      <div className="grid g3 mb-12" style={{ gap: 10 }}>
+        <StatBtn lbl="Users" val={state.usersLoading ? `${totalUsers}+` : totalUsers} sub={`${activeUsers} active · ${totalUsers - activeUsers} inactive`} onClick={() => setPage("users")} />
+        <StatBtn lbl="Groups" val={totalGroups} sub="bundles of roles across services" onClick={() => setPage("groups")} />
+        <StatBtn lbl="Services" val={totalServices} sub="apps with their own roles" onClick={() => setPage("services")} />
       </div>
 
-      {/* Risk signals */}
+      {/* Signals */}
       <div className="panel mb-12">
         <div className="panel-head">
-          <div><h3>Risk signals</h3><div className="sub">Quick read on access posture</div></div>
+          <div><h3>Signals</h3><div className="sub">Quick read on access posture</div></div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)" }}>
           {signals.map((s, i) => (
             <button key={s.id} onClick={s.onClick}
               style={{ padding: "14px 16px", textAlign: "left", background: "transparent", border: "none", borderLeft: i ? "1px solid var(--line)" : "none", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6 }}>
@@ -194,21 +143,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Pipeline */}
-      <div className="panel mb-12">
-        <div className="panel-head">
-          <div>
-            <h3>Config → OPAL → OPA → Oathkeeper</h3>
-            <div className="sub">Every change flows top to bottom. Current: {pipeline.stage === "idle" ? <span className="mono" style={{ color: "var(--ok)" }}>idle · in sync</span> : <span className="mono" style={{ color: "var(--warn)" }}>{pipeline.stage}…</span>}</div>
-          </div>
-          <Chip tone={pipeline.stage === "idle" ? "ok" : "warn"}>{pipeline.stage === "idle" ? "in sync" : "syncing"}</Chip>
-        </div>
-        <div style={{ padding: 14 }}>
-          <Pipeline stage={pipeline.stage} />
-        </div>
-      </div>
-
-      {/* Matrix + Policy health */}
+      {/* Matrix + Needs attention */}
       <div className="grid g2 mb-12" style={{ gridTemplateColumns: "1.55fr 1fr", gap: 10 }}>
         <div className="panel">
           <div className="panel-head">
@@ -255,7 +190,7 @@ export function DashboardPage() {
 
         <div className="panel">
           <div className="panel-head">
-            <div><h3>Policy health</h3><div className="sub">{issues.length === 0 ? "no integrity issues" : `${issues.length} issue${issues.length > 1 ? "s" : ""}`}</div></div>
+            <div><h3>Needs attention</h3><div className="sub">{issues.length === 0 ? "no integrity issues" : `${issues.length} issue${issues.length > 1 ? "s" : ""}`}</div></div>
             {issues.length === 0 ? <Chip tone="ok">healthy</Chip> : <Chip tone="warn">{issues.length}</Chip>}
           </div>
           <div style={{ padding: 0 }}>
@@ -264,7 +199,7 @@ export function DashboardPage() {
                 <span style={{ color: "var(--ok)" }}>{I.check}</span>
                 <div>
                   <div style={{ color: "var(--ink-2)", fontSize: 12.5 }}>All groups reference valid roles.</div>
-                  <div className="small muted mt-4">Every permission in route maps is granted by at least one role.</div>
+                  <div className="small muted mt-4">Every permission in a route is granted by at least one role.</div>
                 </div>
               </div>
             ) : (
@@ -288,7 +223,7 @@ export function DashboardPage() {
       <div className="grid g2 mb-12" style={{ gridTemplateColumns: "1.4fr 1fr", gap: 10 }}>
         <div className="panel">
           <div className="panel-head">
-            <div><h3>Recent changes</h3><div className="sub">Applied through the pipeline</div></div>
+            <div><h3>Recent changes</h3><div className="sub">Latest configuration changes</div></div>
             <button className="btn ghost sm" onClick={() => setPage("audit")}>View all →</button>
           </div>
           <table className="table">
@@ -305,6 +240,9 @@ export function DashboardPage() {
                   </td>
                 </tr>
               ))}
+              {audit.length === 0 && (
+                <tr><td colSpan={4} className="muted small" style={{ padding: 16 }}>No changes recorded yet.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -312,10 +250,8 @@ export function DashboardPage() {
         <div className="panel">
           <div className="panel-head"><div><h3>Quick actions</h3><div className="sub">Common operations</div></div></div>
           <div className="panel-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <QuickAction ico={I.sparkle} title="Simulate access" sub="Dry-run any user × route" onClick={() => setPage("simulator")} />
-            <QuickAction ico={I.users} title="Assign to group" sub="metadata_admin.groups" onClick={() => setUserDrawer({ mode: "assign" })} />
-            <QuickAction ico={I.group} title="New group" sub="POST /rbac/groups" onClick={() => setGroupDrawer({ mode: "create" })} />
-            <QuickAction ico={I.service} title="Register service" sub="roles + route_map + rule" onClick={() => setServiceDrawer({ mode: "create" })} />
+            <QuickAction ico={I.group} title="New group" sub="Bundle roles across services" onClick={() => setGroupDrawer({ mode: "create" })} />
+            <QuickAction ico={I.service} title="Register service" sub="Add an app with its own roles" onClick={() => setServiceDrawer({ mode: "create" })} />
           </div>
         </div>
       </div>
@@ -339,7 +275,7 @@ function QuickAction({ ico, title, sub, onClick }: { ico: React.ReactNode; title
       <span className="quick-action-ico">{ico}</span>
       <div>
         <div style={{ fontWeight: 500, fontSize: 12.5 }}>{title}</div>
-        <div className="small muted mono mt-4">{sub}</div>
+        <div className="small muted mt-4">{sub}</div>
       </div>
     </button>
   );

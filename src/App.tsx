@@ -407,7 +407,11 @@ function AppShell() {
     const nav = NAV.find((n) => n.id === page)
     if (!nav) return
     if (!hasAnyPerm(session?.permissions, nav.perms)) {
-      setPage('dashboard')
+      // Land the user on a surface they can actually use. Platform admins get
+      // Overview; a delegated org admin (no admin:read) gets Org Admin instead
+      // of Overview's "you can't be here" state.
+      const canAdmin = !!session?.permissions?.some((p) => p === '*' || p === 'admin:read')
+      setPage(canAdmin ? 'dashboard' : 'orgadmin')
     }
   }, [page, sessionReady, session?.permissions, setPage])
 

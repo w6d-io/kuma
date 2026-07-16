@@ -62,7 +62,7 @@ export function ServicesPage() {
                     <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.edit}</span> Edit
                   </button>
                 )}
-                <span className="small muted mono">since {s.createdAt}</span>
+                {s.createdAt && <span className="small muted mono">since {s.createdAt}</span>}
               </div>
             </div>
           );
