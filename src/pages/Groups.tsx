@@ -82,7 +82,7 @@ export function GroupsPage() {
 }
 
 export function GroupDrawer() {
-  const { groupDrawer, setGroupDrawer, state, setState, isLive, apiCreateGroup, apiUpdateGroup, apiDeleteGroup } = useApp();
+  const { groupDrawer, setGroupDrawer, state, apiCreateGroup, apiUpdateGroup, apiDeleteGroup } = useApp();
   const applyChange = useApplyChange();
   const isEdit = groupDrawer?.mode === "edit";
   const existing = isEdit && groupDrawer.name ? state.groups[groupDrawer.name] : null;
@@ -113,33 +113,18 @@ export function GroupDrawer() {
   const save = () => {
     if (!validName) return;
     const summary = isEdit ? `group:${name} updated` : `group:${name} created`;
-    const mutator = isLive
-      ? () => isEdit ? apiUpdateGroup(name, mapping) : apiCreateGroup(name, mapping)
-      : () => {
-          setState(s => {
-            const next = { ...s.groups };
-            if (isEdit && groupDrawer.name && name !== groupDrawer.name) delete next[groupDrawer.name];
-            next[name] = mapping;
-            return { ...s, groups: next };
-          });
-        };
-    const ok = applyChange(isEdit ? "update" : "create", summary, mutator);
+    const ok = applyChange(
+      isEdit ? "update" : "create",
+      summary,
+      () => isEdit ? apiUpdateGroup(name, mapping) : apiCreateGroup(name, mapping),
+    );
     if (ok) setGroupDrawer(null);
   };
 
   const remove = () => {
     if (!groupDrawer.name) return;
     const gName = groupDrawer.name;
-    const mutator = isLive
-      ? () => apiDeleteGroup(gName)
-      : () => {
-          setState(s => {
-            const next = { ...s.groups };
-            delete next[gName];
-            return { ...s, groups: next, users: s.users.map(u => ({ ...u, groups: u.groups.filter(g => g !== gName) })) };
-          });
-        };
-    const ok = applyChange("delete", `group:${gName} removed`, mutator);
+    const ok = applyChange("delete", `group:${gName} removed`, () => apiDeleteGroup(gName));
     if (ok) setGroupDrawer(null);
   };
 
