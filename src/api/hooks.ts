@@ -1,7 +1,19 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { api } from './client';
-import type { RolesMap, RouteMapsMap, AuditEvent } from './types';
+import type { RolesMap, RouteMapsMap, AuditEvent, User } from './types';
 import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents } from './transforms';
+
+// Directory page size. 100 (not the old 1000) keeps each round trip — and the
+// per-identity RBAC enrichment jinbe does per row (PERF-2) — bounded, so the
+// first page paints fast and the rest stream lazily.
+const USERS_PAGE_SIZE = 100;
+
+// RBAC config (groups/services/roles/routes/rules) is effectively static within
+// a session and only changes through mutations we invalidate explicitly, so a
+// long staleTime avoids needless background refetches (PERF-5). Audit is a live
+// stream and keeps the shorter global default (30s from main.tsx).
+const CONFIG_STALE_TIME = 5 * 60_000;
 
 // Transforms (jinbe API shape → Kuma UI shape) live in ./transforms — the
 // single source of truth. See PROBLEM-MAP STORE-6 for why they were merged.
@@ -14,20 +26,53 @@ import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents } from 
 
 // ─── Query hooks ───
 
-export function useUsers() {
-  return useQuery({
-    queryKey: ['users'],
-    queryFn: async () => {
-      const identities = await api.getUsers();
-      return identities.map(kratosToUser);
+/**
+ * Directory as a keyset-paginated infinite query (PERF-1/PERF-3). Replaces the
+ * old eager 100-page walk. `search` is an exact email match server-side
+ * (credentials_identifier / J9); name search is a client filter over loaded
+ * pages (see useUsers). Unrelated mutations no longer re-walk the directory
+ * because the query key is stable and invalidation is scoped (STORE-3).
+ */
+export function useUsersInfinite(search?: string) {
+  return useInfiniteQuery({
+    queryKey: ['users', search ?? ''],
+    queryFn: async ({ pageParam }: { pageParam: string | undefined }) => {
+      const { data, nextPageToken } = await api.getUsersPage(pageParam, USERS_PAGE_SIZE, search);
+      return { users: data.map(kratosToUser), nextPageToken };
     },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextPageToken,
   });
+}
+
+/**
+ * Flattened directory view for consumers that want a plain `User[]` (the
+ * composite store, Dashboard, Groups, Simulator, CmdK). Shares the SAME cache
+ * entry as useUsersInfinite (identical key), so there is no duplicate fetch.
+ * `count` grows as background pages land; `isComplete` flips when the keyset is
+ * exhausted; `usersLoading` mirrors the old "N+ / loading more…" affordance.
+ */
+export function useUsers(search?: string) {
+  const q = useUsersInfinite(search);
+  const users = useMemo<User[]>(
+    () => (q.data?.pages ?? []).flatMap((p) => p.users),
+    [q.data],
+  );
+  return {
+    ...q,
+    users,
+    count: users.length,
+    isComplete: !q.hasNextPage,
+    // "loading more" once the first page is in but the keyset isn't exhausted.
+    usersLoading: q.isLoading || q.isFetchingNextPage || (!!q.hasNextPage && q.isSuccess),
+  };
 }
 
 export function useGroups() {
   return useQuery({
     queryKey: ['groups'],
     queryFn: () => api.getGroups(),
+    staleTime: CONFIG_STALE_TIME,
   });
 }
 
@@ -38,6 +83,7 @@ export function useGroupsMap() {
       const groups = await api.getGroups();
       return jinbeGroupsToMap(groups);
     },
+    staleTime: CONFIG_STALE_TIME,
   });
 }
 
@@ -45,6 +91,7 @@ export function useServices() {
   return useQuery({
     queryKey: ['services'],
     queryFn: () => api.getServices(),
+    staleTime: CONFIG_STALE_TIME,
   });
 }
 
@@ -53,6 +100,27 @@ export function useRoles(serviceName: string) {
     queryKey: ['roles', serviceName],
     queryFn: () => api.getRoles(serviceName),
     enabled: !!serviceName,
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
+// Per-service permission catalog (used by the role editor's picker). Cached
+// per service instead of an uncached useEffect fetch on every switch (PERF-4).
+export function useServicePermissions(serviceName: string) {
+  return useQuery({
+    queryKey: ['service-permissions', serviceName],
+    queryFn: () => api.getServicePermissions(serviceName).then(r => r.permissions),
+    enabled: !!serviceName,
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
+// Org → service map (Settings). Cached instead of a per-mount fetch (PERF-4).
+export function useOrgServiceMap() {
+  return useQuery({
+    queryKey: ['org-service-map'],
+    queryFn: () => api.getOrgServiceMap(),
+    staleTime: CONFIG_STALE_TIME,
   });
 }
 
@@ -64,6 +132,7 @@ export function useAllRoles(serviceNames: string[]) {
   const signature = [...serviceNames].sort().join(',');
   return useQuery({
     queryKey: ['all-roles', signature],
+    staleTime: CONFIG_STALE_TIME,
     queryFn: async (): Promise<RolesMap> => {
       const results = await Promise.all(
         serviceNames.map(async name => {
@@ -90,6 +159,7 @@ export function useServiceRoutes(serviceName: string) {
     queryKey: ['routes', serviceName],
     queryFn: () => api.getServiceRoutes(serviceName),
     enabled: !!serviceName,
+    staleTime: CONFIG_STALE_TIME,
   });
 }
 
@@ -100,6 +170,7 @@ export function useAllRoutes(serviceNames: string[]) {
   const signature = [...serviceNames].sort().join(',');
   return useQuery({
     queryKey: ['all-routes', signature],
+    staleTime: CONFIG_STALE_TIME,
     queryFn: async (): Promise<RouteMapsMap> => {
       const results = await Promise.all(
         serviceNames.map(async name => {
@@ -126,6 +197,7 @@ export function useAccessRules() {
       const rules = await api.getAccessRules();
       return rules.map(jinbeRuleToUi);
     },
+    staleTime: CONFIG_STALE_TIME,
   });
 }
 

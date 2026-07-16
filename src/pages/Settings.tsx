@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { useOrgServiceMap } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Modal } from '../components/ui/Primitives';
 import { api } from '../api/client';
@@ -26,19 +27,17 @@ export function SettingsPage() {
   const [importResult, setImportResult] = useState<BundleImportResult | null>(null);
   const [pending, setPending] = useState<PendingBundle | null>(null);
 
-  // ─── Org → Service map ───
-  const [mappings, setMappings] = useState<Record<string, string>>({});
-  const [mapLoading, setMapLoading] = useState(true);
+  // ─── Org → Service map (cached Query hook, PERF-4) ───
+  const { data: fetchedMappings, isLoading: mapLoading } = useOrgServiceMap();
+  // Local overlay for optimistic add/remove on top of the cached server map.
+  const [overrides, setOverrides] = useState<Record<string, string | null>>({});
+  const mappings: Record<string, string> = { ...(fetchedMappings ?? {}) };
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v === null) delete mappings[k]; else mappings[k] = v;
+  }
   const [newOrgId, setNewOrgId] = useState('');
   const [newService, setNewService] = useState('');
   const [mapSaving, setMapSaving] = useState(false);
-
-  useEffect(() => {
-    api.getOrgServiceMap()
-      .then(setMappings)
-      .catch(() => {})
-      .finally(() => setMapLoading(false));
-  }, []);
 
   async function handleAddMapping() {
     const orgId = newOrgId.trim();
@@ -47,7 +46,7 @@ export function SettingsPage() {
     setMapSaving(true);
     try {
       await api.setOrgServiceMapping(orgId, svc);
-      setMappings(m => ({ ...m, [orgId]: svc }));
+      setOverrides(o => ({ ...o, [orgId]: svc }));
       setNewOrgId('');
       setNewService('');
       pushToast('Mapping saved', { sub: `${orgId.slice(0, 8)}… → ${svc}` });
@@ -61,11 +60,7 @@ export function SettingsPage() {
   async function handleDeleteMapping(orgId: string) {
     try {
       await api.deleteOrgServiceMapping(orgId);
-      setMappings(m => {
-        const next = { ...m };
-        delete next[orgId];
-        return next;
-      });
+      setOverrides(o => ({ ...o, [orgId]: null }));
       pushToast('Mapping removed');
     } catch (e: any) {
       pushToast(e.message || 'Failed to remove mapping', { err: true });

@@ -1,31 +1,56 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession } from '../api/hooks';
+import { useSession, useUsers, useGroupsMap } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, Switch } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
 import { useApplyChange } from '../hooks/useApplyChange';
 
+// Small debounce so typing a name doesn't re-filter (and, for emails, re-query
+// the server) on every keystroke.
+function useDebounced<T>(value: T, ms = 250): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
 export function UsersPage() {
-  const { state, setUserDrawer } = useApp();
+  const { setUserDrawer } = useApp();
   const [q, setQ] = useState("");
   const [groupFilter, setGroupFilter] = useState("all");
+  const dq = useDebounced(q.trim());
 
-  const filtered = state.users.filter(u => {
-    if (q && !`${u.name} ${u.email} ${u.title}`.toLowerCase().includes(q.toLowerCase())) return false;
+  // Server-side exact-email fast path: a full email queries Kratos directly
+  // (credentials_identifier, J9) so one user is found instantly in a huge
+  // directory without loading every page. Anything else (a name, partial
+  // email) uses the shared full-directory cache + client-side filter.
+  const isEmailSearch = dq.includes('@');
+  const { users, count, usersLoading, isComplete, hasNextPage, isFetchingNextPage, fetchNextPage } =
+    useUsers(isEmailSearch ? dq : undefined);
+  const { data: groupsMap = {} } = useGroupsMap();
+
+  const filtered = useMemo(() => users.filter(u => {
+    if (!isEmailSearch && dq && !`${u.name} ${u.email} ${u.title}`.toLowerCase().includes(dq.toLowerCase())) return false;
     if (groupFilter !== "all" && !u.groups.includes(groupFilter)) return false;
     return true;
-  });
+  }), [users, isEmailSearch, dq, groupFilter]);
 
   const pg = usePagination(filtered.length, 25);
   const paged = filtered.slice(pg.from, pg.to);
+
+  // Directory total for the header: while streaming, show "N+"; exact once the
+  // keyset is exhausted (there is no server-provided count — keyset pagination).
+  const totalLabel = isEmailSearch ? `${count}` : `${count}${isComplete ? '' : '+'}`;
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Users</h1>
-          <div className="sub">{state.users.length}{state.usersLoading ? '+' : ''} identities{state.usersLoading ? ' · loading more…' : ''} · Kratos <span className="mono">metadata_admin.groups</span></div>
+          <div className="sub">{totalLabel} identities{usersLoading && !isEmailSearch ? ' · loading more…' : ''} · Kratos <span className="mono">metadata_admin.groups</span></div>
         </div>
         <div className="page-actions">
           <button className="btn" onClick={() => setUserDrawer({ mode: "assign" })}>
@@ -46,10 +71,10 @@ export function UsersPage() {
           </div>
           <select className="input" style={{ width: "auto" }} value={groupFilter} onChange={e => setGroupFilter(e.target.value)}>
             <option value="all">All groups</option>
-            {Object.keys(state.groups).map(g => <option key={g} value={g}>{g}</option>)}
+            {Object.keys(groupsMap).map(g => <option key={g} value={g}>{g}</option>)}
           </select>
           <div className="flex-1" />
-          <span className="small muted mono">{filtered.length} / {state.users.length}</span>
+          <span className="small muted mono">{filtered.length} / {totalLabel}</span>
         </div>
         <table className="table">
           <thead><tr><th>Identity</th><th>Groups</th><th>2FA</th><th>Last seen</th><th></th></tr></thead>
@@ -85,6 +110,16 @@ export function UsersPage() {
         </table>
         {filtered.length > pg.pageSize && (
           <Pagination page={pg.page} pageSize={pg.pageSize} total={filtered.length} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
+        )}
+        {/* Manual load-more for very large directories: the store streams pages
+            in the background, but this lets an operator pull the next page on
+            demand (e.g. to widen a client-side name filter) without waiting. */}
+        {!isEmailSearch && hasNextPage && (
+          <div style={{ padding: "10px 14px", borderTop: "1px solid var(--line)", display: "flex", justifyContent: "center" }}>
+            <button className="btn ghost sm" disabled={isFetchingNextPage} onClick={() => fetchNextPage()}>
+              {isFetchingNextPage ? "Loading…" : `Load more (${count} loaded)`}
+            </button>
+          </div>
         )}
       </div>
     </>

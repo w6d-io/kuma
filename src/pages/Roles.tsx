@@ -4,8 +4,7 @@ import { I } from '../components/ui/Icons';
 import { AccessLevel, EmptyHint } from '../components/ui/Primitives';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
-import { useUpdateServiceRoles } from '../api/hooks';
-import { api } from '../api/client';
+import { useUpdateServiceRoles, useServicePermissions } from '../api/hooks';
 
 // ─── Permission picker ────────────────────────────────────────────────────────
 
@@ -142,18 +141,17 @@ export function RolesPage() {
   const [newRoleName, setNewRoleName] = useState("");
   const [addingRole, setAddingRole] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
-  const [apiPerms, setApiPerms] = useState<string[]>([]);
 
   const updateServiceRoles = useUpdateServiceRoles(svc);
+  // Per-service permission catalog, cached in Query (PERF-4) instead of an
+  // uncached fetch on every service switch.
+  const { data: apiPerms = [] } = useServicePermissions(isLive ? svc : "");
 
   useEffect(() => {
     const keys = Object.keys(state.roles[svc] || {});
     if (!keys.includes(selectedRole)) setSelectedRole(keys[0] || "");
     setShowPicker(false);
-    if (isLive) {
-      api.getServicePermissions(svc).then(r => setApiPerms(r.permissions)).catch(() => setApiPerms([]));
-    }
-  }, [svc, isLive]);
+  }, [svc]);
 
   useEffect(() => {
     const keys = Object.keys(state.roles[svc] || {});
