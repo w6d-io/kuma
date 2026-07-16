@@ -207,10 +207,22 @@ export function SimulatorPage() {
                     <div style={{ maxHeight: 180, overflowY: 'auto', marginTop: 4, background: 'var(--panel-2)', borderRadius: 6, padding: 4 }}>
                       {userSearch.isLoading && <span className="small muted" style={{ padding: 8, display: 'block' }}>Searching…</span>}
                       {!userSearch.isLoading && (userSearch.data ?? []).length === 0 && <span className="small muted" style={{ padding: 8, display: 'block' }}>No match.</span>}
-                      {(userSearch.data ?? []).map(searchedToUser).map(u => (
-                        <button key={u.id} onClick={() => { setUser(u); setUq(''); }} style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 8, alignItems: 'center', padding: '6px 8px', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--ink)' }}>
-                          <span className="mono small" style={{ flex: 1 }}>{u.email}</span>
-                          <span className="small muted">{u.groups.join(',') || 'no groups'}</span>
+                      {(userSearch.data ?? []).map(searchedToUser).map((u, i, arr) => (
+                        <button
+                          key={u.id}
+                          className="row-click"
+                          onClick={() => { setUser(u); setUq(''); }}
+                          style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 10, alignItems: 'center', padding: '10px 12px', border: 'none', borderBottom: i < arr.length - 1 ? '1px solid var(--line)' : 'none', background: 'transparent', cursor: 'pointer', color: 'var(--ink)' }}
+                        >
+                          <Avatar name={u.name} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 500, fontSize: 12.5 }}>{u.name} {!u.active && <Chip tone="warn">inactive</Chip>}</div>
+                            <div className="small muted mono" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.email}</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: '45%' }}>
+                            {u.groups.length === 0 ? <span className="small muted">no groups</span> : u.groups.slice(0, 3).map(g => <Chip key={g}>{g}</Chip>)}
+                            {u.groups.length > 3 && <span className="small muted">+{u.groups.length - 3}</span>}
+                          </div>
                         </button>
                       ))}
                     </div>
