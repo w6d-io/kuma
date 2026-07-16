@@ -10,9 +10,9 @@ import { RulesPage } from './Rules';
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 
-type SvcTab = 'overview' | 'roles' | 'routes' | 'gateway';
-const SVC_TABS: SvcTab[] = ['overview', 'roles', 'routes', 'gateway'];
-const SVC_TAB_LABEL: Record<SvcTab, string> = { overview: 'Overview', roles: 'Roles', routes: 'Routes', gateway: 'Gateway' };
+type SvcTab = 'overview' | 'health' | 'roles' | 'routes' | 'gateway';
+const SVC_TABS: SvcTab[] = ['overview', 'health', 'roles', 'routes', 'gateway'];
+const SVC_TAB_LABEL: Record<SvcTab, string> = { overview: 'Overview', health: 'Health', roles: 'Roles', routes: 'Routes', gateway: 'Gateway' };
 
 // Per-service summary used by the left-rail rows.
 function svcSummary(state: ReturnType<typeof useApp>['state'], name: string) {
@@ -124,6 +124,7 @@ export function ServicesPage() {
               </div>
 
               {effectiveTab === 'overview' && <ServiceOverview name={service.name} onEdit={() => setServiceDrawer({ mode: 'edit', serviceName: service.name })} />}
+              {effectiveTab === 'health' && <ServiceHealth name={service.name} />}
               {effectiveTab === 'roles' && <RolesPage svc={service.name} embedded />}
               {effectiveTab === 'routes' && !isGlobal && <RoutesPage svc={service.name} embedded />}
               {effectiveTab === 'gateway' && !isGlobal && <RulesPage svc={service.name} embedded />}
@@ -163,6 +164,51 @@ function ServiceOverview({ name, onEdit }: { name: string; onEdit: () => void })
         </div>
       </div>
     </>
+  );
+}
+
+function ServiceHealth({ name }: { name: string }) {
+  const { state } = useApp();
+  const roles = state.roles[name] || {};
+  const routes = state.routeMaps[name] || [];
+  const rules = state.accessRules.filter(r => r.service === name);
+  const allPerms = new Set(Object.values(roles).flat());
+  const hasWildcard = allPerms.has('*');
+
+  const checks: { ok: boolean; label: string; detail?: string }[] = [];
+  const emptyRoles = Object.entries(roles).filter(([, p]) => p.length === 0).map(([r]) => r);
+  checks.push({ ok: emptyRoles.length === 0, label: emptyRoles.length ? `${emptyRoles.length} role(s) grant no permission` : 'Every role grants at least one permission', detail: emptyRoles.join(', ') });
+  const orphan = routes.filter(r => r.permission && !hasWildcard && !allPerms.has(r.permission));
+  checks.push({ ok: orphan.length === 0, label: orphan.length ? `${orphan.length} route(s) require a permission no role grants` : 'Every protected route is grantable by a role', detail: orphan.map(r => `${r.method} ${r.path} → ${r.permission}`).slice(0, 4).join('  ·  ') });
+  const pub = routes.filter(r => !r.permission);
+  checks.push({ ok: pub.length === 0, label: pub.length ? `${pub.length} public route(s) — reachable with no permission` : 'No public routes', detail: pub.map(r => `${r.method} ${r.path}`).slice(0, 4).join('  ·  ') });
+  const dangling: string[] = [];
+  Object.entries(state.groups).forEach(([g, m]) => (m[name] || []).forEach(rn => { if (!roles[rn]) dangling.push(`${g} → ${rn}`); }));
+  checks.push({ ok: dangling.length === 0, label: dangling.length ? `${dangling.length} group reference(s) to a role that doesn't exist` : 'All group references resolve to a real role', detail: dangling.slice(0, 4).join('  ·  ') });
+  if (name !== 'global') {
+    const openRules = rules.filter(r => r.authorizer === 'allow').length;
+    checks.push({ ok: rules.length > 0, label: rules.length === 0 ? 'No gateway rule — traffic to this service is not routed' : `${rules.length} gateway rule(s)${openRules ? ` · ${openRules} open` : ''}`, detail: rules.length === 0 ? 'Add a match URL + upstream (Edit) to route traffic through the gateway.' : undefined });
+  }
+  const problems = checks.filter(c => !c.ok).length;
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <div><h3>Health</h3><div className="sub">Integrity checks for this service</div></div>
+        {problems === 0 ? <Chip tone="ok">healthy</Chip> : <Chip tone="warn">{problems}</Chip>}
+      </div>
+      <div style={{ padding: 0 }}>
+        {checks.map((c, i) => (
+          <div key={i} style={{ padding: '10px 14px', borderBottom: i < checks.length - 1 ? '1px solid var(--line)' : 'none', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <span style={{ color: c.ok ? 'var(--ok)' : 'var(--warn)', marginTop: 1, flexShrink: 0 }}>{c.ok ? I.check : I.alert}</span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="small" style={{ color: 'var(--ink)' }}>{c.label}</div>
+              {!c.ok && c.detail && <div className="small muted mono mt-4" style={{ wordBreak: 'break-all' }}>{c.detail}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -278,7 +324,7 @@ export function ServiceDrawer() {
       <div className="mb-12">
         <label className="input-label">Match URL</label>
         <input className="input mono" value={matchUrl} onChange={e => setMatchUrl(e.target.value)} placeholder="<https?://api.example.io/svc/<**>>" />
-        <div className="input-hint">Oathkeeper regexp format</div>
+        <div className="input-hint">Which request URLs this service handles (regular expression).</div>
       </div>
       <div className="mb-12">
         <label className="input-label">Match methods</label>
@@ -287,7 +333,7 @@ export function ServiceDrawer() {
       <div className="mb-12">
         <label className="input-label">Strip path <span className="muted">(optional)</span></label>
         <input className="input mono" value={stripPath} onChange={e => setStripPath(e.target.value)} placeholder="/api/v1 — leave empty to remove" />
-        <div className="input-hint">Oathkeeper strip_path — empty = remove existing</div>
+        <div className="input-hint">Path prefix stripped before forwarding — leave empty to remove.</div>
       </div>
     </>
   );
@@ -297,11 +343,11 @@ export function ServiceDrawer() {
       <Drawer
         open={!!serviceDrawer}
         onClose={() => setServiceDrawer(null)}
-        eyebrow={`PATCH /admin/rbac/services/${editSvc?.name}`}
+        eyebrow="Edit service"
         title={`Edit · ${editSvc?.name}`}
         footer={
           <>
-            <span className="small muted mono">PATCH /admin/rbac/services/:name</span>
+            <span className="small muted">Changes apply immediately.</span>
             <div className="row">
               <button className="btn" onClick={() => setServiceDrawer(null)}>Cancel</button>
               <button className="btn primary" onClick={saveEdit} disabled={!validUrl}>Save</button>
@@ -353,11 +399,11 @@ export function ServiceDrawer() {
     <Drawer
       open={!!serviceDrawer}
       onClose={() => setServiceDrawer(null)}
-      eyebrow="POST /admin/rbac/services"
+      eyebrow="New service"
       title="Register service"
       footer={
         <>
-          <span className="small muted mono">creates roles + route_map + oathkeeper rule</span>
+          <span className="small muted">Also creates the service's role set and gateway rule.</span>
           <div className="row">
             <button className="btn" onClick={() => setServiceDrawer(null)}>Cancel</button>
             <button className="btn primary" onClick={saveCreate} disabled={!validName || !validUrl}>Register</button>

@@ -15,6 +15,19 @@ function authzStatus(a: string): { label: string; tone: string; hint: string } {
   return { label: 'Protected · permission checked', tone: 'ok', hint: 'Requests are checked against the permission policy before they reach the service.' };
 }
 
+// A service's HTTP surface is split across several gateway rules (CORS preflight,
+// the protected API, the app, settings…). The raw rule id (e.g. "kuma-api-preflight")
+// is cryptic — turn the suffix into a human role.
+function ruleLabel(id: string, svc?: string): string {
+  const suffix = !svc || id === svc ? '' : id.replace(new RegExp(`^${svc}[-_]?`), '');
+  const map: Record<string, string> = {
+    '': 'Base', api: 'API', 'api-preflight': 'Preflight (CORS)', preflight: 'Preflight (CORS)',
+    app: 'App', ui: 'UI', settings: 'Settings', public: 'Public', root: 'Root',
+    dsn: 'Database', studio: 'Studio', engine: 'Engine',
+  };
+  return map[suffix] ?? (suffix ? suffix.charAt(0).toUpperCase() + suffix.slice(1).replace(/[-_]/g, ' ') : 'Base');
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -93,11 +106,16 @@ export function RulesPage({ svc, embedded = false }: { svc?: string; embedded?: 
         <div className="grid" style={{ gridTemplateColumns: "300px 1fr", gap: 14 }}>
           <div className="panel" style={{ padding: 0 }}>
             <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--ink-3)" }}>{svc ? `${rules.length} rule${rules.length !== 1 ? 's' : ''}` : 'Rules'}</div>
+            {embedded && rules.length > 1 && (
+              <div className="small muted" style={{ padding: "8px 14px", borderBottom: "1px solid var(--line)", lineHeight: 1.5 }}>
+                This service's surface is split into {rules.length} rules (e.g. CORS preflight, the protected API, the app) — each matches its own paths and is protected independently.
+              </div>
+            )}
             {rules.map(r => {
               const s = authzStatus(r.authorizer);
               return (
                 <button key={r.id} onClick={() => setSelectedId(r.id)} style={{ width: "100%", textAlign: "left", padding: "10px 14px", border: "none", borderBottom: "1px solid var(--line)", background: r.id === rule?.id ? "var(--panel-2)" : "transparent", color: "var(--ink)", cursor: "pointer" }}>
-                  <div className="mono" style={{ fontSize: 12.5, fontWeight: r.id === rule?.id ? 600 : 500 }}>{embedded ? r.id : r.service}</div>
+                  <div style={{ fontSize: 12.5, fontWeight: r.id === rule?.id ? 600 : 500 }}>{embedded ? ruleLabel(r.id, svc) : r.service}</div>
                   <div className="small mt-4"><Chip tone={s.tone} title={s.hint}>{s.label}</Chip></div>
                 </button>
               );
@@ -106,7 +124,7 @@ export function RulesPage({ svc, embedded = false }: { svc?: string; embedded?: 
           {rule && (
             <div className="panel">
               <div className="panel-head">
-                <div style={{ minWidth: 0, flex: 1 }}><h3><span className="mono">{rule.service}</span></h3><div className="sub">Affects all matching requests to this service</div></div>
+                <div style={{ minWidth: 0, flex: 1 }}><h3>{embedded ? ruleLabel(rule.id, svc) : <span className="mono">{rule.service}</span>}</h3><div className="sub">Matches these methods &amp; paths, then forwards to the service</div></div>
                 <div className="row" style={{ gap: 8 }}>
                   <Chip tone={authzStatus(rule.authorizer).tone} title={authzStatus(rule.authorizer).hint}>{authzStatus(rule.authorizer).label}</Chip>
                   {canEdit && (editing ? (
