@@ -97,6 +97,11 @@ export interface AppState {
   /** True while remaining user pages load in the background after first paint. */
   usersLoading?: boolean;
   routeMaps: RouteMapsMap;
+  /** Services whose roles / routes failed to load (absent, not empty). A
+   *  replace-write must be blocked for these — the current config is unknown,
+   *  so a PUT built on a false-empty base would wipe it. */
+  rolesErrored?: string[];
+  routesErrored?: string[];
   accessRules: AccessRule[];
   audit: AuditEvent[];
 }
