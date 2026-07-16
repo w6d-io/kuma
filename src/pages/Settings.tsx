@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { useOrgServiceMap, useSetOrgServiceMapping, useDeleteOrgServiceMapping } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Modal } from '../components/ui/Primitives';
 import { api } from '../api/client';
@@ -26,50 +27,37 @@ export function SettingsPage() {
   const [importResult, setImportResult] = useState<BundleImportResult | null>(null);
   const [pending, setPending] = useState<PendingBundle | null>(null);
 
-  // ─── Org → Service map ───
-  const [mappings, setMappings] = useState<Record<string, string>>({});
-  const [mapLoading, setMapLoading] = useState(true);
+  // ─── Org → Service map (cached Query hook, PERF-4; optimistic mutations) ───
+  const { data: fetchedMappings, isLoading: mapLoading } = useOrgServiceMap();
+  const setMapping = useSetOrgServiceMapping();
+  const deleteMapping = useDeleteOrgServiceMapping();
+  const mappings: Record<string, string> = fetchedMappings ?? {};
   const [newOrgId, setNewOrgId] = useState('');
   const [newService, setNewService] = useState('');
-  const [mapSaving, setMapSaving] = useState(false);
+  const mapSaving = setMapping.isPending;
 
-  useEffect(() => {
-    api.getOrgServiceMap()
-      .then(setMappings)
-      .catch(() => {})
-      .finally(() => setMapLoading(false));
-  }, []);
-
-  async function handleAddMapping() {
+  function handleAddMapping() {
     const orgId = newOrgId.trim();
     const svc = newService.trim();
     if (!orgId || !svc) return;
-    setMapSaving(true);
-    try {
-      await api.setOrgServiceMapping(orgId, svc);
-      setMappings(m => ({ ...m, [orgId]: svc }));
-      setNewOrgId('');
-      setNewService('');
-      pushToast('Mapping saved', { sub: `${orgId.slice(0, 8)}… → ${svc}` });
-    } catch (e: any) {
-      pushToast(e.message || 'Failed to save mapping', { err: true });
-    } finally {
-      setMapSaving(false);
-    }
+    setMapping.mutate(
+      { organizationId: orgId, serviceName: svc },
+      {
+        onSuccess: () => {
+          setNewOrgId('');
+          setNewService('');
+          pushToast('Mapping saved', { sub: `${orgId.slice(0, 8)}… → ${svc}` });
+        },
+        onError: (e: Error) => pushToast(e.message || 'Failed to save mapping', { err: true }),
+      },
+    );
   }
 
-  async function handleDeleteMapping(orgId: string) {
-    try {
-      await api.deleteOrgServiceMapping(orgId);
-      setMappings(m => {
-        const next = { ...m };
-        delete next[orgId];
-        return next;
-      });
-      pushToast('Mapping removed');
-    } catch (e: any) {
-      pushToast(e.message || 'Failed to remove mapping', { err: true });
-    }
+  function handleDeleteMapping(orgId: string) {
+    deleteMapping.mutate(orgId, {
+      onSuccess: () => pushToast('Mapping removed'),
+      onError: (e: Error) => pushToast(e.message || 'Failed to remove mapping', { err: true }),
+    });
   }
 
   // ─── Bundle export/import ───

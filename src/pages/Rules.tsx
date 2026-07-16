@@ -21,7 +21,7 @@ function uiToJinbe(r: AccessRule) {
 }
 
 export function RulesPage() {
-  const { state, setState, isLive } = useApp();
+  const { state } = useApp();
   const applyChange = useApplyChange();
   const updateRule = useUpdateAccessRule();
   const [selectedId, setSelectedId] = useState(state.accessRules[0]?.id);
@@ -34,22 +34,13 @@ export function RulesPage() {
   const patchRule = (patch: Partial<AccessRule>, summary: string) => {
     if (!rule) return;
     const updated = { ...rule, ...patch };
-    if (isLive) {
-      // Route the real PUT through applyChange's async path: a failed request
-      // now toasts the error and a success triggers refetch (server truth).
-      // Previously a synchronous setState took applyChange's sync branch (→
-      // unconditional "Applied" toast + audit row) while a fire-and-forget
-      // updateRule.mutate() swallowed backend failures — so a rejected edit
-      // (e.g. setting authorizer=allow) falsely reported success.
-      applyChange('update', summary, async () => {
-        await updateRule.mutateAsync({ id: rule.id, rule: uiToJinbe(updated) });
-      });
-    } else {
-      // Demo/local mode: optimistic local state only.
-      applyChange('update', summary, () => {
-        setState(s => ({ ...s, accessRules: s.accessRules.map(r => r.id === rule.id ? updated : r) }));
-      });
-    }
+    // Route the real PUT through applyChange's async path: a failed request
+    // toasts the error, a success refreshes the audit stream (server truth).
+    // The updateRule hook invalidates ['access-rules'] so the composite store
+    // re-derives — no local mirror, no false "Applied" (K1/UX-1).
+    applyChange('update', summary, async () => {
+      await updateRule.mutateAsync({ id: rule.id, rule: uiToJinbe(updated) });
+    });
   };
 
   const commitUrl = () => {

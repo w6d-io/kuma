@@ -4,8 +4,7 @@ import { I } from '../components/ui/Icons';
 import { AccessLevel, EmptyHint } from '../components/ui/Primitives';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
-import { useUpdateServiceRoles } from '../api/hooks';
-import { api } from '../api/client';
+import { useUpdateServiceRoles, useServicePermissions } from '../api/hooks';
 
 // ─── Permission picker ────────────────────────────────────────────────────────
 
@@ -130,7 +129,7 @@ function PermPicker({ svc, allRoles, apiPerms, current, onToggle, onAdd }: PermP
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function RolesPage() {
-  const { state, setState, activeService, setActiveService, isLive } = useApp();
+  const { state, activeService, setActiveService, isLive } = useApp();
   const applyChange = useApplyChange();
   // Guard against an empty services list (still loading, 403, or empty tenant):
   // `state.services[0].name` used to throw here. Prefer the active service when
@@ -142,32 +141,34 @@ export function RolesPage() {
   const [newRoleName, setNewRoleName] = useState("");
   const [addingRole, setAddingRole] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
-  const [apiPerms, setApiPerms] = useState<string[]>([]);
 
   const updateServiceRoles = useUpdateServiceRoles(svc);
+  // Per-service permission catalog, cached in Query (PERF-4) instead of an
+  // uncached fetch on every service switch.
+  const { data: apiPerms = [] } = useServicePermissions(isLive ? svc : "");
 
+  // Keep selectedRole valid when the service switches / roles change. Reads
+  // selectedRole fresh inside; adding it to deps would loop. Intentional.
   useEffect(() => {
     const keys = Object.keys(state.roles[svc] || {});
     if (!keys.includes(selectedRole)) setSelectedRole(keys[0] || "");
     setShowPicker(false);
-    if (isLive) {
-      api.getServicePermissions(svc).then(r => setApiPerms(r.permissions)).catch(() => setApiPerms([]));
-    }
-  }, [svc, isLive]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [svc]);
 
   useEffect(() => {
     const keys = Object.keys(state.roles[svc] || {});
     if (!keys.includes(selectedRole)) setSelectedRole(keys[0] || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.roles]);
 
   const role = svcRoles[selectedRole];
 
-  const applyRoleUpdate = (updated: Record<string, string[]>) => {
-    if (isLive) return updateServiceRoles.mutateAsync(updated).then(() => {
-      setState(s => ({ ...s, roles: { ...s.roles, [svc]: updated } }));
-    }) as Promise<void>;
-    setState(s => ({ ...s, roles: { ...s.roles, [svc]: updated } }));
-  };
+  // The scoped mutation hook invalidates ['roles', svc] on success, so the
+  // composite store re-derives from the server truth. No local setState mirror
+  // (STORE-4) — avoids the double-write / rubber-band on refetch.
+  const applyRoleUpdate = (updated: Record<string, string[]>): Promise<void> =>
+    updateServiceRoles.mutateAsync(updated).then(() => undefined);
 
   const togglePerm = (p: string) => {
     if (!role || role.includes("*")) return;
@@ -192,12 +193,9 @@ export function RolesPage() {
     if (!name || svcRoles[name] !== undefined) return;
     applyChange("create", `role:${svc}.${name}`, () => {
       const updated = { ...svcRoles, [name]: [] as string[] };
-      if (isLive) return updateServiceRoles.mutateAsync(updated).then(() => {
-        setState(s => ({ ...s, roles: { ...s.roles, [svc]: updated } }));
+      return updateServiceRoles.mutateAsync(updated).then(() => {
         setSelectedRole(name);
-      }) as Promise<void>;
-      setState(s => ({ ...s, roles: { ...s.roles, [svc]: updated } }));
-      setSelectedRole(name);
+      });
     });
     setNewRoleName("");
     setAddingRole(false);

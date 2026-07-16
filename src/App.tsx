@@ -283,6 +283,8 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
       { name: "Groups", items: grps },
       { name: "Services", items: svcs },
     ].filter(g => g.items.length > 0);
+    // Context setters are stable; results recompute on q/state/theme only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, state, theme]);
 
   const flat = groups.flatMap(g => g.items);
@@ -298,6 +300,10 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // `fire`/`onClose` are recreated each render but only read on keypress;
+    // re-subscribing on every render would thrash the listener. Keyed on the
+    // inputs that change behaviour (open/idx/result count).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, idx, flat.length]);
 
   if (!open) return null;

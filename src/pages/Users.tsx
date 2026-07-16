@@ -1,31 +1,56 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession } from '../api/hooks';
+import { useSession, useUsers, useGroupsMap } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, Switch } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
 import { useApplyChange } from '../hooks/useApplyChange';
 
+// Small debounce so typing a name doesn't re-filter (and, for emails, re-query
+// the server) on every keystroke.
+function useDebounced<T>(value: T, ms = 250): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
 export function UsersPage() {
-  const { state, setUserDrawer } = useApp();
+  const { setUserDrawer } = useApp();
   const [q, setQ] = useState("");
   const [groupFilter, setGroupFilter] = useState("all");
+  const dq = useDebounced(q.trim());
 
-  const filtered = state.users.filter(u => {
-    if (q && !`${u.name} ${u.email} ${u.title}`.toLowerCase().includes(q.toLowerCase())) return false;
+  // Server-side exact-email fast path: a full email queries Kratos directly
+  // (credentials_identifier, J9) so one user is found instantly in a huge
+  // directory without loading every page. Anything else (a name, partial
+  // email) uses the shared full-directory cache + client-side filter.
+  const isEmailSearch = dq.includes('@');
+  const { users, count, usersLoading, isComplete, hasNextPage, isFetchingNextPage, fetchNextPage } =
+    useUsers(isEmailSearch ? dq : undefined);
+  const { data: groupsMap = {} } = useGroupsMap();
+
+  const filtered = useMemo(() => users.filter(u => {
+    if (!isEmailSearch && dq && !`${u.name} ${u.email} ${u.title}`.toLowerCase().includes(dq.toLowerCase())) return false;
     if (groupFilter !== "all" && !u.groups.includes(groupFilter)) return false;
     return true;
-  });
+  }), [users, isEmailSearch, dq, groupFilter]);
 
   const pg = usePagination(filtered.length, 25);
   const paged = filtered.slice(pg.from, pg.to);
+
+  // Directory total for the header: while streaming, show "N+"; exact once the
+  // keyset is exhausted (there is no server-provided count — keyset pagination).
+  const totalLabel = isEmailSearch ? `${count}` : `${count}${isComplete ? '' : '+'}`;
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Users</h1>
-          <div className="sub">{state.users.length}{state.usersLoading ? '+' : ''} identities{state.usersLoading ? ' · loading more…' : ''} · Kratos <span className="mono">metadata_admin.groups</span></div>
+          <div className="sub">{totalLabel} identities{usersLoading && !isEmailSearch ? ' · loading more…' : ''} · Kratos <span className="mono">metadata_admin.groups</span></div>
         </div>
         <div className="page-actions">
           <button className="btn" onClick={() => setUserDrawer({ mode: "assign" })}>
@@ -46,10 +71,10 @@ export function UsersPage() {
           </div>
           <select className="input" style={{ width: "auto" }} value={groupFilter} onChange={e => setGroupFilter(e.target.value)}>
             <option value="all">All groups</option>
-            {Object.keys(state.groups).map(g => <option key={g} value={g}>{g}</option>)}
+            {Object.keys(groupsMap).map(g => <option key={g} value={g}>{g}</option>)}
           </select>
           <div className="flex-1" />
-          <span className="small muted mono">{filtered.length} / {state.users.length}</span>
+          <span className="small muted mono">{filtered.length} / {totalLabel}</span>
         </div>
         <table className="table">
           <thead><tr><th>Identity</th><th>Groups</th><th>2FA</th><th>Last seen</th><th></th></tr></thead>
@@ -86,13 +111,23 @@ export function UsersPage() {
         {filtered.length > pg.pageSize && (
           <Pagination page={pg.page} pageSize={pg.pageSize} total={filtered.length} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
         )}
+        {/* Manual load-more for very large directories: the store streams pages
+            in the background, but this lets an operator pull the next page on
+            demand (e.g. to widen a client-side name filter) without waiting. */}
+        {!isEmailSearch && hasNextPage && (
+          <div style={{ padding: "10px 14px", borderTop: "1px solid var(--line)", display: "flex", justifyContent: "center" }}>
+            <button className="btn ghost sm" disabled={isFetchingNextPage} onClick={() => fetchNextPage()}>
+              {isFetchingNextPage ? "Loading…" : `Load more (${count} loaded)`}
+            </button>
+          </div>
+        )}
       </div>
     </>
   );
 }
 
 export function UserDrawer() {
-  const { userDrawer, setUserDrawer, state, setState, isLive, pushToast, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserOrganization, apiSendRecoveryEmail } = useApp();
+  const { userDrawer, setUserDrawer, state, pushToast, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserOrganization, apiSendRecoveryEmail } = useApp();
   const applyChange = useApplyChange();
   const { data: session } = useSession();
   // Privilege-escalation guard mirror: only super_admin actors can grant
@@ -119,7 +154,13 @@ export function UserDrawer() {
   const [newGroups, setNewGroups] = useState<string[]>([]);
   const [sendInvite, setSendInvite] = useState(true);
 
+  // Seed the form from the user ONLY when the drawer targets a different user
+  // (keyed on id). Deliberately NOT on user?.groups/organizationId: those change
+  // on optimistic refetch, and re-seeding would wipe the operator's in-progress
+  // edits. eslint-disable is the correct call here, not adding the deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setGroups(user?.groups || []); }, [user?.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setOrganizationId(user?.organizationId || ""); }, [user?.id]);
   useEffect(() => {
     setDrawerTab("groups");
@@ -137,19 +178,13 @@ export function UserDrawer() {
     const changed = JSON.stringify(groups.sort()) !== JSON.stringify((user.groups || []).sort());
     if (!changed) { setUserDrawer(null); return; }
     const summary = `${user.email} → [${groups.join(", ") || "no groups"}]`;
-    const mutator = isLive
-      ? () => apiSetUserGroups(user.email, groups)
-      : () => { setState(s => ({ ...s, users: s.users.map(x => x.id === user.id ? { ...x, groups } : x) })); };
-    const ok = applyChange("assign", summary, mutator);
+    const ok = applyChange("assign", summary, () => apiSetUserGroups(user.email, groups));
     if (ok) setUserDrawer(null);
   };
 
   const create = () => {
     if (!newEmail || !newName) return;
-    const mutator = isLive
-      ? () => apiCreateUser({ email: newEmail, name: newName, groups: newGroups, sendInvite })
-      : () => { setState(s => ({ ...s, users: [...s.users, { id: `local-${Date.now()}`, name: newName, email: newEmail, groups: newGroups, title: "", active: true, last: "just now" }] })); };
-    const ok = applyChange("create", newEmail, mutator);
+    const ok = applyChange("create", newEmail, () => apiCreateUser({ email: newEmail, name: newName, groups: newGroups, sendInvite }));
     if (ok) setUserDrawer(null);
   };
 
@@ -157,27 +192,18 @@ export function UserDrawer() {
     if (!user) return;
     const next: 'active' | 'inactive' = user.active ? 'inactive' : 'active';
     const verb = next === 'inactive' ? 'deactivate' : 'reactivate';
-    const mutator = isLive
-      ? () => apiSetUserState(user.id, next)
-      : () => { setState(s => ({ ...s, users: s.users.map(x => x.id === user.id ? { ...x, active: next === 'active' } : x) })); };
-    applyChange(verb, user.email, mutator);
+    applyChange(verb, user.email, () => apiSetUserState(user.id, next));
   };
 
   const saveMetadata = () => {
     if (!user) return;
-    const mutator = isLive
-      ? () => apiSetUserOrganization(user.id, organizationId || undefined)
-      : () => { setState(s => ({ ...s, users: s.users.map(x => x.id === user.id ? { ...x, organizationId: organizationId || undefined } : x) })); };
-    const ok = applyChange("metadata", user.email, mutator);
+    const ok = applyChange("metadata", user.email, () => apiSetUserOrganization(user.id, organizationId || undefined));
     if (ok) setUserDrawer(null);
   };
 
   const doDelete = () => {
     if (!user) return;
-    const mutator = isLive
-      ? () => apiDeleteUser(user.id)
-      : () => { setState(s => ({ ...s, users: s.users.filter(x => x.id !== user.id) })); };
-    const ok = applyChange("delete", user.email, mutator);
+    const ok = applyChange("delete", user.email, () => apiDeleteUser(user.id));
     if (ok) setUserDrawer(null);
   };
 
@@ -350,7 +376,7 @@ export function UserDrawer() {
                 </div>
                 <button
                   className="btn"
-                  disabled={!isLive || sendingRecovery}
+                  disabled={sendingRecovery}
                   onClick={async () => {
                     if (!user) return;
                     setSendingRecovery(true);
