@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, Fragment } from 'react';
 import { AppProvider, useApp } from './contexts/AppContext';
-import { useSession, useStats } from './api/hooks';
+import { useSession, useStats, useRealtime } from './api/hooks';
 import { I } from './components/ui/Icons';
 import { Avatar, Switch, Toasts, EmptyHint } from './components/ui/Primitives';
 import { DashboardPage } from './pages/Dashboard';
@@ -393,6 +393,11 @@ function AppShell() {
   const { data: session, isSuccess: sessionReady } = useSession();
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [tweaksOpen, setTweaksOpen] = useState(false);
+
+  // Real-time: subscribe to the server change stream (admins only) so the whole
+  // console reflects changes sub-second without polling.
+  const isAdmin = !!session?.permissions?.some(p => p === '*' || p === 'admin:read');
+  useRealtime(isAdmin);
 
   // If the user landed on a page they cannot access (direct URL / reload),
   // bounce to Overview. Only act once the session query has SUCCESSFULLY
