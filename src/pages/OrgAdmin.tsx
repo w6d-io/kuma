@@ -61,7 +61,7 @@ function GroupPicker({ assignable, checked, toggle }: { assignable: string[]; ch
   );
 }
 
-function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
+export function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
   org: string; assignable: string[]; onClose: () => void; onDone: () => void; pushToast: PushToast;
 }) {
   const toastErr = makeToastErr(pushToast);
