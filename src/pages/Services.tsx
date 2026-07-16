@@ -31,7 +31,7 @@ function svcSummary(state: ReturnType<typeof useApp>['state'], name: string) {
 // service↔role↔route↔gateway relationship is a single drill-down instead of
 // four scattered top-level tabs sharing a hidden active-service.
 export function ServicesPage() {
-  const { state, setServiceDrawer, activeService, setActiveService } = useApp();
+  const { state, setServiceDrawer, activeService, setActiveService, isLoading, apiError } = useApp();
   const names = state.services.map(s => s.name);
   const sel = activeService && names.includes(activeService) ? activeService : (names[0] ?? "");
   const service = state.services.find(s => s.name === sel);
@@ -54,6 +54,13 @@ export function ServicesPage() {
   );
 
   if (names.length === 0) {
+    const err = apiError as { status?: number } | null;
+    if (isLoading) {
+      return <>{header}<div className="panel" style={{ padding: 40, textAlign: 'center' }}><div className="muted small">Loading services…</div></div></>;
+    }
+    if (err && err.status !== 403 && err.status !== 401) {
+      return <>{header}<div className="panel" style={{ padding: 40, textAlign: 'center' }}><div style={{ color: 'var(--err)' }}>Couldn't load services{err.status ? ` (HTTP ${err.status})` : ''}. Retry shortly.</div></div></>;
+    }
     return <>{header}<div className="panel" style={{ padding: 40, textAlign: 'center' }}><div className="muted small">No services yet — register one to define its roles and routes.</div></div></>;
   }
 
@@ -119,7 +126,7 @@ export function ServicesPage() {
               <div className="seg" style={{ marginBottom: 12 }}>
                 {SVC_TABS.map(t => {
                   const disabled = isGlobal && (t === 'routes' || t === 'gateway');
-                  return <button key={t} className={effectiveTab === t ? 'active' : ''} disabled={disabled} onClick={() => setTab(t)}>{SVC_TAB_LABEL[t]}</button>;
+                  return <button key={t} className={effectiveTab === t ? 'on' : ''} disabled={disabled} onClick={() => setTab(t)}>{SVC_TAB_LABEL[t]}</button>;
                 })}
               </div>
 
@@ -156,7 +163,7 @@ function ServiceOverview({ name, onEdit }: { name: string; onEdit: () => void })
             ? <><span style={{ color: 'var(--warn)' }}>⚠ {sm.openRoutes} public route{sm.openRoutes !== 1 ? 's' : ''}</span> — reachable with no permission.</>
             : sm.routes > 0 ? 'Every route requires a permission.' : 'No routes defined yet.'}</div>
           <div className="small muted">Reached via <b>{sm.groups}</b> group{sm.groups !== 1 ? 's' : ''} → <b>{sm.users}</b> user{sm.users !== 1 ? 's' : ''}.</div>
-          {!!state.services.find(s => s.name === name && !s.system) && (
+          {name !== 'global' && !state.services.find(s => s.name === name)?.system && (
             <div className="row" style={{ gap: 8, marginTop: 4 }}>
               <button className="btn ghost sm" onClick={onEdit}><span style={{ width: 13, height: 13, display: 'grid', placeItems: 'center' }}>{I.edit}</span> Edit service</button>
             </div>
@@ -260,13 +267,20 @@ export function ServiceDrawer() {
   const toggleMethod = (m: string) =>
     setMatchMethods(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
 
+  // Derive a sane match URL from the real upstream host rather than a bogus
+  // example.io default that silently matches nothing (a "registered but
+  // unreachable" trap).
+  const deriveMatch = (up: string) => {
+    try { return `<https?://${new URL(up).host}/.*>`; } catch { return `<https?://${name}/.*>`; }
+  };
+
   const saveCreate = () => {
     if (!validName || !validUrl) return;
     const ok = applyChange("create", `service:${name} registered`, () => apiCreateService({
       name,
       displayName: description || undefined,
       upstreamUrl: upstream,
-      matchUrl: matchUrl || `<https?://${name}\\.example\\.io/.*>`,
+      matchUrl: matchUrl || deriveMatch(upstream),
       matchMethods,
       stripPath: stripPath || undefined,
     }));

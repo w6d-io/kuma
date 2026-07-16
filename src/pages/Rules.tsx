@@ -50,7 +50,12 @@ export function RulesPage({ svc, embedded = false }: { svc?: string; embedded?: 
   // platform plumbing → read-only. Authentication/authorization stay read-only
   // (they're the platform-incident foot-guns; managed via infrastructure).
   const svcObj = state.services.find(s => s.name === (svc ?? rule?.service));
-  const canEdit = embedded && !!svc && svc !== 'global' && !svcObj?.system;
+  // Inline edit writes through the service-update path, which regenerates the
+  // rule from match/upstream. That is only correct when the service has exactly
+  // ONE rule (its match/upstream ARE the service's routing). With multiple rules
+  // (CORS preflight + protected API + app…), a service-level rewrite would
+  // collapse the others — so multi-rule services are read-only here.
+  const canEdit = embedded && !!svc && svc !== 'global' && !svcObj?.system && rules.length === 1;
 
   const [editing, setEditing] = useState(false);
   const [dMethods, setDMethods] = useState<string[]>([]);
@@ -94,7 +99,9 @@ export function RulesPage({ svc, embedded = false }: { svc?: string; embedded?: 
             ? <>Match &amp; upstream regenerate this service's gateway rule when you save. Authentication &amp; authorization are managed by your infrastructure.</>
             : svcObj?.system
               ? <>System service — its gateway rule is managed by the platform (read-only).</>
-              : <>Generated from your services and version-controlled — read-only.</>}
+              : rules.length > 1
+                ? <>This service has multiple gateway rules — routing is managed via your service definition / infrastructure (read-only here).</>
+                : <>Generated from your services and version-controlled — read-only.</>}
         </span>
       </div>
 
