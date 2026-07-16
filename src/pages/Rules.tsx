@@ -19,41 +19,44 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export function RulesPage() {
+export function RulesPage({ svc, embedded = false }: { svc?: string; embedded?: boolean } = {}) {
   const { state } = useApp();
-  const [selectedId, setSelectedId] = useState(state.accessRules[0]?.id);
-  const rule = state.accessRules.find(r => r.id === selectedId) || state.accessRules[0];
+  const rules = svc ? state.accessRules.filter(r => r.service === svc) : state.accessRules;
+  const [selectedId, setSelectedId] = useState(rules[0]?.id);
+  const rule = rules.find(r => r.id === selectedId) || rules[0];
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>Gateway routing</h1>
-          <div className="sub">How the gateway routes and protects each service · read-only</div>
+      {!embedded && (
+        <div className="page-head">
+          <div>
+            <h1>Gateway routing</h1>
+            <div className="sub">How the gateway routes and protects each service · read-only</div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* These rules are generated from Services and version-controlled (GitOps).
           Editing them by hand here is a platform-wide operation, so the surface
           is read-only — authoring happens in Services / infrastructure. */}
       <div className="panel mb-12" style={{ padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'center' }}>
         <span style={{ width: 15, height: 15, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', flexShrink: 0 }}>{I.info}</span>
-        <span className="small muted">Generated from your services and version-controlled. To change routing, edit the service or your infrastructure.</span>
+        <span className="small muted">Generated from {svc ? <>the <span className="mono">{svc}</span> service</> : 'your services'} and version-controlled. To change routing, edit the service or your infrastructure.</span>
       </div>
 
-      {state.accessRules.length === 0 ? (
+      {rules.length === 0 ? (
         <div className="panel" style={{ padding: 40, textAlign: 'center' }}>
-          <div className="muted small">No gateway rules.</div>
+          <div className="muted small">No gateway rules{svc ? <> for <span className="mono">{svc}</span></> : ''}.</div>
         </div>
       ) : (
         <div className="grid" style={{ gridTemplateColumns: "300px 1fr", gap: 14 }}>
           <div className="panel" style={{ padding: 0 }}>
-            <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--ink-3)" }}>Rules</div>
-            {state.accessRules.map(r => {
+            <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--ink-3)" }}>{svc ? `${rules.length} rule${rules.length !== 1 ? 's' : ''}` : 'Rules'}</div>
+            {rules.map(r => {
               const s = authzStatus(r.authorizer);
               return (
                 <button key={r.id} onClick={() => setSelectedId(r.id)} style={{ width: "100%", textAlign: "left", padding: "10px 14px", border: "none", borderBottom: "1px solid var(--line)", background: r.id === rule?.id ? "var(--panel-2)" : "transparent", color: "var(--ink)", cursor: "pointer" }}>
-                  <div className="mono" style={{ fontSize: 12.5, fontWeight: r.id === rule?.id ? 600 : 500 }}>{r.service}</div>
+                  <div className="mono" style={{ fontSize: 12.5, fontWeight: r.id === rule?.id ? 600 : 500 }}>{embedded ? r.id : r.service}</div>
                   <div className="small mt-4"><Chip tone={s.tone}>{s.label}</Chip></div>
                 </button>
               );

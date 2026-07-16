@@ -9,9 +9,6 @@ import { UsersPage, UserDrawer } from './pages/Users';
 import { OrgAdminPage } from './pages/OrgAdmin';
 import { GroupsPage, GroupDrawer } from './pages/Groups';
 import { ServicesPage, ServiceDrawer } from './pages/Services';
-import { RolesPage } from './pages/Roles';
-import { RoutesPage } from './pages/Routes';
-import { RulesPage } from './pages/Rules';
 import { AuditPage } from './pages/Audit';
 import { SettingsPage } from './pages/Settings';
 import type { PageId } from './api/types';
@@ -31,9 +28,6 @@ const NAV: NavItem[] = [
   { id: "users",     name: "Users",     ico: I.users,   section: "Platform", perms: ["admin:read"] },
   { id: "groups",    name: "Groups",    ico: I.group,   section: "Platform", perms: ["admin:read"] },
   { id: "services",  name: "Services",  ico: I.service, section: "Policy",   perms: ["admin:read"] },
-  { id: "roles",     name: "Roles",     ico: I.role,    section: "Policy",   perms: ["admin:read"] },
-  { id: "routes",    name: "Route map", ico: I.route,   section: "Policy",   perms: ["admin:read"] },
-  { id: "rules",     name: "Gateway routing", ico: I.gate, section: "Gateway",  perms: ["admin:read"] },
   { id: "audit",     name: "Audit log", ico: I.audit,   section: "Changes",  perms: ["admin:read"] },
   { id: "settings",  name: "Settings",  ico: I.cog,     section: "Changes",  perms: [] },
   // Delegated org-admin self-service. perms [] = visible to any authenticated
@@ -268,7 +262,7 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
       kind: "group", label: `Edit group · ${g}`, sub: "groups.json", run: () => { setPage("groups"); setGroupDrawer({ mode: "edit", name: g }); }
     }));
     const svcs = state.services.filter(s => match(s.name)).map(s => ({
-      kind: "service", label: `Service · ${s.name}`, sub: s.upstreamUrl || "virtual", run: () => { setActiveService(s.name); setPage("roles"); }
+      kind: "service", label: `Service · ${s.name}`, sub: s.upstreamUrl || "virtual", run: () => { setActiveService(s.name); setPage("services"); }
     }));
     const actions = [
       { kind: "action", label: "Assign user to group", sub: "Kratos", run: () => { setUserDrawer({ mode: "assign" }); } },
@@ -434,10 +428,7 @@ function AppShell() {
             {page === "simulator" && <SimulatorPage />}
             {page === "users" && <UsersPage />}
             {page === "groups" && <GroupsPage />}
-            {page === "services" && <ServicesPage />}
-            {page === "roles" && <RolesPage />}
-            {page === "routes" && <RoutesPage />}
-            {page === "rules" && <RulesPage />}
+            {(page === "services" || page === "roles" || page === "routes" || page === "rules") && <ServicesPage />}
             {page === "audit" && <AuditPage />}
             {page === "settings" && <SettingsPage />}
             {page === "orgadmin" && <OrgAdminPage />}
