@@ -75,7 +75,24 @@ export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreRes
     const usersRaw = usersQ.users;
     const groupsRaw = groupsQ.data ?? [];
     const servicesRaw = servicesQ.data ?? [];
-    const rules = rulesQ.data ?? [];
+    // Associate each gateway rule to a REGISTERED service by longest name match
+    // (exact, or "<name>-<variant>"; service names never contain "-"). This
+    // replaces the naive transform-time id.split('-')[0], which invents phantom
+    // services (e.g. "jinbe_kuma") and hides their rules. A rule that matches no
+    // registered service keeps its raw derived value so the UI can surface it as
+    // an unassigned/infrastructure rule rather than silently dropping it.
+    const svcNamesForAssoc = servicesRaw.map(s => s.name);
+    const assocService = (id: string): string | null => {
+      let best: string | null = null;
+      for (const n of svcNamesForAssoc) {
+        if ((id === n || id.startsWith(n + '-')) && (!best || n.length > best.length)) best = n;
+      }
+      return best;
+    };
+    const rules = (rulesQ.data ?? []).map(r => {
+      const assoc = assocService(r.id);
+      return assoc && assoc !== r.service ? { ...r, service: assoc } : r;
+    });
     const rolesMap: RolesMap = rolesQ.data ?? {};
     const routeMaps = routesQ.data ?? {};
 
