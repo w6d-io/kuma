@@ -1,8 +1,15 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, EmptyHint, Switch } from '../components/ui/Primitives';
-import { api, type KratosIdentity } from '../api/client';
+import { type KratosIdentity } from '../api/client';
+import {
+  useMyOrganizations,
+  useAssignableGroups,
+  useOrgUsers,
+  useCreateOrgUser,
+  useSetOrgUserGroups,
+} from '../api/hooks';
 
 type PushToast = (msg: string, opts?: { err?: boolean; sub?: string; ttl?: number }) => void;
 type ApiErr = Error & { code?: string; status?: number; details?: { hint?: string } };
@@ -58,24 +65,28 @@ function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
   org: string; assignable: string[]; onClose: () => void; onDone: () => void; pushToast: PushToast;
 }) {
   const toastErr = makeToastErr(pushToast);
+  const createUser = useCreateOrgUser(org);
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [sendInvite, setSendInvite] = useState(true);
   const [groups, setGroups] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
+  const busy = createUser.isPending;
   const toggle = (g: string) => setGroups(gs => (gs.includes(g) ? gs.filter(x => x !== g) : [...gs, g]));
 
   const submit = () => {
     if (!email || busy) return;
-    setBusy(true);
-    api.createOrgUser(org, {
-      email: email.trim(),
-      name: name.trim() || undefined,
-      sendInvite,
-      groups: groups.length ? groups : undefined,
-    })
-      .then(() => { pushToast(`Invited ${email.trim()}`, { sub: sendInvite ? 'recovery email sent' : undefined }); onDone(); })
-      .catch(err => { toastErr(err); setBusy(false); });
+    createUser.mutate(
+      {
+        email: email.trim(),
+        name: name.trim() || undefined,
+        sendInvite,
+        groups: groups.length ? groups : undefined,
+      },
+      {
+        onSuccess: () => { pushToast(`Invited ${email.trim()}`, { sub: sendInvite ? 'recovery email sent' : undefined }); onDone(); },
+        onError: toastErr,
+      },
+    );
   };
 
   return (
@@ -121,21 +132,25 @@ function ManageGroupsDrawer({ org, user, assignable, onClose, onDone, pushToast 
   org: string; user: KratosIdentity; assignable: string[]; onClose: () => void; onDone: () => void; pushToast: PushToast;
 }) {
   const toastErr = makeToastErr(pushToast);
+  const setUserGroups = useSetOrgUserGroups(org);
   const current = user.metadata_admin?.groups ?? [];
   // Only the assignable groups are editable; any other group the user already
   // has is shown read-only (the org admin can't grant/revoke outside their set).
   const [groups, setGroups] = useState<string[]>(current);
-  const [busy, setBusy] = useState(false);
+  const busy = setUserGroups.isPending;
   const toggle = (g: string) => setGroups(gs => (gs.includes(g) ? gs.filter(x => x !== g) : [...gs, g]));
 
   const readOnly = current.filter(g => !assignable.includes(g));
 
   const submit = () => {
     if (busy) return;
-    setBusy(true);
-    api.setOrgUserGroups(org, user.id, groups)
-      .then(() => { pushToast(`Updated groups for ${user.traits?.email}`); onDone(); })
-      .catch(err => { toastErr(err); setBusy(false); });
+    setUserGroups.mutate(
+      { userId: user.id, groups },
+      {
+        onSuccess: () => { pushToast(`Updated groups for ${user.traits?.email}`); onDone(); },
+        onError: toastErr,
+      },
+    );
   };
 
   return (
@@ -180,36 +195,32 @@ export function OrgAdminPage() {
   const { pushToast } = useApp();
   const toastErr = useMemo(() => makeToastErr(pushToast), [pushToast]);
 
-  const [orgs, setOrgs] = useState<string[] | null>(null); // null = still loading
   const [org, setOrg] = useState('');
-  const [users, setUsers] = useState<KratosIdentity[]>([]);
-  const [assignable, setAssignable] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');   // committed (Enter/Search) exact-email query
   const [invite, setInvite] = useState(false);
   const [manageUser, setManageUser] = useState<KratosIdentity | null>(null);
 
+  const orgsQ = useMyOrganizations();
+  // Surface a failed org list (403/network) instead of silently showing the
+  // "no orgs" empty state.
+  useEffect(() => { if (orgsQ.error) toastErr(orgsQ.error); }, [orgsQ.error, toastErr]);
+  const orgs = orgsQ.isError ? [] : orgsQ.data ?? null;
+  // Default to the first org once the list lands.
+  const activeOrg = org || orgs?.[0] || '';
+
+  const usersQ = useOrgUsers(activeOrg, search || undefined);
+  const assignableQ = useAssignableGroups(activeOrg);
+  const users = usersQ.data?.data ?? [];
+  const assignable = useMemo(() => assignableQ.data ?? [], [assignableQ.data]);
+  const loading = usersQ.isLoading || assignableQ.isLoading;
+
   useEffect(() => {
-    let alive = true;
-    api.myOrganizations()
-      .then(list => { if (!alive) return; setOrgs(list); if (list.length) setOrg(list[0]); })
-      .catch(err => { if (!alive) return; setOrgs([]); toastErr(err); });
-    return () => { alive = false; };
-  }, [toastErr]);
+    const err = usersQ.error ?? assignableQ.error;
+    if (err) toastErr(err);
+  }, [usersQ.error, assignableQ.error, toastErr]);
 
-  const loadOrg = useCallback((orgId: string, search?: string) => {
-    if (!orgId) return;
-    setLoading(true);
-    Promise.all([
-      api.getOrgUsers(orgId, { search: search || undefined }),
-      api.getAssignableGroups(orgId),
-    ])
-      .then(([u, g]) => { setUsers(u.data); setAssignable(g); })
-      .catch(toastErr)
-      .finally(() => setLoading(false));
-  }, [toastErr]);
-
-  useEffect(() => { if (org) loadOrg(org); }, [org, loadOrg]);
+  const runSearch = (term: string) => setSearch(term.trim());
 
   if (orgs === null) {
     return <div className="page-head"><div><h1>Org Admin</h1><div className="sub">loading…</div></div></div>;
@@ -234,7 +245,7 @@ export function OrgAdminPage() {
           <div className="sub">Manage users in organizations you administer · {orgs.length} org{orgs.length === 1 ? '' : 's'}</div>
         </div>
         <div className="page-actions">
-          <button className="btn primary" onClick={() => setInvite(true)} disabled={!org}>
+          <button className="btn primary" onClick={() => setInvite(true)} disabled={!activeOrg}>
             <span style={{ width: 14, height: 14, display: 'grid', placeItems: 'center' }}>{I.plus}</span>
             Invite user
           </button>
@@ -245,7 +256,7 @@ export function OrgAdminPage() {
         <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--line)' }}>
           <label className="small muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             Organization
-            <select className="input mono" style={{ width: 'auto' }} value={org} onChange={e => setOrg(e.target.value)}>
+            <select className="input mono" style={{ width: 'auto' }} value={activeOrg} onChange={e => { setOrg(e.target.value); setQ(''); setSearch(''); }}>
               {orgs.map(o => <option key={o} value={o}>{o}</option>)}
             </select>
           </label>
@@ -257,11 +268,11 @@ export function OrgAdminPage() {
               placeholder="Find by exact email…"
               value={q}
               onChange={e => setQ(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') loadOrg(org, q.trim()); }}
+              onKeyDown={e => { if (e.key === 'Enter') runSearch(q); }}
             />
           </div>
-          <button className="btn" onClick={() => loadOrg(org, q.trim())}>Search</button>
-          {q && <button className="btn ghost sm" onClick={() => { setQ(''); loadOrg(org); }}>Clear</button>}
+          <button className="btn" onClick={() => runSearch(q)}>Search</button>
+          {(q || search) && <button className="btn ghost sm" onClick={() => { setQ(''); setSearch(''); }}>Clear</button>}
           <div className="flex-1" />
           <span className="small muted mono">{users.length} user{users.length === 1 ? '' : 's'} · {assignable.length} assignable group{assignable.length === 1 ? '' : 's'}</span>
         </div>
@@ -304,21 +315,21 @@ export function OrgAdminPage() {
 
       {invite && (
         <InviteDrawer
-          org={org}
+          org={activeOrg}
           assignable={assignable}
           pushToast={pushToast}
           onClose={() => setInvite(false)}
-          onDone={() => { setInvite(false); loadOrg(org); }}
+          onDone={() => setInvite(false)}
         />
       )}
       {manageUser && (
         <ManageGroupsDrawer
-          org={org}
+          org={activeOrg}
           user={manageUser}
           assignable={assignable}
           pushToast={pushToast}
           onClose={() => setManageUser(null)}
-          onDone={() => { setManageUser(null); loadOrg(org); }}
+          onDone={() => setManageUser(null)}
         />
       )}
     </>
