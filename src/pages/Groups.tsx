@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
-import { Chip, Drawer, AccessLevel } from '../components/ui/Primitives';
+import { Chip, Drawer, AccessLevel, ConfirmDialog } from '../components/ui/Primitives';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
 
@@ -88,6 +88,7 @@ export function GroupDrawer() {
   const existing = isEdit && groupDrawer.name ? state.groups[groupDrawer.name] : null;
   const [name, setName] = useState(isEdit && groupDrawer?.name ? groupDrawer.name : "");
   const [mapping, setMapping] = useState<Record<string, string[]>>(existing || {});
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Seed form when the drawer opens on a group (keyed on name+mode). `existing`
   // is derived from the live cache and would re-seed on every optimistic edit,
@@ -140,7 +141,7 @@ export function GroupDrawer() {
       footer={
         <>
           {isEdit && !isSystem ? (
-            <button className="btn danger sm" onClick={remove}><span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.trash}</span> Delete group</button>
+            <button className="btn danger sm" onClick={() => setConfirmDelete(true)}><span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.trash}</span> Delete group</button>
           ) : isEdit && isSystem ? (
             <span className="small muted" title="System groups cannot be deleted">🔒 system group</span>
           ) : <div />}
@@ -198,6 +199,19 @@ export function GroupDrawer() {
           );
         })}
       </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        title={`Delete group ${groupDrawer?.name ?? ""}?`}
+        danger
+        confirmLabel="Delete group"
+        body={<>Members immediately lose the access this group grants. This can't be undone.</>}
+        blastRadius={(() => {
+          const n = state.users.filter(u => groupDrawer?.name && u.groups.includes(groupDrawer.name)).length;
+          return n > 0 ? <><b>{n}</b> user{n !== 1 ? "s" : ""} will lose this group.</> : undefined;
+        })()}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => { setConfirmDelete(false); remove(); }}
+      />
     </Drawer>
   );
 }

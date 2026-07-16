@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useSession, useUsers, useGroupsMap } from '../api/hooks';
 import { I } from '../components/ui/Icons';
-import { Chip, Avatar, Drawer, PermTree, Switch } from '../components/ui/Primitives';
+import { Chip, Avatar, Drawer, PermTree, Switch, ConfirmDialog } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
 import { useApplyChange } from '../hooks/useApplyChange';
 
@@ -142,6 +142,7 @@ export function UserDrawer() {
   const [groups, setGroups] = useState(user?.groups || []);
   const [drawerTab, setDrawerTab] = useState("groups");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false);
 
   // metadata state
   const [organizationId, setOrganizationId] = useState(editing?.organizationId || "");
@@ -422,7 +423,7 @@ export function UserDrawer() {
                     ? "Blocks login. Identity and data are preserved."
                     : "Restores login access for this identity."}
                 </div>
-                <button className="btn" onClick={toggleActive}>
+                <button className="btn" onClick={user.active ? () => setConfirmDeactivate(true) : toggleActive}>
                   {user.active ? "Deactivate" : "Reactivate"}
                 </button>
               </div>
@@ -458,6 +459,15 @@ export function UserDrawer() {
           )}
         </>
       )}
+      <ConfirmDialog
+        open={confirmDeactivate}
+        title={`Deactivate ${user?.email ?? "user"}?`}
+        danger
+        confirmLabel="Deactivate"
+        body={<>This blocks login for the account. Their identity and data are preserved — you can reactivate them later.</>}
+        onCancel={() => setConfirmDeactivate(false)}
+        onConfirm={() => { setConfirmDeactivate(false); toggleActive(); }}
+      />
     </Drawer>
   );
 }

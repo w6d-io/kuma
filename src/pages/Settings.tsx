@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useOrgServiceMap, useSetOrgServiceMapping, useDeleteOrgServiceMapping } from '../api/hooks';
 import { I } from '../components/ui/Icons';
-import { Modal } from '../components/ui/Primitives';
+import { Modal, ConfirmDialog } from '../components/ui/Primitives';
 import { api } from '../api/client';
 import type { BundleImportResult } from '../api/client';
 
@@ -34,6 +34,7 @@ export function SettingsPage() {
   const mappings: Record<string, string> = fetchedMappings ?? {};
   const [newOrgId, setNewOrgId] = useState('');
   const [newService, setNewService] = useState('');
+  const [confirmOrg, setConfirmOrg] = useState<string | null>(null);
   const mapSaving = setMapping.isPending;
 
   function handleAddMapping() {
@@ -177,7 +178,7 @@ export function SettingsPage() {
                       <td className="mono" style={{ padding: '6px 8px' }}>{orgId}</td>
                       <td className="mono" style={{ padding: '6px 8px', fontWeight: 500 }}>{svc}</td>
                       <td style={{ padding: '6px 8px', textAlign: 'right' }}>
-                        <button className="btn ghost sm" onClick={() => handleDeleteMapping(orgId)} title="Remove mapping">
+                        <button className="btn ghost sm" onClick={() => setConfirmOrg(orgId)} title="Remove mapping">
                           {I.trash}
                         </button>
                       </td>
@@ -271,6 +272,16 @@ export function SettingsPage() {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={!!confirmOrg}
+        title="Remove organization mapping?"
+        danger
+        confirmLabel="Remove mapping"
+        body={<>Org admins for <span className="mono">{confirmOrg?.slice(0, 8)}…</span> will lose the ability to manage its users, and delegated group assignment will stop working for that organization.</>}
+        onCancel={() => setConfirmOrg(null)}
+        onConfirm={() => { if (confirmOrg) handleDeleteMapping(confirmOrg); setConfirmOrg(null); }}
+      />
     </>
   );
 }
