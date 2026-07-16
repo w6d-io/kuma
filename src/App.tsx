@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, Fragment } from 'react';
 import { AppProvider, useApp } from './contexts/AppContext';
-import { useSession } from './api/hooks';
+import { useSession, useStats, useRealtime, useUserSearch } from './api/hooks';
+import { searchedToUser } from './api/transforms';
 import { I } from './components/ui/Icons';
 import { Avatar, Switch, Toasts, EmptyHint } from './components/ui/Primitives';
 import { DashboardPage } from './pages/Dashboard';
@@ -9,9 +10,8 @@ import { UsersPage, UserDrawer } from './pages/Users';
 import { OrgAdminPage } from './pages/OrgAdmin';
 import { GroupsPage, GroupDrawer } from './pages/Groups';
 import { ServicesPage, ServiceDrawer } from './pages/Services';
-import { RolesPage } from './pages/Roles';
-import { RoutesPage } from './pages/Routes';
-import { RulesPage } from './pages/Rules';
+import { OrganizationsPage } from './pages/Organizations';
+import { GrantAccess } from './pages/GrantAccess';
 import { AuditPage } from './pages/Audit';
 import { SettingsPage } from './pages/Settings';
 import type { PageId } from './api/types';
@@ -31,9 +31,7 @@ const NAV: NavItem[] = [
   { id: "users",     name: "Users",     ico: I.users,   section: "Platform", perms: ["admin:read"] },
   { id: "groups",    name: "Groups",    ico: I.group,   section: "Platform", perms: ["admin:read"] },
   { id: "services",  name: "Services",  ico: I.service, section: "Policy",   perms: ["admin:read"] },
-  { id: "roles",     name: "Roles",     ico: I.role,    section: "Policy",   perms: ["admin:read"] },
-  { id: "routes",    name: "Route map", ico: I.route,   section: "Policy",   perms: ["admin:read"] },
-  { id: "rules",     name: "Oathkeeper", ico: I.gate,   section: "Gateway",  perms: ["admin:read"] },
+  { id: "organizations", name: "Organizations", ico: I.globe, section: "Policy", perms: ["admin:read"] },
   { id: "audit",     name: "Audit log", ico: I.audit,   section: "Changes",  perms: ["admin:read"] },
   { id: "settings",  name: "Settings",  ico: I.cog,     section: "Changes",  perms: [] },
   // Delegated org-admin self-service. perms [] = visible to any authenticated
@@ -63,6 +61,7 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
   const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
 
   const { data: session } = useSession();
+  const { data: stats } = useStats();
   const email = session?.email || "you@console";
   const role  = session?.roles?.[0] || "";
   const [localPart, domain] = email.includes("@") ? [email.split("@")[0], "@" + email.split("@")[1]] : [email, ""];
@@ -92,10 +91,9 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
             <div className="nav-section">{sec}</div>
             {visibleNav.filter(n => n.section === sec).map(n => {
               const count =
-                n.id === "users" ? state.users.length :
+                n.id === "users" ? (stats?.total ?? state.users.length) :
                 n.id === "groups" ? Object.keys(state.groups).length :
                 n.id === "services" ? state.services.length :
-                n.id === "rules" ? state.accessRules.length :
                 null;
               return (
                 <button key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => setPage(n.id)}>
@@ -252,26 +250,31 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
 }
 
 function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { setPage, state, setUserDrawer, setGroupDrawer, setServiceDrawer, setActiveService, setTheme, theme } = useApp();
+  const { setPage, state, setGroupDrawer, setServiceDrawer, setActiveService, setGrant, setTheme, theme } = useApp();
   const [q, setQ] = useState("");
   const [idx, setIdx] = useState(0);
   useEffect(() => { if (open) { setQ(""); setIdx(0); } }, [open]);
+
+  // Users come from server-side search (no full-directory dependency), so ⌘K
+  // finds anyone in the ~10k directory, not just the loaded page.
+  const userSearch = useUserSearch(q);
+  const userResults = useMemo(() => (userSearch.data ?? []).map(searchedToUser), [userSearch.data]);
 
   const groups = useMemo(() => {
     const low = q.toLowerCase();
     const match = (s: string) => !low || s.toLowerCase().includes(low);
     const nav = NAV.filter(n => match(n.name)).map(n => ({ kind: "nav", label: `Go to · ${n.name}`, sub: n.id, run: () => setPage(n.id) }));
-    const users = state.users.filter(u => match(u.name) || match(u.email)).slice(0, 6).map(u => ({
-      kind: "user", label: u.name, sub: u.email, run: () => { setPage("users"); setUserDrawer({ mode: "edit", user: u }); }
+    const users = userResults.slice(0, 6).map(u => ({
+      kind: "user", label: u.name, sub: u.email, run: () => { setGrant({ user: u }); }
     }));
     const grps = Object.keys(state.groups).filter(match).slice(0, 6).map(g => ({
       kind: "group", label: `Edit group · ${g}`, sub: "groups.json", run: () => { setPage("groups"); setGroupDrawer({ mode: "edit", name: g }); }
     }));
     const svcs = state.services.filter(s => match(s.name)).map(s => ({
-      kind: "service", label: `Service · ${s.name}`, sub: s.upstreamUrl || "virtual", run: () => { setActiveService(s.name); setPage("roles"); }
+      kind: "service", label: `Service · ${s.name}`, sub: s.upstreamUrl || "virtual", run: () => { setActiveService(s.name); setPage("services"); }
     }));
     const actions = [
-      { kind: "action", label: "Assign user to group", sub: "Kratos", run: () => { setUserDrawer({ mode: "assign" }); } },
+      { kind: "action", label: "Grant access to a user", sub: "guided", run: () => { setGrant({}); } },
       { kind: "action", label: "New group", sub: "groups.json", run: () => { setGroupDrawer({ mode: "create" }); } },
       { kind: "action", label: "Register service", sub: "creates roles + route_map + rule", run: () => { setServiceDrawer({ mode: "create" }); } },
       { kind: "action", label: `Toggle ${theme === "dark" ? "light" : "dark"} theme`, sub: "ui", run: () => setTheme(theme === "dark" ? "light" : "dark") },
@@ -283,9 +286,9 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
       { name: "Groups", items: grps },
       { name: "Services", items: svcs },
     ].filter(g => g.items.length > 0);
-    // Context setters are stable; results recompute on q/state/theme only.
+    // Context setters are stable; results recompute on q/state/theme/search only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, state, theme]);
+  }, [q, state, theme, userResults]);
 
   const flat = groups.flatMap(g => g.items);
   const fire = (i: number) => { const it = flat[i]; if (it) { it.run(); onClose(); } };
@@ -397,6 +400,11 @@ function AppShell() {
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [tweaksOpen, setTweaksOpen] = useState(false);
 
+  // Real-time: subscribe to the server change stream (admins only) so the whole
+  // console reflects changes sub-second without polling.
+  const isAdmin = !!session?.permissions?.some(p => p === '*' || p === 'admin:read');
+  useRealtime(isAdmin);
+
   // If the user landed on a page they cannot access (direct URL / reload),
   // bounce to Overview. Only act once the session query has SUCCESSFULLY
   // resolved: while it is still loading, session.permissions is undefined and
@@ -404,10 +412,17 @@ function AppShell() {
   // dashboard. A failed/401 session is handled by the Topbar redirect, not here.
   useEffect(() => {
     if (!sessionReady) return
-    const nav = NAV.find((n) => n.id === page)
+    // roles/routes/rules are aliases that render the Services workspace but have
+    // no NAV entry — resolve to the canonical id so they inherit the same gate.
+    const canonical = (page === 'roles' || page === 'routes' || page === 'rules') ? 'services' : page
+    const nav = NAV.find((n) => n.id === canonical)
     if (!nav) return
     if (!hasAnyPerm(session?.permissions, nav.perms)) {
-      setPage('dashboard')
+      // Land the user on a surface they can actually use. Platform admins get
+      // Overview; a delegated org admin (no admin:read) gets Org Admin instead
+      // of Overview's "you can't be here" state.
+      const canAdmin = !!session?.permissions?.some((p) => p === '*' || p === 'admin:read')
+      setPage(canAdmin ? 'dashboard' : 'orgadmin')
     }
   }, [page, sessionReady, session?.permissions, setPage])
 
@@ -430,10 +445,8 @@ function AppShell() {
             {page === "simulator" && <SimulatorPage />}
             {page === "users" && <UsersPage />}
             {page === "groups" && <GroupsPage />}
-            {page === "services" && <ServicesPage />}
-            {page === "roles" && <RolesPage />}
-            {page === "routes" && <RoutesPage />}
-            {page === "rules" && <RulesPage />}
+            {(page === "services" || page === "roles" || page === "routes" || page === "rules") && <ServicesPage />}
+            {page === "organizations" && <OrganizationsPage />}
             {page === "audit" && <AuditPage />}
             {page === "settings" && <SettingsPage />}
             {page === "orgadmin" && <OrgAdminPage />}
@@ -443,6 +456,7 @@ function AppShell() {
       <UserDrawer />
       <GroupDrawer />
       <ServiceDrawer />
+      <GrantAccess />
       <CmdK open={cmdkOpen} onClose={() => setCmdkOpen(false)} />
       <TweaksPanel open={tweaksOpen} onClose={() => setTweaksOpen(false)} />
       <Toasts toasts={toasts} />

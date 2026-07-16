@@ -3,7 +3,17 @@ import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
 import { Chip, Method, Avatar } from '../components/ui/Primitives';
 import { resolvePerms } from '../hooks/useRbac';
+import { useUserSearch } from '../api/hooks';
+import { searchedToUser } from '../api/transforms';
 import { api, type SimulateResponse } from '../api/client';
+import type { User } from '../api/types';
+
+// Small debounce so typing the identity search doesn't re-query per keystroke.
+function useDebounced<T>(value: T, ms = 250): T {
+  const [v, setV] = useState(value);
+  useEffect(() => { const t = setTimeout(() => setV(value), ms); return () => clearTimeout(t); }, [value, ms]);
+  return v;
+}
 
 type TraceStep = { id: string; stage: string; label: string; detail: string; tone: string; body?: string };
 type Decision = { steps: TraceStep[]; allowed: boolean; reason: string; latency: number };
@@ -79,13 +89,15 @@ function buildDecision(res: SimulateResponse, service: string, latency: number):
 
 export function SimulatorPage() {
   const { state, setPage, setUserDrawer } = useApp();
-  const [userId, setUserId] = useState(state.users[1]?.id || "");
+  const [user, setUser] = useState<User | null>(null);
+  const [uq, setUq] = useState("");
   const [service, setService] = useState("jinbe");
   const [method, setMethod] = useState("GET");
   const [path, setPath] = useState("/api/projects/");
 
-  const user = state.users.find(u => u.id === userId);
   const services = state.services.map(s => s.name).filter(n => n !== "global");
+  const duq = useDebounced(uq.trim());
+  const userSearch = useUserSearch(duq);
 
   // Route picker filter — searchable list of every route in the selected
   // service's route_map. Without this, the user is stuck guessing paths or
@@ -182,9 +194,41 @@ export function SimulatorPage() {
           <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div>
               <label className="input-label">Identity</label>
-              <select className="input mono" value={userId} onChange={e => setUserId(e.target.value)}>
-                {state.users.map(u => <option key={u.id} value={u.id}>{u.email} — {u.groups.join(",") || "no groups"}</option>)}
-              </select>
+              {user ? (
+                <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                  <Avatar email={user.email} size={22} />
+                  <span className="mono small" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</span>
+                  <button className="btn ghost sm" onClick={() => { setUser(null); setUq(''); }}>Change</button>
+                </div>
+              ) : (
+                <>
+                  <input className="input mono" type="search" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="Search a user by name or email…" value={uq} onChange={e => setUq(e.target.value)} />
+                  {duq.length >= 2 && (
+                    <div style={{ maxHeight: 180, overflowY: 'auto', marginTop: 4, background: 'var(--panel-2)', borderRadius: 6, padding: 4 }}>
+                      {userSearch.isLoading && <span className="small muted" style={{ padding: 8, display: 'block' }}>Searching…</span>}
+                      {!userSearch.isLoading && (userSearch.data ?? []).length === 0 && <span className="small muted" style={{ padding: 8, display: 'block' }}>No match.</span>}
+                      {(userSearch.data ?? []).map(searchedToUser).map((u, i, arr) => (
+                        <button
+                          key={u.id}
+                          className="row-click"
+                          onClick={() => { setUser(u); setUq(''); }}
+                          style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 10, alignItems: 'center', padding: '10px 12px', border: 'none', borderBottom: i < arr.length - 1 ? '1px solid var(--line)' : 'none', background: 'transparent', cursor: 'pointer', color: 'var(--ink)' }}
+                        >
+                          <Avatar name={u.name} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 500, fontSize: 12.5 }}>{u.name} {!u.active && <Chip tone="warn">inactive</Chip>}</div>
+                            <div className="small muted mono" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.email}</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: '45%' }}>
+                            {u.groups.length === 0 ? <span className="small muted">no groups</span> : u.groups.slice(0, 3).map(g => <Chip key={g}>{g}</Chip>)}
+                            {u.groups.length > 3 && <span className="small muted">+{u.groups.length - 3}</span>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
             <div>
               <label className="input-label">Service</label>

@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
-import { Chip, Drawer, AccessLevel } from '../components/ui/Primitives';
+import { Chip, Drawer, AccessLevel, ConfirmDialog } from '../components/ui/Primitives';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
+import { useStats } from '../api/hooks';
 
 export function GroupsPage() {
   const { state, setGroupDrawer } = useApp();
+  const { data: stats } = useStats();
   const services = state.services.map(s => s.name);
 
   return (
@@ -38,7 +40,7 @@ export function GroupsPage() {
           </thead>
           <tbody>
             {Object.entries(state.groups).map(([g, map]) => {
-              const users = state.users.filter(u => u.groups.includes(g)).length;
+              const users = stats?.perGroup?.[g] ?? 0;
               return (
                 <tr key={g}>
                   <td className="sticky-col" style={{ left: 0, fontWeight: 500 }}>
@@ -83,11 +85,13 @@ export function GroupsPage() {
 
 export function GroupDrawer() {
   const { groupDrawer, setGroupDrawer, state, apiCreateGroup, apiUpdateGroup, apiDeleteGroup } = useApp();
+  const { data: stats } = useStats();
   const applyChange = useApplyChange();
   const isEdit = groupDrawer?.mode === "edit";
   const existing = isEdit && groupDrawer.name ? state.groups[groupDrawer.name] : null;
   const [name, setName] = useState(isEdit && groupDrawer?.name ? groupDrawer.name : "");
   const [mapping, setMapping] = useState<Record<string, string[]>>(existing || {});
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Seed form when the drawer opens on a group (keyed on name+mode). `existing`
   // is derived from the live cache and would re-seed on every optimistic edit,
@@ -140,7 +144,7 @@ export function GroupDrawer() {
       footer={
         <>
           {isEdit && !isSystem ? (
-            <button className="btn danger sm" onClick={remove}><span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.trash}</span> Delete group</button>
+            <button className="btn danger sm" onClick={() => setConfirmDelete(true)}><span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.trash}</span> Delete group</button>
           ) : isEdit && isSystem ? (
             <span className="small muted" title="System groups cannot be deleted">🔒 system group</span>
           ) : <div />}
@@ -194,10 +198,37 @@ export function GroupDrawer() {
                   );
                 })}
               </div>
+              {current.length > 0 && (() => {
+                const uniq = [...new Set(perms)];
+                return (
+                  <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+                    <span className="small muted">grants:</span>
+                    {uniq.includes("*")
+                      ? <Chip tone="accent">everything (*)</Chip>
+                      : uniq.slice(0, 12).map(p => <Chip key={p}>{p}</Chip>)}
+                    {!uniq.includes("*") && uniq.length > 12 && <span className="small muted">+{uniq.length - 12} more</span>}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
       </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        title={`Delete group ${groupDrawer?.name ?? ""}?`}
+        danger
+        confirmLabel="Delete group"
+        body={<>Members immediately lose the access this group grants. This can't be undone.</>}
+        blastRadius={(() => {
+          // Accurate member count from the cached stats endpoint (state.users is
+          // only page 1 here, so filtering it would undercount).
+          const n = groupDrawer?.name ? (stats?.perGroup?.[groupDrawer.name] ?? 0) : 0;
+          return n > 0 ? <><b>{n}</b> user{n !== 1 ? "s" : ""} will lose this group.</> : undefined;
+        })()}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => { setConfirmDelete(false); remove(); }}
+      />
     </Drawer>
   );
 }

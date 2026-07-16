@@ -5,6 +5,20 @@ import { Pagination, usePagination } from '../components/ui/Pagination';
 import { useAudit } from '../api/hooks';
 import type { AuditEvent } from '../api/types';
 
+// Audit timestamps are ISO/UTC. Render + bucket them in the operator's LOCAL
+// time — a UTC string-slice showed the wrong clock time and could file an event
+// under the wrong day. (Phase 1 will hoist these into one shared date util.)
+const localDayKey = (t?: string): string => {
+  if (!t) return "";
+  const d = new Date(t);
+  return isNaN(+d) ? "" : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const localTime = (t?: string): string => {
+  if (!t) return "";
+  const d = new Date(t);
+  return isNaN(+d) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+};
+
 // Grafana base for per-event trace deep-links (correlate by sessionId/actor,
 // contract D3). Runtime-injected like __API_BASE__; empty = no link rendered.
 function grafanaTraceUrl(e: AuditEvent): string | null {
@@ -100,10 +114,10 @@ export function AuditPage() {
     const gs: { day: string; label: string; entries: typeof filtered }[] = [];
     let last = "";
     for (const e of paged) {
-      const day = (e.ts || "").slice(0, 10) || e.when;
+      const day = localDayKey(e.ts) || e.when;
       if (day !== last) {
-        const today = new Date().toISOString().slice(0, 10);
-        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+        const today = localDayKey(new Date().toISOString());
+        const yesterday = localDayKey(new Date(Date.now() - 86400000).toISOString());
         const label = day === today ? "Today" : day === yesterday ? "Yesterday" : day;
         gs.push({ day, label, entries: [] });
         last = day;
@@ -112,6 +126,24 @@ export function AuditPage() {
     }
     return gs;
   })();
+
+  // Client-side CSV export of the currently filtered events. (Bounded to the
+  // loaded window today; a server-side full export is a Phase-3 item.)
+  const exportCsv = () => {
+    const cols = ["ts", "who", "verb", "category", "target", "service", "method", "path", "status", "statusCode", "ip", "reason"] as const;
+    const esc = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const body = filtered.map(e => cols.map(c => esc((e as unknown as Record<string, unknown>)[c])).join(","));
+    const csv = [cols.join(","), ...body].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `audit-${tab}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <>
@@ -128,7 +160,7 @@ export function AuditPage() {
             <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: "var(--ink-3)" }}>{I.search}</span>
             <input className="input" style={{ paddingLeft: 30, minWidth: 280 }} placeholder="Search actor, target, IP, path…" value={q} onChange={e => setQ(e.target.value)} />
           </div>
-          <button className="btn">{I.download} Export CSV</button>
+          <button className="btn" onClick={exportCsv} disabled={filtered.length === 0}>{I.download} Export CSV</button>
         </div>
       </div>
 
@@ -189,7 +221,7 @@ export function AuditPage() {
                 <div key={e.id} className={`audit-row ${isFail ? "is-fail" : ""} ${open ? "is-open" : ""}`} onClick={() => setOpenId(open ? null : e.id)}>
                   {/* Time */}
                   <div className="audit-col-time">
-                    <div className="mono small" style={{ color: "var(--ink)" }}>{(e.ts || "").slice(11, 19) || e.when}</div>
+                    <div className="mono small" style={{ color: "var(--ink)" }}>{localTime(e.ts) || e.when}</div>
                     <div className="small muted">{e.when}</div>
                   </div>
 

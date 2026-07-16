@@ -1,202 +1,272 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { Chip, Method, RulePipeline } from '../components/ui/Primitives';
+import { Chip, Method, RulePipeline, ConfirmDialog } from '../components/ui/Primitives';
+import { I } from '../components/ui/Icons';
 import { useApplyChange } from '../hooks/useApplyChange';
 import { useUpdateAccessRule } from '../api/hooks';
-import type { AccessRule } from '../api/types';
+import type { JinbeAccessRule } from '../api/client';
 
 const ALL_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'];
+const AUTHN = ['cookie_session', 'bearer_token', 'noop'];
+const AUTHN_LABEL: Record<string, string> = { cookie_session: 'Session (cookie)', bearer_token: 'Bearer token', noop: 'None' };
+const AUTHZ: { v: string; label: string; tone: string }[] = [
+  { v: 'remote_json', label: 'Protected', tone: 'ok' },
+  { v: 'allow', label: 'Open', tone: 'warn' },
+  { v: 'deny', label: 'Blocked', tone: 'err' },
+];
+const isNoAuth = (a: string[]) => a.length === 0 || a.every(x => x === 'noop');
 
-function uiToJinbe(r: AccessRule) {
-  return {
-    id: r.id,
-    upstream: { url: r.upstream || '' },
-    match: r.match,
-    authenticators: r.authenticators.map(h => ({ handler: h })),
-    authorizer: r.authorizer === 'remote_json' && r.opaUrl
-      ? { handler: 'remote_json', config: { remote_json_url: r.opaUrl } }
-      : { handler: r.authorizer },
-    mutators: r.mutators.map(h => ({ handler: h })),
-  } as import('../api/client').JinbeAccessRule;
+// Humanise the raw Ory authorizer handler into a status + a plain-language
+// explanation of WHY it's that status (surfaced as a tooltip).
+function authzStatus(a: string): { label: string; tone: string; hint: string } {
+  if (a === 'allow') return { label: 'Open · no permission check', tone: 'warn', hint: 'Any request matching this rule passes straight through — the gateway performs no permission check.' };
+  if (a === 'deny') return { label: 'Blocked', tone: 'err', hint: 'Every request matching this rule is rejected at the gateway.' };
+  return { label: 'Protected · permission checked', tone: 'ok', hint: 'Requests are checked against the permission policy before they reach the service.' };
 }
 
-export function RulesPage() {
+// A service's HTTP surface is split across several gateway rules; turn the raw
+// id suffix ("kuma-api-preflight") into a human role.
+function ruleLabel(id: string, svc?: string): string {
+  const suffix = !svc || id === svc ? '' : id.replace(new RegExp(`^${svc}[-_]?`), '');
+  const map: Record<string, string> = {
+    '': 'Base', api: 'API', 'api-preflight': 'Preflight (CORS)', preflight: 'Preflight (CORS)',
+    app: 'App', ui: 'UI', settings: 'Settings', public: 'Public', root: 'Root',
+    dsn: 'Database', studio: 'Studio', engine: 'Engine',
+  };
+  return map[suffix] ?? (suffix ? suffix.charAt(0).toUpperCase() + suffix.slice(1).replace(/[-_]/g, ' ') : 'Base');
+}
+
+// Small segmented / chip toggle used by the inline editor.
+function Toggle({ on, tone, onClick, children }: { on: boolean; tone?: string; onClick: () => void; children: React.ReactNode }) {
+  const c = tone === 'warn' ? 'var(--warn)' : tone === 'err' ? 'var(--red, #ef4444)' : 'var(--accent)';
+  return (
+    <button onClick={onClick} className="chip" style={{
+      cursor: 'pointer', fontWeight: 500, fontSize: 11.5,
+      background: on ? c : 'var(--panel-2)', color: on ? '#fff' : 'var(--ink-2)', borderColor: on ? c : 'var(--line)',
+    }}>{children}</button>
+  );
+}
+
+export function RulesPage({ svc, unassigned = false }: { svc?: string; unassigned?: boolean } = {}) {
   const { state } = useApp();
   const applyChange = useApplyChange();
   const updateRule = useUpdateAccessRule();
-  const [selectedId, setSelectedId] = useState(state.accessRules[0]?.id);
-  const rule = state.accessRules.find(r => r.id === selectedId) || state.accessRules[0];
+  const registered = new Set(state.services.map(s => s.name));
+  const rules = unassigned
+    ? state.accessRules.filter(r => !registered.has(r.service))
+    : svc ? state.accessRules.filter(r => r.service === svc) : state.accessRules;
+  const [selectedId, setSelectedId] = useState(rules[0]?.id);
+  const rule = rules.find(r => r.id === selectedId) || rules[0];
 
-  // Draft state for inline text edits
-  const [draftUrl, setDraftUrl] = useState<string | null>(null);
-  const [draftUpstream, setDraftUpstream] = useState<string | null>(null);
+  const svcObj = state.services.find(s => s.name === (svc ?? rule?.service));
+  // Per-rule editing targets ONE rule by id (safe on multi-rule services). Only
+  // regular, registered, non-system services are editable; infra/system are
+  // read-only. Each field is overlaid on the raw rule so nothing is dropped.
+  const canEdit = !!svc && svc !== 'global' && !svcObj?.system && !unassigned;
 
-  const patchRule = (patch: Partial<AccessRule>, summary: string) => {
+  const [editing, setEditing] = useState(false);
+  const [dMethods, setDMethods] = useState<string[]>([]);
+  const [dUrl, setDUrl] = useState('');
+  const [dUpstream, setDUpstream] = useState('');
+  const [dAuth, setDAuth] = useState<string[]>([]);
+  const [dAuthz, setDAuthz] = useState('remote_json');
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  useEffect(() => { setEditing(false); }, [selectedId, svc]);
+
+  const startEdit = () => {
     if (!rule) return;
-    const updated = { ...rule, ...patch };
-    // Route the real PUT through applyChange's async path: a failed request
-    // toasts the error, a success refreshes the audit stream (server truth).
-    // The updateRule hook invalidates ['access-rules'] so the composite store
-    // re-derives — no local mirror, no false "Applied" (K1/UX-1).
-    applyChange('update', summary, async () => {
-      await updateRule.mutateAsync({ id: rule.id, rule: uiToJinbe(updated) });
-    });
+    setDMethods(rule.match.methods);
+    setDUrl(rule.match.url);
+    setDUpstream(rule.upstream || '');
+    setDAuth(rule.authenticators);
+    setDAuthz(rule.authorizer);
+    setEditing(true);
+  };
+  const toggle = (arr: string[], set: (v: string[]) => void, m: string) => set(arr.includes(m) ? arr.filter(x => x !== m) : [...arr, m]);
+  const validUpstream = /^https?:\/\//.test(dUpstream);
+  const canSave = validUpstream && dMethods.length > 0;
+
+  const buildMerged = (): JinbeAccessRule => {
+    const raw = rule!.raw as JinbeAccessRule;
+    const authenticators = dAuth.map(h => raw.authenticators.find(a => a.handler === h) ?? { handler: h });
+    let authorizer: JinbeAccessRule['authorizer'];
+    if (dAuthz === raw.authorizer.handler) authorizer = raw.authorizer;
+    else if (dAuthz === 'remote_json') authorizer = { handler: 'remote_json', config: rule!.opaUrl ? { remote_json_url: rule!.opaUrl } : undefined };
+    else authorizer = { handler: dAuthz };
+    return {
+      ...raw,
+      match: { ...raw.match, url: dUrl, methods: dMethods },
+      authenticators,
+      authorizer,
+      upstream: { ...(raw.upstream || {}), url: dUpstream },
+    };
   };
 
-  const commitUrl = () => {
-    if (draftUrl !== null && draftUrl !== rule?.match.url) {
-      patchRule({ match: { ...rule!.match, url: draftUrl } }, `oathkeeper: ${rule!.id} · url`);
-    }
-    setDraftUrl(null);
-  };
+  // Flipping to Open (no permission check) or dropping sign-in is a
+  // platform-incident-class change — gate it behind a confirm.
+  const dangerous = !!rule && (
+    (dAuthz === 'allow' && rule.authorizer !== 'allow') ||
+    (isNoAuth(dAuth) && !isNoAuth(rule.authenticators))
+  );
 
-  const commitUpstream = () => {
-    if (draftUpstream !== null && draftUpstream !== rule?.upstream) {
-      patchRule({ upstream: draftUpstream }, `oathkeeper: ${rule!.id} · upstream`);
-    }
-    setDraftUpstream(null);
+  const doSave = () => {
+    if (!rule || !canSave) return;
+    applyChange('update', `gateway: ${rule.id}`, () => updateRule.mutateAsync({ id: rule.id, rule: buildMerged() }).then(() => undefined));
+    setEditing(false);
+    setConfirmOpen(false);
   };
-
-  const toggleMethod = (m: string) => {
-    if (!rule) return;
-    const methods = rule.match.methods.includes(m)
-      ? rule.match.methods.filter(x => x !== m)
-      : [...rule.match.methods, m];
-    if (methods.length === 0) return; // need at least one
-    patchRule({ match: { ...rule.match, methods } }, `oathkeeper: ${rule.id} · methods`);
-  };
-
-  const toggleAuthenticator = (a: string) => {
-    if (!rule) return;
-    const authenticators = rule.authenticators.includes(a)
-      ? rule.authenticators.filter(x => x !== a)
-      : [...rule.authenticators, a];
-    patchRule({ authenticators }, `oathkeeper: ${rule.id} · authenticator ${a}`);
-  };
-
-  const setAuthorizer = (val: string) => {
-    if (!rule) return;
-    patchRule({ authorizer: val }, `oathkeeper: ${rule.id} · authorizer=${val}`);
-  };
-
-  const urlVal = draftUrl !== null ? draftUrl : (rule?.match.url ?? '');
-  const upstreamVal = draftUpstream !== null ? draftUpstream : (rule?.upstream ?? '');
+  const onSaveClick = () => { if (dangerous) setConfirmOpen(true); else doSave(); };
 
   return (
     <>
-      <div className="page-head"><div><h1>Oathkeeper rules</h1><div className="sub">Gateway-level routing</div></div></div>
-      <div className="grid" style={{ gridTemplateColumns: "300px 1fr", gap: 14 }}>
-        <div className="panel" style={{ padding: 0 }}>
-          <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--ink-3)" }}>Rules</div>
-          {state.accessRules.map(r => (
-            <button key={r.id} onClick={() => { setSelectedId(r.id); setDraftUrl(null); setDraftUpstream(null); }} style={{ width: "100%", textAlign: "left", padding: "10px 14px", border: "none", borderBottom: "1px solid var(--line)", background: r.id === rule?.id ? "var(--panel-2)" : "transparent", color: "var(--ink)", cursor: "pointer" }}>
-              <div className="mono" style={{ fontSize: 12.5, fontWeight: r.id === rule?.id ? 600 : 500 }}>{r.id}</div>
-              <div className="small muted mono mt-4">{r.service} → {r.authorizer}</div>
-            </button>
-          ))}
+      <div className="panel mb-12" style={{ padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'center' }}>
+        <span style={{ width: 15, height: 15, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', flexShrink: 0 }}>{I.info}</span>
+        <span className="small muted">
+          {unassigned
+            ? <>These gateway rules aren't tied to a registered service (infrastructure or legacy rules) — read-only.</>
+            : canEdit
+              ? <>Edit any rule's protection, sign-in, match and upstream below. Changes apply to this rule only.</>
+              : svcObj?.system
+                ? <>System service — its gateway rules are managed by the platform (read-only).</>
+                : <>Generated from your services and version-controlled — read-only.</>}
+        </span>
+      </div>
+
+      {rules.length === 0 ? (
+        <div className="panel" style={{ padding: 40, textAlign: 'center' }}>
+          <div className="muted small">No gateway rules{svc ? <> for <span className="mono">{svc}</span></> : ''}.</div>
         </div>
-        {rule && (
-          <div className="panel">
-            <div className="panel-head">
-              <div style={{ minWidth: 0, flex: 1 }}><h3><span className="mono">{rule.id}</span></h3><div className="sub">service: <span className="mono">{rule.service}</span></div></div>
-              <Chip tone={rule.authorizer === "allow" ? "info" : "ok"}>{rule.authorizer}</Chip>
-            </div>
-            <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--line)" }}>
-              <RulePipeline rule={rule} />
-            </div>
-            <div className="panel-body col" style={{ gap: 16 }}>
-
-              {/* Match URL */}
-              <div>
-                <label className="input-label">Match URL</label>
-                <input
-                  className="input mono"
-                  value={urlVal}
-                  onChange={e => setDraftUrl(e.target.value)}
-                  onBlur={commitUrl}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur(); } if (e.key === 'Escape') { setDraftUrl(null); } }}
-                  style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
-                />
+      ) : (
+        <div className="grid" style={{ gridTemplateColumns: "300px 1fr", gap: 14 }}>
+          <div className="panel" style={{ padding: 0 }}>
+            <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--ink-3)" }}>{svc ? `${rules.length} rule${rules.length !== 1 ? 's' : ''}` : 'Rules'}</div>
+            {!unassigned && rules.length > 1 && (
+              <div className="small muted" style={{ padding: "8px 14px", borderBottom: "1px solid var(--line)", lineHeight: 1.5 }}>
+                This service's surface is split into {rules.length} rules (e.g. CORS preflight, the protected API, the app) — each matches its own paths and is protected independently.
               </div>
-
-              {/* Methods */}
-              <div>
-                <label className="input-label">Methods</label>
-                <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-                  {ALL_METHODS.map(m => {
-                    const on = rule.match.methods.includes(m);
-                    return (
-                      <button key={m} onClick={() => toggleMethod(m)} className="chip" style={{ cursor: "pointer", fontWeight: 600, fontFamily: 'var(--font-mono)', fontSize: 11, background: on ? "var(--accent)" : "var(--panel-2)", color: on ? "white" : "var(--ink-2)", borderColor: on ? "var(--accent)" : "var(--line)" }}>
-                        {m}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="input-hint">Click to toggle. At least one required.</div>
-              </div>
-
-              {/* Authenticators */}
-              <div>
-                <label className="input-label">Authenticators</label>
-                <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-                  {["cookie_session", "bearer_token", "noop"].map(a => {
-                    const on = rule.authenticators.includes(a);
-                    return (
-                      <button key={a} onClick={() => toggleAuthenticator(a)} className="chip" style={{ cursor: "pointer", fontWeight: 500, background: on ? "var(--accent)" : "var(--panel-2)", color: on ? "white" : "var(--ink-2)", borderColor: on ? "var(--accent)" : "var(--line)" }}>
-                        {on && "✓ "}{a}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Authorizer */}
-              <div>
-                <label className="input-label">Authorizer</label>
-                <div className="row" style={{ gap: 6 }}>
-                  {["remote_json", "allow", "deny"].map(a => (
-                    <button key={a} onClick={() => setAuthorizer(a)} className="chip" style={{ cursor: "pointer", fontWeight: 500, background: rule.authorizer === a ? "var(--ink)" : "var(--panel-2)", color: rule.authorizer === a ? "var(--bg)" : "var(--ink-2)", borderColor: rule.authorizer === a ? "var(--ink)" : "var(--line)" }}>
-                      {a}
-                    </button>
+            )}
+            {rules.map(r => {
+              const s = authzStatus(r.authorizer);
+              return (
+                <button key={r.id} onClick={() => setSelectedId(r.id)} style={{ width: "100%", textAlign: "left", padding: "10px 14px", border: "none", borderBottom: "1px solid var(--line)", background: r.id === rule?.id ? "var(--panel-2)" : "transparent", color: "var(--ink)", cursor: "pointer" }}>
+                  <div className={unassigned ? "mono" : undefined} style={{ fontSize: 12.5, fontWeight: r.id === rule?.id ? 600 : 500 }}>{unassigned ? r.id : ruleLabel(r.id, svc)}</div>
+                  <div className="small mt-4"><Chip tone={s.tone} title={s.hint}>{s.label}</Chip></div>
+                </button>
+              );
+            })}
+          </div>
+          {rule && (
+            <div className="panel">
+              <div className="panel-head">
+                <div style={{ minWidth: 0, flex: 1 }}><h3>{unassigned ? <span className="mono">{rule.id}</span> : ruleLabel(rule.id, svc)}</h3><div className="sub">Matches these methods &amp; paths, then forwards to the service</div></div>
+                <div className="row" style={{ gap: 8 }}>
+                  <Chip tone={authzStatus(rule.authorizer).tone} title={authzStatus(rule.authorizer).hint}>{authzStatus(rule.authorizer).label}</Chip>
+                  {canEdit && (editing ? (
+                    <>
+                      <button className="btn sm" onClick={() => setEditing(false)}>Cancel</button>
+                      <button className="btn primary sm" onClick={onSaveClick} disabled={!canSave}>Save</button>
+                    </>
+                  ) : (
+                    <button className="btn sm" onClick={startEdit}><span style={{ width: 13, height: 13, display: 'grid', placeItems: 'center' }}>{I.edit}</span> Edit</button>
                   ))}
                 </div>
-                {rule.authorizer === "remote_json" && rule.opaUrl && <div className="input-hint">OPA URL: <span className="mono">{rule.opaUrl}</span></div>}
-                {rule.authorizer === "allow" && <div className="input-hint" style={{ color: "var(--warn)" }}>Any request matching this rule is authorized — no permission check.</div>}
               </div>
-
-              {/* Upstream */}
-              <div>
-                <label className="input-label">Upstream URL</label>
-                <input
-                  className="input mono"
-                  value={upstreamVal}
-                  onChange={e => setDraftUpstream(e.target.value)}
-                  onBlur={commitUpstream}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur(); } if (e.key === 'Escape') { setDraftUpstream(null); } }}
-                  style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
-                  placeholder="http://service:port"
-                />
+              <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--line)" }}>
+                <RulePipeline rule={rule} />
               </div>
-
-              {/* Routes preview */}
-              {state.routeMaps[rule.service] && (
-                <div>
-                  <label className="input-label">Routes · {state.routeMaps[rule.service].length}</label>
-                  <div className="panel" style={{ padding: 0, maxHeight: 180, overflowY: "auto" }}>
-                    {state.routeMaps[rule.service].map((r, i) => (
-                      <div key={i} style={{ display: "flex", gap: 10, padding: "8px 12px", alignItems: "center", borderBottom: i < state.routeMaps[rule.service].length - 1 ? "1px solid var(--line)" : "none" }}>
-                        <Method m={r.method} />
-                        <span className="mono small" style={{ flex: 1 }}>{r.path}</span>
-                        {r.permission ? <Chip>{r.permission}</Chip> : <Chip tone="info">public</Chip>}
-                      </div>
-                    ))}
+              <div className="panel-body col" style={{ gap: 16 }}>
+                {!editing && rule.authorizer === "allow" && (
+                  <div className="small" style={{ color: "var(--warn)", display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span style={{ width: 14, height: 14, display: 'grid', placeItems: 'center' }}>{I.alert}</span>
+                    Every request matching this rule is authorized with no permission check.
                   </div>
+                )}
+
+                {/* Authorization */}
+                <div>
+                  <label className="input-label">Authorization</label>
+                  {editing ? (
+                    <div className="row" style={{ gap: 6 }}>
+                      {AUTHZ.map(a => <Toggle key={a.v} on={dAuthz === a.v} tone={a.tone} onClick={() => setDAuthz(a.v)}>{a.label}</Toggle>)}
+                    </div>
+                  ) : (
+                    <div className="small" title={authzStatus(rule.authorizer).hint}>{authzStatus(rule.authorizer).label}{rule.authorizer === 'remote_json' && rule.opaUrl ? <> · <span className="muted">policy engine</span></> : null}</div>
+                  )}
                 </div>
-              )}
+
+                {/* Authentication */}
+                <div>
+                  <label className="input-label">Sign-in required</label>
+                  {editing ? (
+                    <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                      {AUTHN.map(a => <Toggle key={a} on={dAuth.includes(a)} onClick={() => toggle(dAuth, setDAuth, a)}>{AUTHN_LABEL[a]}</Toggle>)}
+                    </div>
+                  ) : (
+                    <div className="mono small" style={{ color: 'var(--ink-2)' }}>{rule.authenticators.length ? rule.authenticators.map(a => AUTHN_LABEL[a] || a).join(', ') : 'None'}</div>
+                  )}
+                </div>
+
+                {/* Matches */}
+                <div>
+                  <label className="input-label">Matches</label>
+                  {editing ? (
+                    <>
+                      <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                        {ALL_METHODS.map(m => <Toggle key={m} on={dMethods.includes(m)} onClick={() => toggle(dMethods, setDMethods, m)}>{m}</Toggle>)}
+                      </div>
+                      <input className="input mono" value={dUrl} onChange={e => setDUrl(e.target.value)} style={{ width: '100%' }} placeholder="match URL (regexp)" />
+                    </>
+                  ) : (
+                    <div className="mono small" style={{ color: 'var(--ink-2)', wordBreak: 'break-all' }}>{rule.match.methods.join(', ')} &nbsp;{rule.match.url}</div>
+                  )}
+                </div>
+
+                {/* Forwards to */}
+                <div>
+                  <label className="input-label">Forwards to</label>
+                  {editing ? (
+                    <>
+                      <input className="input mono" value={dUpstream} onChange={e => setDUpstream(e.target.value)} style={{ width: '100%' }} placeholder="http://service:port" />
+                      {dUpstream && !validUpstream && <div className="input-hint" style={{ color: 'var(--err)' }}>Must start with http:// or https://</div>}
+                    </>
+                  ) : (
+                    <div className="mono small" style={{ color: 'var(--ink-2)', wordBreak: 'break-all' }}>{rule.upstream || '—'}</div>
+                  )}
+                </div>
+
+                {/* Routes preview (read-only) */}
+                {state.routeMaps[rule.service] && (
+                  <div>
+                    <label className="input-label">Routes · {state.routeMaps[rule.service].length}</label>
+                    <div className="panel" style={{ padding: 0, maxHeight: 180, overflowY: "auto" }}>
+                      {state.routeMaps[rule.service].map((r, i) => (
+                        <div key={i} style={{ display: "flex", gap: 10, padding: "8px 12px", alignItems: "center", borderBottom: i < state.routeMaps[rule.service].length - 1 ? "1px solid var(--line)" : "none" }}>
+                          <Method m={r.method} />
+                          <span className="mono small" style={{ flex: 1 }}>{r.path}</span>
+                          {r.permission ? <Chip>{r.permission}</Chip> : <Chip tone="info" title="Reachable with no permission — public">public</Chip>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Reduce protection on this rule?"
+        danger
+        confirmLabel="Apply anyway"
+        body={<>
+          {dAuthz === 'allow' && rule?.authorizer !== 'allow' && <div>Setting <b>Open</b> means every matching request is allowed with <b>no permission check</b>.</div>}
+          {isNoAuth(dAuth) && rule && !isNoAuth(rule.authenticators) && <div style={{ marginTop: 6 }}>Removing sign-in means requests won't need to be authenticated.</div>}
+        </>}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={doSave}
+      />
     </>
   );
 }

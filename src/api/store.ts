@@ -75,7 +75,29 @@ export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreRes
     const usersRaw = usersQ.users;
     const groupsRaw = groupsQ.data ?? [];
     const servicesRaw = servicesQ.data ?? [];
-    const rules = rulesQ.data ?? [];
+    // Associate each gateway rule to a REGISTERED service by longest name match
+    // (exact, or "<name>-<variant>"; service names never contain "-"). This
+    // replaces the naive transform-time id.split('-')[0], which invents phantom
+    // services (e.g. "jinbe_kuma") and hides their rules. A rule that matches no
+    // registered service keeps its raw derived value so the UI can surface it as
+    // an unassigned/infrastructure rule rather than silently dropping it.
+    // Treat "-" and "_" as the same separator: gateway rule ids use "-"
+    // (stairwage-dsn) while the matching service names use "_" (stairwage_dsn).
+    const norm = (s: string) => s.replace(/[-_]/g, '.');
+    const svcNamesForAssoc = servicesRaw.map(s => s.name);
+    const assocService = (id: string): string | null => {
+      const nid = norm(id);
+      let best: string | null = null;
+      for (const n of svcNamesForAssoc) {
+        const nn = norm(n);
+        if ((nid === nn || nid.startsWith(nn + '.')) && (!best || n.length > best.length)) best = n;
+      }
+      return best;
+    };
+    const rules = (rulesQ.data ?? []).map(r => {
+      const assoc = assocService(r.id);
+      return assoc && assoc !== r.service ? { ...r, service: assoc } : r;
+    });
     const rolesMap: RolesMap = rolesQ.data ?? {};
     const routeMaps = routesQ.data ?? {};
 

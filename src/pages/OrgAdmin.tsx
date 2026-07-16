@@ -61,7 +61,7 @@ function GroupPicker({ assignable, checked, toggle }: { assignable: string[]; ch
   );
 }
 
-function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
+export function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
   org: string; assignable: string[]; onClose: () => void; onDone: () => void; pushToast: PushToast;
 }) {
   const toastErr = makeToastErr(pushToast);
@@ -107,7 +107,7 @@ function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
     >
       <div className="mb-12">
         <label className="input-label">Email *</label>
-        <input className="input mono" type="email" placeholder="user@example.com" value={email} onChange={e => setEmail(e.target.value)} autoFocus />
+        <input className="input mono" type="text" inputMode="email" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="user@example.com" value={email} onChange={e => setEmail(e.target.value)} autoFocus />
       </div>
       <div className="mb-12">
         <label className="input-label">Name <span className="muted">(optional)</span></label>
