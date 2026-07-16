@@ -87,7 +87,7 @@ function EditRow({ route, perms, onSave, onCancel }: EditRowProps) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function RoutesPage() {
-  const { state, setState, activeService, setActiveService, isLive } = useApp();
+  const { state, activeService, setActiveService } = useApp();
   const applyChange = useApplyChange();
   const svc = activeService && state.routeMaps[activeService] ? activeService : "jinbe";
   const routes = state.routeMaps[svc] || [];
@@ -96,7 +96,8 @@ export function RoutesPage() {
   const [editIdx, setEditIdx] = useState<number | null>(null);
 
   const updateRoutes = useUpdateServiceRoutes(svc);
-  const svcRoles = state.roles[svc] || {};
+  // Memoise so the identity is stable across renders (feeds availablePerms' deps).
+  const svcRoles = useMemo(() => state.roles[svc] || {}, [state.roles, svc]);
   const hasWildcard = Object.values(svcRoles).some(ps => ps.includes("*"));
 
   // All unique non-wildcard permissions defined in this service's roles
@@ -108,12 +109,10 @@ export function RoutesPage() {
     return Array.from(set).sort();
   }, [svcRoles]);
 
-  const persistRoutes = (newRoutes: RouteEntry[]) => {
-    if (isLive) return updateRoutes.mutateAsync(newRoutes).then(() => {
-      setState(s => ({ ...s, routeMaps: { ...s.routeMaps, [svc]: newRoutes } }));
-    }) as Promise<void>;
-    setState(s => ({ ...s, routeMaps: { ...s.routeMaps, [svc]: newRoutes } }));
-  };
+  // Scoped mutation hook invalidates ['routes', svc]; the composite store
+  // re-derives from server truth (no local mirror — STORE-4).
+  const persistRoutes = (newRoutes: RouteEntry[]): Promise<void> =>
+    updateRoutes.mutateAsync(newRoutes).then(() => undefined);
 
   const addRoute = () => {
     if (!draft.path || !draft.method) return;

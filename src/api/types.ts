@@ -49,6 +49,10 @@ export interface AuditEvent {
   ts?: string;
   who: string;
   actorName?: string;
+  /** access | change | auth | system — separates telemetry from the change record. */
+  kind?: string;
+  /** Kratos session id for Grafana/session correlation (contract D3). */
+  sessionId?: string;
   category: string;
   verb: string;
   target: string;
@@ -85,9 +89,6 @@ export interface AppState {
   /** Per-group metadata (system flag, description). Indexed by group name. */
   groupsMeta: GroupsMetaMap;
   users: User[];
-  /** Keyset token for the next unfetched users page. Set when the directory is
-   *  still streaming in the background; undefined once fully loaded. */
-  usersNextPageToken?: string;
   /** True while remaining user pages load in the background after first paint. */
   usersLoading?: boolean;
   routeMaps: RouteMapsMap;
@@ -95,7 +96,7 @@ export interface AppState {
   audit: AuditEvent[];
 }
 
-export type PageId = 'dashboard' | 'simulator' | 'users' | 'groups' | 'services' | 'roles' | 'routes' | 'rules' | 'audit' | 'settings';
+export type PageId = 'dashboard' | 'simulator' | 'users' | 'groups' | 'services' | 'roles' | 'routes' | 'rules' | 'audit' | 'settings' | 'orgadmin';
 
 export interface TweakDefaults {
   theme: string;

@@ -312,9 +312,7 @@ export function SimulatorPage() {
                 {decision.reason === "public" && "Route is public (no permission required). OPA not consulted."}
                 {decision.reason === "not_authorized" && "OPA returned allow = false. No role grants the required permission."}
                 {decision.reason === "authorized" && "OPA returned allow = true. Request forwarded to upstream with identity headers."}
-                {decision.reason === "no_rule" && "No Oathkeeper access rule covers this service."}
                 {decision.reason === "route_not_found" && "No route_map entry matches this method + path."}
-                {decision.reason === "auth_failed" && "Authentication failed. Identity is inactive or no session cookie."}
               </div>
               {!decision.allowed && (
                 <div className="row mt-12" style={{ gap: 6 }}>

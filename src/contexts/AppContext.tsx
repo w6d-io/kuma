@@ -1,12 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import type { AppState, PageId, AuditEvent, User, TweakDefaults } from '../api/types';
-import { useRbacData, useInvalidateRbac, kratosToUser } from '../api/useRbacData';
+import { useQueryClient } from '@tanstack/react-query';
+import type { AppState, PageId, TweakDefaults } from '../api/types';
+import { useStore } from '../api/store';
+import { withOptimism, cachePatch } from '../api/mutations';
 import { api } from '../api/client';
-
-const EMPTY_STATE: AppState = {
-  meta: { jinbeApi: '/api', opalServer: '', kratosAdmin: '', lastSync: '' },
-  services: [], roles: {}, groups: {}, groupsMeta: {}, users: [], routeMaps: {}, accessRules: [], audit: [],
-};
 
 const TWEAK_DEFAULTS: TweakDefaults = {
   theme: "light",
@@ -38,7 +35,7 @@ interface PipelineState {
 
 export interface UserDrawerState {
   mode: 'edit' | 'assign' | 'create';
-  user?: User;
+  user?: import('../api/types').User;
 }
 
 export interface GroupDrawerState {
@@ -54,13 +51,11 @@ export interface ServiceDrawerState {
 
 interface AppContextType {
   state: AppState;
-  setState: React.Dispatch<React.SetStateAction<AppState>>;
-  audit: AuditEvent[];
-  setAudit: React.Dispatch<React.SetStateAction<AuditEvent[]>>;
   isLive: boolean;
   isLoading: boolean;
   apiError: Error | null;
   refetch: () => void;
+  refreshAudit: () => void;
   page: PageId;
   setPage: (page: PageId) => void;
   activeService: string;
@@ -91,7 +86,7 @@ interface AppContextType {
   apiCreateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
   apiUpdateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
   apiDeleteGroup: (name: string) => Promise<void>;
-  apiCreateService: (svc: { name: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string }) => Promise<void>;
+  apiCreateService: (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string }) => Promise<void>;
   apiUpdateService: (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null }) => Promise<void>;
   apiDeleteService: (name: string) => Promise<void>;
 }
@@ -130,20 +125,58 @@ function usePipeline(pushToast: (msg: string, opts?: { sub?: string }) => void):
   return { stage, run };
 }
 
+// Every entity key the composite store reads. `refetch()` (e.g. after a bundle
+// import that rewrites everything) invalidates all of them; individual
+// mutations invalidate only the keys they touch (STORE-3).
+const ALL_ENTITY_KEYS = [
+  ['users'], ['groups'], ['groups-map'], ['services'],
+  ['all-roles'], ['all-routes'], ['access-rules'], ['audit'],
+] as const;
+
+// Pages that consume directory-wide user aggregates (counts, posture signals,
+// full identity dropdown) and therefore need the whole directory streamed in.
+// Everywhere else the store holds only page 1 — no mass fetching on Audit,
+// Settings, Roles, Routes, Rules, or the org-admin tab. NOTE: the Users page is
+// deliberately absent — it manages its own lazy "Load more" pagination, so
+// auto-streaming the whole directory behind it would be the very mass-fetch
+// we're eliminating.
+const DIRECTORY_PAGES: ReadonlySet<PageId> = new Set<PageId>([
+  'dashboard', 'groups', 'services', 'simulator',
+]);
+
+const pageFromHash = (): PageId => {
+  const hash = window.location.hash.replace(/^#\/?/, '');
+  const valid: PageId[] = ['dashboard','simulator','users','groups','services','roles','routes','rules','audit','settings','orgadmin'];
+  return valid.includes(hash as PageId) ? (hash as PageId) : 'dashboard';
+};
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  // Live data from jinbe (falls back to SEED)
-  const { data: liveData, isSuccess, isLoading, error } = useRbacData();
-  const invalidateRbac = useInvalidateRbac();
+  const qc = useQueryClient();
 
-  const [state, setState] = useState<AppState>(EMPTY_STATE);
-
-  // Hash-based routing: read initial page from URL hash (#/page)
-  const pageFromHash = (): PageId => {
-    const hash = window.location.hash.replace(/^#\/?/, '');
-    const valid: PageId[] = ['dashboard','simulator','users','groups','services','roles','routes','rules','audit','settings'];
-    return valid.includes(hash as PageId) ? (hash as PageId) : 'dashboard';
-  };
+  // Hash-based routing: read initial page from URL hash (#/page). Computed
+  // before the store so we can tell it whether this page needs the directory.
   const [page, setPageRaw] = useState<PageId>(pageFromHash);
+
+  // Single source of truth: the composite store folds the scoped per-entity
+  // queries into the AppState shape. No `useState` mirror (STORE-1). The
+  // directory only streams in on pages that show directory-wide aggregates.
+  const { state, isLive, isLoading, apiError } = useStore({
+    fillDirectory: DIRECTORY_PAGES.has(page),
+  });
+
+  const invalidateKeys = useCallback((keys: readonly (readonly string[])[]) => {
+    for (const key of keys) qc.invalidateQueries({ queryKey: key as string[] });
+  }, [qc]);
+
+  const invalidateAll = useCallback(() => {
+    invalidateKeys(ALL_ENTITY_KEYS);
+  }, [invalidateKeys]);
+
+  // After any mutation jinbe emits an authoritative audit event; refresh only
+  // the audit stream (entity invalidation is scoped per-mutation, STORE-3).
+  const invalidateAudit = useCallback(() => {
+    invalidateKeys([['audit']]);
+  }, [invalidateKeys]);
 
   const setPage = (p: PageId) => {
     window.location.hash = `/${p}`;
@@ -161,54 +194,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [userDrawer, setUserDrawer] = useState<UserDrawerState | null>(null);
   const [groupDrawer, setGroupDrawer] = useState<GroupDrawerState | null>(null);
   const [serviceDrawer, setServiceDrawer] = useState<ServiceDrawerState | null>(null);
-  const [audit, setAudit] = useState<AuditEvent[]>([]);
-
-  // Sync live data into state when it arrives
-  useEffect(() => {
-    console.log('[AppContext] liveData changed:', { isSuccess, isLoading, hasError: !!error, hasData: !!liveData, userCount: liveData?.users?.length });
-    if (liveData) {
-      setState(liveData);
-      if (liveData.audit.length > 0) {
-        setAudit(liveData.audit);
-      }
-    }
-  }, [liveData, isSuccess, isLoading, error]);
-
-  // Progressive user loading: the rbac-all query only fetches page 1 of users
-  // (instant dashboard). Once it lands, stream the rest of the directory in the
-  // background, following the keyset token and appending each page to state so
-  // counts/tables fill in without blocking first paint. Keyed on liveData so it
-  // re-runs after every refetch (which resets users to page 1); cancellation
-  // guards against overlapping runs.
-  useEffect(() => {
-    const startToken = liveData?.usersNextPageToken;
-    if (!startToken) return;
-    let cancelled = false;
-    (async () => {
-      let token: string | undefined = startToken;
-      for (let page = 0; page < 100 && token && !cancelled; page++) {
-        let res: { data: Parameters<typeof kratosToUser>[0][]; nextPageToken?: string };
-        try {
-          res = await api.getUsersPage(token);
-        } catch {
-          break; // best-effort: page 1 is already shown
-        }
-        if (cancelled) return;
-        const batch = res.data.map(kratosToUser);
-        setState(s => {
-          const seen = new Set(s.users.map(u => u.id));
-          const fresh = batch.filter(u => !seen.has(u.id));
-          return { ...s, users: [...s.users, ...fresh] };
-        });
-        token = res.nextPageToken;
-      }
-      if (!cancelled) setState(s => ({ ...s, usersLoading: false, usersNextPageToken: undefined }));
-    })();
-    return () => { cancelled = true; };
-  }, [liveData]);
-
-  const isLive = isSuccess && !error && !!liveData && liveData.users.length >= 0;
-  const apiError = (error as Error | null) ?? null;
 
   const [theme, setThemeRaw] = useState(TWEAK_DEFAULTS.theme);
   const [persona, setPersonaRaw] = useState(TWEAK_DEFAULTS.persona);
@@ -238,77 +223,92 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     html.setAttribute("data-navcollapsed", tweaks.navCollapsed ? "on" : "off");
   }, [tweaks]);
 
-  // ─── Live API mutations (call jinbe, then refetch) ───
+  // ─── Live API mutations: optimistic cache patch + rollback (STORE-4) ───
+  // Predictable edits patch the cache immediately (instant UI, rubber-band on
+  // error via withOptimism). Creates whose server shape we can't predict (ids,
+  // counts) pass no `apply` — they just invalidate on settle (honest: we don't
+  // fabricate the row). Scoped keys keep unrelated data from re-streaming
+  // (PERF-1/STORE-3).
 
   const apiSetUserGroups = useCallback(async (email: string, groups: string[]) => {
-    await api.setUserGroups(email, groups);
-    invalidateRbac();
-  }, [invalidateRbac]);
+    await withOptimism(qc, [['users'], ['groups-map']],
+      () => cachePatch.patchUserGroupsByEmail(qc, email, groups),
+      () => api.setUserGroups(email, groups));
+  }, [qc]);
 
   const apiCreateUser = useCallback(async (payload: { email: string; name: string; groups?: string[]; sendInvite?: boolean }) => {
-    await api.createUser(payload);
-    invalidateRbac();
-  }, [invalidateRbac]);
+    // Create → server assigns the id; invalidate-only (no fabricated row).
+    await withOptimism(qc, [['users']], undefined, () => api.createUser(payload));
+  }, [qc]);
 
   const apiDeleteUser = useCallback(async (id: string) => {
-    await api.deleteUser(id);
-    invalidateRbac();
-  }, [invalidateRbac]);
+    await withOptimism(qc, [['users']],
+      () => cachePatch.removeUser(qc, id),
+      () => api.deleteUser(id));
+  }, [qc]);
 
   const apiSendRecoveryEmail = useCallback(async (id: string) => {
+    // No cache impact — pure side effect.
     await api.sendRecoveryEmail(id);
   }, []);
 
   const apiSetUserState = useCallback(async (id: string, state: 'active' | 'inactive') => {
-    await api.setUserState(id, state);
-    invalidateRbac();
-  }, [invalidateRbac]);
+    await withOptimism(qc, [['users']],
+      () => cachePatch.patchUser(qc, id, { active: state === 'active' }),
+      () => api.setUserState(id, state));
+  }, [qc]);
 
   const apiSetUserMetadata = useCallback(async (id: string, metadata: Record<string, unknown>) => {
-    await api.setUserMetadata(id, metadata);
-    invalidateRbac();
-  }, [invalidateRbac]);
+    await withOptimism(qc, [['users']], undefined, () => api.setUserMetadata(id, metadata));
+  }, [qc]);
 
   const apiSetUserOrganization = useCallback(async (id: string, organizationId: string | undefined) => {
-    await api.setUserOrganization(id, organizationId);
-    invalidateRbac();
-  }, [invalidateRbac]);
+    await withOptimism(qc, [['users']],
+      () => cachePatch.patchUser(qc, id, { organizationId }),
+      () => api.setUserOrganization(id, organizationId));
+  }, [qc]);
 
   const apiCreateGroup = useCallback(async (name: string, services: Record<string, string[]>) => {
-    await api.createGroup({ name, services });
-    invalidateRbac();
-  }, [invalidateRbac]);
+    await withOptimism(qc, [['groups'], ['groups-map']],
+      () => cachePatch.upsertGroup(qc, name, services),
+      () => api.createGroup({ name, services }));
+  }, [qc]);
 
   const apiUpdateGroup = useCallback(async (name: string, services: Record<string, string[]>) => {
-    await api.updateGroup(name, services);
-    invalidateRbac();
-  }, [invalidateRbac]);
+    await withOptimism(qc, [['groups'], ['groups-map']],
+      () => cachePatch.upsertGroup(qc, name, services),
+      () => api.updateGroup(name, services));
+  }, [qc]);
 
   const apiDeleteGroup = useCallback(async (name: string) => {
-    await api.deleteGroup(name);
-    invalidateRbac();
-  }, [invalidateRbac]);
+    await withOptimism(qc, [['groups'], ['groups-map'], ['users']],
+      () => cachePatch.removeGroup(qc, name),
+      () => api.deleteGroup(name));
+  }, [qc]);
 
-  const apiCreateService = useCallback(async (svc: { name: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string }) => {
-    await api.createService(svc);
-    invalidateRbac();
-  }, [invalidateRbac]);
+  const apiCreateService = useCallback(async (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string }) => {
+    // Create spawns roles/routes/rules server-side; invalidate-only.
+    await withOptimism(qc, [['services'], ['access-rules'], ['all-roles'], ['all-routes']],
+      undefined, () => api.createService(svc));
+  }, [qc]);
 
   const apiUpdateService = useCallback(async (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null }) => {
-    await api.updateService(name, payload);
-    invalidateRbac();
-  }, [invalidateRbac]);
+    await withOptimism(qc, [['services'], ['access-rules']],
+      () => { if (payload.upstreamUrl !== undefined) cachePatch.updateService(qc, name, { upstreamUrl: payload.upstreamUrl }); },
+      () => api.updateService(name, payload));
+  }, [qc]);
 
   const apiDeleteService = useCallback(async (name: string) => {
-    await api.deleteService(name);
-    invalidateRbac();
-  }, [invalidateRbac]);
+    await withOptimism(qc, [['services'], ['access-rules'], ['all-roles'], ['all-routes']],
+      () => cachePatch.removeService(qc, name),
+      () => api.deleteService(name));
+  }, [qc]);
 
   const ctx: AppContextType = {
-    state, setState,
-    audit, setAudit,
+    state,
     isLive, isLoading, apiError,
-    refetch: invalidateRbac,
+    refetch: invalidateAll,
+    refreshAudit: invalidateAudit,
     page, setPage,
     activeService, setActiveService,
     userDrawer, setUserDrawer,

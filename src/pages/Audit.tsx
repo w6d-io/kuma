@@ -1,8 +1,21 @@
 import { useState } from 'react';
-import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Method, EmptyHint } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
+import { useAudit } from '../api/hooks';
+import type { AuditEvent } from '../api/types';
+
+// Grafana base for per-event trace deep-links (correlate by sessionId/actor,
+// contract D3). Runtime-injected like __API_BASE__; empty = no link rendered.
+function grafanaTraceUrl(e: AuditEvent): string | null {
+  const base = ((window as any).__GRAFANA_URL__ as string | undefined)?.replace(/\/$/, '');
+  if (!base || base.startsWith('${')) return null; // unset / un-substituted placeholder
+  const sid = (e as AuditEvent & { sessionId?: string }).sessionId;
+  const params = new URLSearchParams();
+  if (sid) params.set('var-sessionId', sid);
+  if (e.who && e.who !== 'anon' && e.who !== 'system') params.set('var-actor', e.who);
+  return `${base}/d/auth-audit?${params.toString()}`;
+}
 
 const AUDIT_CATS: Record<string, { label: string; icon: keyof typeof I }> = {
   auth: { label: "Auth", icon: "key" },
@@ -31,13 +44,31 @@ function statusTone(code?: number) {
 }
 
 export function AuditPage() {
-  const { audit } = useApp();
+  // Read the real audit stream directly (live query), NOT AppContext.audit —
+  // that mirror was seeded with SEED placeholder demo events in DEV and a
+  // `> 0` guard kept the fake rows when live audit was empty (GHOST-3). The
+  // audit log must never show fabricated entries.
+  const { data: audit = [] } = useAudit();
   const [q, setQ] = useState("");
+  const [tab, setTab] = useState<"changes" | "access" | "auth">("changes");
   const [cat, setCat] = useState("all");
   const [statusF, setStatusF] = useState("all");
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const filtered = audit.filter(a => {
+  // The three log layers (contract D1): Changes = the compliance record
+  // (kind=change), Access = request/traffic telemetry (kind=access), Auth =
+  // session/authn decisions (kind=auth). Fall back to category for legacy rows
+  // that predate `kind` (access→access, auth→auth, everything else→change).
+  const kindOf = (a: typeof audit[number]): string =>
+    a.kind || (a.category === 'access' ? 'access' : a.category === 'auth' ? 'auth' : a.category === 'system' ? 'system' : 'change');
+
+  const inTab = audit.filter(a => {
+    const k = kindOf(a);
+    if (tab === "changes") return k === "change" || k === "system";
+    return k === tab;
+  });
+
+  const filtered = inTab.filter(a => {
     if (cat !== "all" && a.category !== cat) return false;
     if (statusF === "failed" && a.status !== "failed" && a.verb !== "fail" && a.verb !== "deny") return false;
     if (statusF === "ok" && (a.status === "failed" || a.verb === "fail" || a.verb === "deny")) return false;
@@ -48,10 +79,21 @@ export function AuditPage() {
     return true;
   });
 
-  const catCounts = audit.reduce<Record<string, number>>((acc, a) => { acc[a.category] = (acc[a.category] || 0) + 1; return acc; }, {});
-  const failedCount = audit.filter(a => a.status === "failed" || a.verb === "fail" || a.verb === "deny").length;
-
+  const tabCounts = {
+    changes: audit.filter(a => { const k = kindOf(a); return k === "change" || k === "system"; }).length,
+    access:  audit.filter(a => kindOf(a) === "access").length,
+    auth:    audit.filter(a => kindOf(a) === "auth").length,
+  };
+  // Category pills reflect the active tab's rows only.
+  const catCounts = inTab.reduce<Record<string, number>>((acc, a) => { acc[a.category] = (acc[a.category] || 0) + 1; return acc; }, {});
+  const failedCount = inTab.filter(a => a.status === "failed" || a.verb === "fail" || a.verb === "deny").length;
+  const TAB_META: { id: typeof tab; label: string; sub: string }[] = [
+    { id: "changes", label: "Changes", sub: "compliance record" },
+    { id: "access",  label: "Access",  sub: "request telemetry" },
+    { id: "auth",    label: "Auth",    sub: "sessions" },
+  ];
   const pg = usePagination(filtered.length, 50);
+  const selectTab = (t: typeof tab) => { setTab(t); setCat("all"); pg.setPage(0); };
   const paged = filtered.slice(pg.from, pg.to);
 
   const groups = (() => {
@@ -77,7 +119,7 @@ export function AuditPage() {
         <div>
           <h1>Audit log</h1>
           <div className="sub">
-            Read-only stream · {audit.length} total
+            Read-only stream · {inTab.length} {tab}
             {failedCount > 0 && <> · <span style={{ color: "var(--err)" }}>{failedCount} denied / failed</span></>}
           </div>
         </div>
@@ -90,10 +132,22 @@ export function AuditPage() {
         </div>
       </div>
 
-      {/* Category pills */}
+      {/* Log-layer tabs (contract D1): Changes = compliance record, Access =
+          request telemetry, Auth = sessions. Uses the existing .seg style. */}
+      <div className="audit-cats" style={{ marginBottom: 8 }}>
+        <div className="seg">
+          {TAB_META.map(t => (
+            <button key={t.id} className={tab === t.id ? "on" : ""} onClick={() => selectTab(t.id)} title={t.sub}>
+              {t.label} <span className="audit-cat-count">{tabCounts[t.id]}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Category pills (scoped to the active tab) */}
       <div className="audit-cats">
         <button className={`audit-cat ${cat === "all" ? "on" : ""}`} onClick={() => setCat("all")}>
-          <span>All events</span><span className="audit-cat-count">{audit.length}</span>
+          <span>All events</span><span className="audit-cat-count">{inTab.length}</span>
         </button>
         {Object.entries(AUDIT_CATS).map(([key, meta]) => {
           const n = catCounts[key] || 0;
@@ -220,6 +274,13 @@ export function AuditPage() {
                         <button className="btn ghost sm" onClick={() => {
                           navigator.clipboard?.writeText(JSON.stringify(e, null, 2));
                         }}>Copy JSON</button>
+                        {(() => {
+                          const url = grafanaTraceUrl(e);
+                          return url ? (
+                            <a className="btn ghost sm" href={url} target="_blank" rel="noopener noreferrer"
+                               title="Trace this actor/session in Grafana">Trace in Grafana ↗</a>
+                          ) : null;
+                        })()}
                       </div>
                     </div>
                   )}
@@ -234,7 +295,7 @@ export function AuditPage() {
         <Pagination page={pg.page} pageSize={pg.pageSize} total={filtered.length} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} sizes={[25, 50, 100, 200]} />
       )}
       <div className="small muted" style={{ marginTop: 10, textAlign: "center" }}>
-        Showing {pg.from + 1}–{pg.to} of {filtered.length} events{filtered.length < audit.length ? ` (${audit.length} total)` : ""} · read-only
+        Showing {pg.from + 1}–{pg.to} of {filtered.length} events{filtered.length < inTab.length ? ` (${inTab.length} in ${tab})` : ""} · read-only
       </div>
     </>
   );
