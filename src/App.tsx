@@ -398,7 +398,10 @@ function AppShell() {
   // dashboard. A failed/401 session is handled by the Topbar redirect, not here.
   useEffect(() => {
     if (!sessionReady) return
-    const nav = NAV.find((n) => n.id === page)
+    // roles/routes/rules are aliases that render the Services workspace but have
+    // no NAV entry — resolve to the canonical id so they inherit the same gate.
+    const canonical = (page === 'roles' || page === 'routes' || page === 'rules') ? 'services' : page
+    const nav = NAV.find((n) => n.id === canonical)
     if (!nav) return
     if (!hasAnyPerm(session?.permissions, nav.perms)) {
       // Land the user on a surface they can actually use. Platform admins get
