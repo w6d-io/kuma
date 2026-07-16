@@ -33,7 +33,7 @@ const NAV: NavItem[] = [
   { id: "services",  name: "Services",  ico: I.service, section: "Policy",   perms: ["admin:read"] },
   { id: "roles",     name: "Roles",     ico: I.role,    section: "Policy",   perms: ["admin:read"] },
   { id: "routes",    name: "Route map", ico: I.route,   section: "Policy",   perms: ["admin:read"] },
-  { id: "rules",     name: "Oathkeeper", ico: I.gate,   section: "Gateway",  perms: ["admin:read"] },
+  { id: "rules",     name: "Gateway routing", ico: I.gate, section: "Gateway",  perms: ["admin:read"] },
   { id: "audit",     name: "Audit log", ico: I.audit,   section: "Changes",  perms: ["admin:read"] },
   { id: "settings",  name: "Settings",  ico: I.cog,     section: "Changes",  perms: [] },
   // Delegated org-admin self-service. perms [] = visible to any authenticated
