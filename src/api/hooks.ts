@@ -96,15 +96,6 @@ export function useServices() {
   });
 }
 
-export function useRoles(serviceName: string) {
-  return useQuery({
-    queryKey: ['roles', serviceName],
-    queryFn: () => api.getRoles(serviceName),
-    enabled: !!serviceName,
-    staleTime: CONFIG_STALE_TIME,
-  });
-}
-
 // Per-service permission catalog (used by the role editor's picker). Cached
 // per service instead of an uncached useEffect fetch on every switch (PERF-4).
 export function useServicePermissions(serviceName: string) {
@@ -193,15 +184,6 @@ export function useAllRoles(serviceNames: string[]) {
   });
 }
 
-export function useServiceRoutes(serviceName: string) {
-  return useQuery({
-    queryKey: ['routes', serviceName],
-    queryFn: () => api.getServiceRoutes(serviceName),
-    enabled: !!serviceName,
-    staleTime: CONFIG_STALE_TIME,
-  });
-}
-
 export function useAllRoutes(serviceNames: string[]) {
   // Stable key (same rationale as useAllRoles/PERF-6): a sorted signature, not
   // the spread array. Fetches every service's route_map in parallel and folds
@@ -247,13 +229,6 @@ export function useAudit() {
   });
 }
 
-export function useHistory() {
-  return useQuery({
-    queryKey: ['history'],
-    queryFn: () => api.getHistory(),
-  });
-}
-
 export function useSession() {
   return useQuery({
     queryKey: ['session'],
@@ -263,67 +238,8 @@ export function useSession() {
 }
 
 // ─── Mutation hooks ───
-
-export function useSetUserGroups() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ email, groups }: { email: string; groups: string[] }) =>
-      api.setUserGroups(email, groups),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['users'] });
-      qc.invalidateQueries({ queryKey: ['groups-map'] });
-    },
-  });
-}
-
-export function useCreateGroup() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (group: { name: string; services: Record<string, string[]> }) =>
-      api.createGroup(group),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['groups'] }),
-  });
-}
-
-export function useUpdateGroup() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ name, services }: { name: string; services: Record<string, string[]> }) =>
-      api.updateGroup(name, services),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['groups'] }),
-  });
-}
-
-export function useDeleteGroup() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (name: string) => api.deleteGroup(name),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['groups'] }),
-  });
-}
-
-export function useCreateService() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (svc: { name: string; upstreamUrl: string; matchUrl: string; matchMethods: string[] }) =>
-      api.createService(svc),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['services'] });
-      qc.invalidateQueries({ queryKey: ['access-rules'] });
-    },
-  });
-}
-
-export function useDeleteService() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (name: string) => api.deleteService(name),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['services'] });
-      qc.invalidateQueries({ queryKey: ['access-rules'] });
-    },
-  });
-}
+// User/group/service mutations live in AppContext (optimistic wrappers); the
+// hooks below cover config edits pages call directly + delegated org-admin.
 
 // These three edit RBAC config the composite store reads via aggregate keys
 // (['all-roles']/['all-routes']/['access-rules']). They use TanStack's native

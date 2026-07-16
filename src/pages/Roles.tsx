@@ -147,15 +147,19 @@ export function RolesPage() {
   // uncached fetch on every service switch.
   const { data: apiPerms = [] } = useServicePermissions(isLive ? svc : "");
 
+  // Keep selectedRole valid when the service switches / roles change. Reads
+  // selectedRole fresh inside; adding it to deps would loop. Intentional.
   useEffect(() => {
     const keys = Object.keys(state.roles[svc] || {});
     if (!keys.includes(selectedRole)) setSelectedRole(keys[0] || "");
     setShowPicker(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [svc]);
 
   useEffect(() => {
     const keys = Object.keys(state.roles[svc] || {});
     if (!keys.includes(selectedRole)) setSelectedRole(keys[0] || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.roles]);
 
   const role = svcRoles[selectedRole];

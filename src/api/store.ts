@@ -39,6 +39,7 @@ export interface StoreResult {
  */
 export function useStore(): StoreResult {
   const usersQ = useUsers();
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = usersQ;
 
   // Background directory fill: after the first page paints, keep pulling the
   // remaining keyset pages so cross-entity views (Dashboard counts, Groups
@@ -46,10 +47,8 @@ export function useStore(): StoreResult {
   // infinite query advancing itself — NOT the old eager pre-mutation re-walk;
   // scoped invalidation (STORE-3) means an unrelated edit won't restart it.
   useEffect(() => {
-    if (usersQ.hasNextPage && !usersQ.isFetchingNextPage) {
-      usersQ.fetchNextPage();
-    }
-  }, [usersQ.hasNextPage, usersQ.isFetchingNextPage, usersQ.data, usersQ.fetchNextPage]);
+    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const groupsQ = useGroups();
   const servicesQ = useServices();

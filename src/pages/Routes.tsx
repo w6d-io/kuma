@@ -96,7 +96,8 @@ export function RoutesPage() {
   const [editIdx, setEditIdx] = useState<number | null>(null);
 
   const updateRoutes = useUpdateServiceRoutes(svc);
-  const svcRoles = state.roles[svc] || {};
+  // Memoise so the identity is stable across renders (feeds availablePerms' deps).
+  const svcRoles = useMemo(() => state.roles[svc] || {}, [state.roles, svc]);
   const hasWildcard = Object.values(svcRoles).some(ps => ps.includes("*"));
 
   // All unique non-wildcard permissions defined in this service's roles
