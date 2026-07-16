@@ -1,6 +1,6 @@
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
-import { api } from './client';
+import { useMemo, useEffect } from 'react';
+import { api, API_BASE } from './client';
 import type { RolesMap, RouteMapsMap, AuditEvent, User } from './types';
 import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents } from './transforms';
 import { cachePatch } from './mutations';
@@ -283,6 +283,36 @@ export function useUserSearch(q: string) {
     staleTime: 5_000,
     refetchOnWindowFocus: true,
   });
+}
+
+// Query keys refreshed when jinbe pushes a real-time change signal. Invalidating
+// only marks them stale — TanStack refetches just the ACTIVE ones (whatever the
+// user is looking at), so this is cheap even though the list is broad.
+const REALTIME_KEYS: readonly (readonly string[])[] = [
+  ['stats'], ['users'], ['user-search'], ['groups'], ['groups-map'],
+  ['services'], ['all-roles'], ['all-routes'], ['access-rules'],
+  ['org-users'], ['my-orgs'], ['org-service-map'], ['assignable-groups'], ['audit'],
+];
+
+// True real-time: subscribe to the server's SSE change stream (GET
+// /admin/events, Kratos-session auth) and invalidate live queries the instant
+// anything changes — no polling lag, sub-second across clients. EventSource
+// auto-reconnects on drop. Only opened for admins (the endpoint is admin-gated;
+// a non-admin would just get 403s and a reconnect loop). The polling on
+// useStats/useUserSearch stays as a fallback if a proxy buffers the stream.
+export function useRealtime(enabled: boolean) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!enabled) return;
+    const es = new EventSource(`${API_BASE}/admin/events`, { withCredentials: true });
+    const onChange = () => {
+      for (const key of REALTIME_KEYS) qc.invalidateQueries({ queryKey: key as string[] });
+    };
+    es.addEventListener('change', onChange);
+    // EventSource reconnects itself; swallow the error event to avoid console noise.
+    es.onerror = () => {};
+    return () => { es.removeEventListener('change', onChange); es.close(); };
+  }, [enabled, qc]);
 }
 
 // ─── Mutation hooks ───
