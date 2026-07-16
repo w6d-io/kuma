@@ -171,7 +171,7 @@ export async function fetchAuditEvents(client: {
   if (events.length === 0) {
     try {
       const commits = await client.getHistory();
-      events = commits.map((c: any) => ({ ...c, _legacy: true }));
+      events = commits.map((c: any) => ({ ...c }));
     } catch { /* history may also fail */ }
   }
   return normalizeAuditEvents(events);

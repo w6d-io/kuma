@@ -136,10 +136,9 @@ export function UserDrawer() {
   // checkboxes; jinbe rejects the mutation as 422 either way.
   const actorIsSuperAdmin = (session?.roles || []).includes('super_admin');
 
-  // edit/assign state
+  // edit state
   const editing = userDrawer?.user;
-  const [selectedUserId, setSelectedUserId] = useState(editing?.id || "");
-  const user = editing || state.users.find(u => u.id === selectedUserId);
+  const user = editing;
   const [groups, setGroups] = useState(user?.groups || []);
   const [drawerTab, setDrawerTab] = useState("groups");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -307,8 +306,8 @@ export function UserDrawer() {
       open={!!userDrawer}
       onClose={() => setUserDrawer(null)}
       size="lg"
-      eyebrow={editing ? "Edit user" : "Assign access"}
-      title={editing ? `Edit · ${user?.name}` : "Assign user to group"}
+      eyebrow="Edit user"
+      title={`Edit · ${user?.name}`}
       footer={
         <>
           <span className="small muted">Changes apply immediately.</span>
@@ -319,15 +318,6 @@ export function UserDrawer() {
         </>
       }
     >
-      {!editing && (
-        <div className="mb-12">
-          <label className="input-label">Identity</label>
-          <select className="input mono" value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}>
-            <option value="">Select a user…</option>
-            {state.users.map(u => <option key={u.id} value={u.id}>{u.email} — {u.name}</option>)}
-          </select>
-        </div>
-      )}
       {user && (
         <>
           <div className="panel mb-12" style={{ padding: 14, display: "flex", gap: 12, alignItems: "center" }}>

@@ -128,14 +128,14 @@ function PermPicker({ svc, allRoles, apiPerms, current, onToggle, onAdd }: PermP
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export function RolesPage({ svc: svcProp, embedded = false }: { svc?: string; embedded?: boolean } = {}) {
-  const { state, activeService, setActiveService, isLive } = useApp();
+export function RolesPage({ svc: svcProp }: { svc?: string } = {}) {
+  const { state, isLive } = useApp();
   const applyChange = useApplyChange();
   // Guard against an empty services list (still loading, 403, or empty tenant):
   // `state.services[0].name` used to throw here. Prefer the active service when
   // it still exists, else the first available, else "" (renders empty state).
   const serviceNames = state.services.map(s => s.name);
-  const svc = svcProp ?? (serviceNames.includes(activeService) ? activeService : (serviceNames[0] ?? ""));
+  const svc = svcProp ?? (serviceNames[0] ?? "");
   const svcRoles = state.roles[svc] || {};
   const [selectedRole, setSelectedRole] = useState(Object.keys(svcRoles)[0] || "");
   const [newRoleName, setNewRoleName] = useState("");
@@ -230,28 +230,11 @@ export function RolesPage({ svc: svcProp, embedded = false }: { svc?: string; em
   // rather than a broken selector. Placed after all hooks so hook order stays
   // stable across renders.
   if (serviceNames.length === 0) {
-    return (
-      <>
-        <div className="page-head">
-          <div><h1>Roles & permissions</h1><div className="sub">No services registered yet.</div></div>
-        </div>
-        <div className="panel"><EmptyHint>Register a service first to define its roles.</EmptyHint></div>
-      </>
-    );
+    return <div className="panel"><EmptyHint>Register a service first to define its roles.</EmptyHint></div>;
   }
 
   return (
     <>
-      {!embedded && (
-        <div className="page-head">
-          <div><h1>Roles & permissions</h1><div className="sub">Roles for <span className="mono">{svc}</span> — each bundles permissions</div></div>
-          <div className="page-actions">
-            <select className="input mono" style={{ width: "auto" }} value={svc} onChange={e => setActiveService(e.target.value)}>
-              {state.services.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-            </select>
-          </div>
-        </div>
-      )}
       <div className="grid" style={{ gridTemplateColumns: "240px 1fr", gap: 14 }}>
 
         {/* ── Role list sidebar ── */}
