@@ -1,6 +1,6 @@
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
-import { api } from './client';
+import { useMemo, useEffect } from 'react';
+import { api, API_BASE } from './client';
 import type { RolesMap, RouteMapsMap, AuditEvent, User } from './types';
 import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents } from './transforms';
 import { cachePatch } from './mutations';
@@ -251,6 +251,84 @@ export function useSession() {
     queryFn: () => api.session(),
     retry: false,
   });
+}
+
+// Directory counts (total/active/fullAccess/unassigned/perGroup/perOrg) from the
+// cached server endpoint — replaces walking the whole user directory client-side
+// (PERF: 9k users was ~45s). Server serves in ~1ms warm.
+//
+// Dynamic / stays-updated: mutations invalidate ['stats'] (instant for changes
+// made in the console), and we poll + refetch on window-focus so changes made
+// OUTSIDE the console (Kratos self-registration, another service) surface within
+// ~20s. Cheap — warm reads are ~1ms.
+export function useStats() {
+  return useQuery({
+    queryKey: ['stats'],
+    queryFn: () => api.getStats(),
+    staleTime: 15_000,
+    refetchInterval: 20_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+// Server-side substring search over email + name (cached in-memory server-side;
+// no directory walk). Fires only for a query of >=2 chars. Dynamic: short
+// staleTime + refetch-on-focus so results reflect recent changes.
+export function useUserSearch(q: string) {
+  const term = q.trim();
+  return useQuery({
+    queryKey: ['user-search', term],
+    queryFn: () => api.searchUsers(term, 50),
+    enabled: term.length >= 2,
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+// Query keys refreshed when jinbe pushes a real-time change signal. Invalidating
+// only marks them stale — TanStack refetches just the ACTIVE ones (whatever the
+// user is looking at), so this is cheap even though the list is broad.
+const REALTIME_KEYS: readonly (readonly string[])[] = [
+  ['stats'], ['users'], ['user-search'], ['groups'], ['groups-map'],
+  ['services'], ['all-roles'], ['all-routes'], ['access-rules'],
+  ['org-users'], ['my-orgs'], ['org-service-map'], ['assignable-groups'], ['audit'],
+];
+
+// True real-time: subscribe to the server's SSE change stream (GET
+// /admin/events, Kratos-session auth) and invalidate live queries the instant
+// anything changes — no polling lag, sub-second across clients. EventSource
+// auto-reconnects on drop. Only opened for admins (the endpoint is admin-gated;
+// a non-admin would just get 403s and a reconnect loop). The polling on
+// useStats/useUserSearch stays as a fallback if a proxy buffers the stream.
+export function useRealtime(enabled: boolean) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!enabled) return;
+    let es: EventSource | null = null;
+    const onChange = () => {
+      for (const key of REALTIME_KEYS) qc.invalidateQueries({ queryKey: key as string[] });
+    };
+    const connect = () => {
+      es?.close();
+      es = new EventSource(`${API_BASE}/admin/events`, { withCredentials: true });
+      es.addEventListener('change', onChange);
+      // A 200 stream that drops auto-reconnects natively; a failed handshake
+      // (e.g. server down at load) does NOT, so we re-arm on focus below.
+      es.onerror = () => {};
+    };
+    connect();
+    // Recover realtime without a page reload if the stream was closed (server
+    // wasn't up when the tab loaded) and the tab regains focus.
+    const onVis = () => {
+      if (document.visibilityState === 'visible' && es?.readyState === EventSource.CLOSED) connect();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      es?.removeEventListener('change', onChange);
+      es?.close();
+    };
+  }, [enabled, qc]);
 }
 
 // ─── Mutation hooks ───

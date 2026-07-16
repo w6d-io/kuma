@@ -4,6 +4,9 @@
 const _rawBase: string = (window as any).__API_BASE__ ?? '';
 const BASE = (_rawBase.startsWith('${') ? '' : _rawBase).replace(/\/$/, '') || '/api';
 
+/** Resolved API base — exported for EventSource (SSE), which can't use `request`. */
+export const API_BASE = BASE;
+
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     credentials: 'include',
@@ -30,6 +33,16 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
 // ─── Auth / Session ───
 export const api = {
   session: () => request<WhoamiResponse>('/whoami'),
+
+  // ─── Directory stats (cached server-side counts; no directory walk) ───
+  getStats: () => request<DirectoryStats>('/admin/stats'),
+
+  // ─── User substring search (cached in-memory server-side; no directory walk) ───
+  searchUsers: (q: string, limit = 50) => {
+    const qs = new URLSearchParams({ q });
+    if (limit) qs.set('limit', String(limit));
+    return request<{ data: SearchedUser[] }>(`/admin/users/search?${qs.toString()}`).then(r => r.data);
+  },
 
   // ─── Users (Kratos identities) ───
   // Kratos paginates with keyset tokens (no total count) and defaults to a
@@ -266,6 +279,26 @@ export const api = {
 };
 
 // ─── Types matching jinbe API responses ───
+
+export interface DirectoryStats {
+  total: number;
+  active: number;
+  fullAccess: number;
+  unassigned: number;
+  perGroup: Record<string, number>;
+  perOrg: Record<string, number>;
+  perService: Record<string, number>;
+  computedAt: string;
+}
+
+export interface SearchedUser {
+  id: string;
+  email: string;
+  name: string | null;
+  groups: string[];
+  organizationId: string | null;
+  active: boolean;
+}
 
 export interface WhoamiResponse {
   authenticated: boolean;

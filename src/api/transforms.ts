@@ -6,7 +6,7 @@
 // path a refactor happened to pick changed behaviour silently (PROBLEM-MAP
 // STORE-6). This module is the canonical, richer implementation.
 
-import type { KratosIdentity, JinbeGroup, JinbeAccessRule } from './client';
+import type { KratosIdentity, JinbeGroup, JinbeAccessRule, SearchedUser } from './client';
 import type { User, GroupsMap, AccessRule, AuditEvent } from './types';
 
 /** Relative "x ago" formatting for updated_at / audit timestamps. */
@@ -64,6 +64,21 @@ export function kratosToUser(k: KratosIdentity): User {
   };
 }
 
+/** Lightweight search hit → Kuma User row. Search omits mfa/last (it's for
+ *  finding people, not the full profile) — those surface on the detail drawer. */
+export function searchedToUser(s: SearchedUser): User {
+  return {
+    id: s.id,
+    name: s.name || s.email,
+    email: s.email,
+    groups: s.groups,
+    title: '',
+    active: s.active,
+    last: '',
+    organizationId: s.organizationId ?? undefined,
+  };
+}
+
 /** jinbe groups list → { name → services map } lookup. */
 export function jinbeGroupsToMap(groups: JinbeGroup[]): GroupsMap {
   const map: GroupsMap = {};
@@ -87,6 +102,7 @@ export function jinbeRuleToUi(r: JinbeAccessRule): AccessRule {
     mutators: r.mutators.map(m => m.handler),
     upstream: r.upstream?.url,
     stripPath: r.upstream?.strip_path,
+    raw: r,
   };
 }
 
@@ -170,7 +186,7 @@ export async function fetchAuditEvents(client: {
   if (events.length === 0) {
     try {
       const commits = await client.getHistory();
-      events = commits.map((c: any) => ({ ...c, _legacy: true }));
+      events = commits.map((c: any) => ({ ...c }));
     } catch { /* history may also fail */ }
   }
   return normalizeAuditEvents(events);

@@ -34,7 +34,7 @@ interface PipelineState {
 }
 
 export interface UserDrawerState {
-  mode: 'edit' | 'assign' | 'create';
+  mode: 'edit' | 'create';
   user?: import('../api/types').User;
 }
 
@@ -47,6 +47,12 @@ export interface GroupDrawerState {
 export interface ServiceDrawerState {
   mode: 'create' | 'edit';
   serviceName?: string;
+}
+
+// Grant-access wizard. `user` pre-selects a person (row action); omit to open
+// on the person-picker step.
+export interface GrantState {
+  user?: import('../api/types').User;
 }
 
 interface AppContextType {
@@ -66,6 +72,8 @@ interface AppContextType {
   setGroupDrawer: (d: GroupDrawerState | null) => void;
   serviceDrawer: ServiceDrawerState | null;
   setServiceDrawer: (d: ServiceDrawerState | null) => void;
+  grant: GrantState | null;
+  setGrant: (g: GrantState | null) => void;
   pushToast: (msg: string, opts?: { err?: boolean; sub?: string; ttl?: number }) => void;
   toasts: Toast[];
   pipeline: PipelineState;
@@ -133,20 +141,17 @@ const ALL_ENTITY_KEYS = [
   ['all-roles'], ['all-routes'], ['access-rules'], ['audit'],
 ] as const;
 
-// Pages that consume directory-wide user aggregates (counts, posture signals,
-// full identity dropdown) and therefore need the whole directory streamed in.
-// Everywhere else the store holds only page 1 — no mass fetching on Audit,
-// Settings, Roles, Routes, Rules, or the org-admin tab. NOTE: the Users page is
-// deliberately absent — it manages its own lazy "Load more" pagination, so
-// auto-streaming the whole directory behind it would be the very mass-fetch
-// we're eliminating.
-const DIRECTORY_PAGES: ReadonlySet<PageId> = new Set<PageId>([
-  'dashboard', 'groups', 'services', 'simulator',
-]);
+// No page streams the whole user directory anymore. Every aggregate (Dashboard,
+// Groups, Services per-service counts) reads cached counts from GET /admin/stats,
+// and every user lookup (Users, Grant wizard, Simulator) uses server-side search
+// (GET /admin/users/search). The store keeps only page 1 of users for incidental
+// consumers (e.g. CmdK quick-jump). Kept as an explicit empty set so the store's
+// fillDirectory contract stays visible.
+const DIRECTORY_PAGES: ReadonlySet<PageId> = new Set<PageId>();
 
 const pageFromHash = (): PageId => {
   const hash = window.location.hash.replace(/^#\/?/, '');
-  const valid: PageId[] = ['dashboard','simulator','users','groups','services','roles','routes','rules','audit','settings','orgadmin'];
+  const valid: PageId[] = ['dashboard','simulator','users','groups','services','roles','routes','rules','audit','settings','orgadmin','organizations'];
   return valid.includes(hash as PageId) ? (hash as PageId) : 'dashboard';
 };
 
@@ -194,6 +199,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [userDrawer, setUserDrawer] = useState<UserDrawerState | null>(null);
   const [groupDrawer, setGroupDrawer] = useState<GroupDrawerState | null>(null);
   const [serviceDrawer, setServiceDrawer] = useState<ServiceDrawerState | null>(null);
+  const [grant, setGrant] = useState<GrantState | null>(null);
 
   const [theme, setThemeRaw] = useState(TWEAK_DEFAULTS.theme);
   const [persona, setPersonaRaw] = useState(TWEAK_DEFAULTS.persona);
@@ -231,18 +237,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // (PERF-1/STORE-3).
 
   const apiSetUserGroups = useCallback(async (email: string, groups: string[]) => {
-    await withOptimism(qc, [['users'], ['groups-map']],
+    await withOptimism(qc, [['users'], ['groups-map'], ['stats']],
       () => cachePatch.patchUserGroupsByEmail(qc, email, groups),
       () => api.setUserGroups(email, groups));
   }, [qc]);
 
   const apiCreateUser = useCallback(async (payload: { email: string; name: string; groups?: string[]; sendInvite?: boolean }) => {
     // Create → server assigns the id; invalidate-only (no fabricated row).
-    await withOptimism(qc, [['users']], undefined, () => api.createUser(payload));
+    await withOptimism(qc, [['users'], ['stats']], undefined, () => api.createUser(payload));
   }, [qc]);
 
   const apiDeleteUser = useCallback(async (id: string) => {
-    await withOptimism(qc, [['users']],
+    await withOptimism(qc, [['users'], ['stats']],
       () => cachePatch.removeUser(qc, id),
       () => api.deleteUser(id));
   }, [qc]);
@@ -253,7 +259,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const apiSetUserState = useCallback(async (id: string, state: 'active' | 'inactive') => {
-    await withOptimism(qc, [['users']],
+    await withOptimism(qc, [['users'], ['stats']],
       () => cachePatch.patchUser(qc, id, { active: state === 'active' }),
       () => api.setUserState(id, state));
   }, [qc]);
@@ -263,7 +269,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [qc]);
 
   const apiSetUserOrganization = useCallback(async (id: string, organizationId: string | undefined) => {
-    await withOptimism(qc, [['users']],
+    await withOptimism(qc, [['users'], ['stats']],
       () => cachePatch.patchUser(qc, id, { organizationId }),
       () => api.setUserOrganization(id, organizationId));
   }, [qc]);
@@ -281,7 +287,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [qc]);
 
   const apiDeleteGroup = useCallback(async (name: string) => {
-    await withOptimism(qc, [['groups'], ['groups-map'], ['users']],
+    await withOptimism(qc, [['groups'], ['groups-map'], ['users'], ['stats']],
       () => cachePatch.removeGroup(qc, name),
       () => api.deleteGroup(name));
   }, [qc]);
@@ -314,6 +320,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     userDrawer, setUserDrawer,
     groupDrawer, setGroupDrawer,
     serviceDrawer, setServiceDrawer,
+    grant, setGrant,
     pushToast, toasts, pipeline,
     theme, setTheme, persona, setPersona,
     tweaks, setTweak,

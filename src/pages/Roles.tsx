@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
-import { AccessLevel, EmptyHint } from '../components/ui/Primitives';
+import { AccessLevel, EmptyHint, ConfirmDialog } from '../components/ui/Primitives';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
 import { useUpdateServiceRoles, useServicePermissions } from '../api/hooks';
@@ -128,19 +128,20 @@ function PermPicker({ svc, allRoles, apiPerms, current, onToggle, onAdd }: PermP
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export function RolesPage() {
-  const { state, activeService, setActiveService, isLive } = useApp();
+export function RolesPage({ svc: svcProp }: { svc?: string } = {}) {
+  const { state, isLive } = useApp();
   const applyChange = useApplyChange();
   // Guard against an empty services list (still loading, 403, or empty tenant):
   // `state.services[0].name` used to throw here. Prefer the active service when
   // it still exists, else the first available, else "" (renders empty state).
   const serviceNames = state.services.map(s => s.name);
-  const svc = serviceNames.includes(activeService) ? activeService : (serviceNames[0] ?? "");
+  const svc = svcProp ?? (serviceNames[0] ?? "");
   const svcRoles = state.roles[svc] || {};
   const [selectedRole, setSelectedRole] = useState(Object.keys(svcRoles)[0] || "");
   const [newRoleName, setNewRoleName] = useState("");
   const [addingRole, setAddingRole] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const updateServiceRoles = useUpdateServiceRoles(svc);
   // Per-service permission catalog, cached in Query (PERF-4) instead of an
@@ -188,6 +189,28 @@ export function RolesPage() {
     });
   };
 
+  // Wildcard is reversible: removing "*" drops the role back to an explicit
+  // (empty) permission set instead of trapping it as un-editable full access.
+  const removeWildcard = () => {
+    if (!role) return;
+    applyChange("update", `role:${svc}.${selectedRole} − full access`, () => {
+      return applyRoleUpdate({ ...svcRoles, [selectedRole]: role.filter(x => x !== "*") });
+    });
+  };
+
+  const deleteRole = () => {
+    const rest = { ...svcRoles };
+    delete rest[selectedRole];
+    applyChange("delete", `role:${svc}.${selectedRole}`, () => {
+      return updateServiceRoles.mutateAsync(rest).then(() => { setSelectedRole(Object.keys(rest)[0] || ""); });
+    });
+    setConfirmDelete(false);
+  };
+
+  // Blast radius for delete: groups that reference this role, and the users in them.
+  const roleGroups = Object.entries(state.groups).filter(([, m]) => (m[svc] || []).includes(selectedRole)).map(([g]) => g);
+  const roleUserCount = new Set(roleGroups.flatMap(g => state.users.filter(u => u.groups.includes(g)).map(u => u.email))).size;
+
   const addRole = () => {
     const name = newRoleName.trim();
     if (!name || svcRoles[name] !== undefined) return;
@@ -207,26 +230,11 @@ export function RolesPage() {
   // rather than a broken selector. Placed after all hooks so hook order stays
   // stable across renders.
   if (serviceNames.length === 0) {
-    return (
-      <>
-        <div className="page-head">
-          <div><h1>Roles & permissions</h1><div className="sub">No services registered yet.</div></div>
-        </div>
-        <div className="panel"><EmptyHint>Register a service first to define its roles.</EmptyHint></div>
-      </>
-    );
+    return <div className="panel"><EmptyHint>Register a service first to define its roles.</EmptyHint></div>;
   }
 
   return (
     <>
-      <div className="page-head">
-        <div><h1>Roles & permissions</h1><div className="sub"><span className="mono">roles.{svc}.json</span></div></div>
-        <div className="page-actions">
-          <select className="input mono" style={{ width: "auto" }} value={svc} onChange={e => setActiveService(e.target.value)}>
-            {state.services.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-          </select>
-        </div>
-      </div>
       <div className="grid" style={{ gridTemplateColumns: "240px 1fr", gap: 14 }}>
 
         {/* ── Role list sidebar ── */}
@@ -288,11 +296,17 @@ export function RolesPage() {
                     </button>
                   )}
                   <AccessLevel level={role.includes("*") ? "admin" : accessLevelOf(role)} />
+                  <button className="btn ghost sm" onClick={() => setConfirmDelete(true)} title="Delete role" style={{ color: "var(--red, #ef4444)" }}>
+                    <span style={{ width: 13, height: 13, display: "grid", placeItems: "center" }}>{I.trash}</span>
+                  </button>
                 </div>
               </div>
               <div className="panel-body">
                 {role.includes("*") ? (
-                  <div className="small muted">This role grants every permission in the service.</div>
+                  <div className="col" style={{ gap: 10, alignItems: "flex-start" }}>
+                    <div className="small muted">This role grants <b>every</b> permission in the service (wildcard <span className="mono">*</span>).</div>
+                    <button className="btn ghost sm" onClick={removeWildcard}>Remove full access</button>
+                  </div>
                 ) : (
                   <>
                     {/* Active permissions chips */}
@@ -326,6 +340,17 @@ export function RolesPage() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title={`Delete role ${svc}.${selectedRole}?`}
+        danger
+        confirmLabel="Delete role"
+        body={<>This removes the role from <span className="mono">{svc}</span>. Any group that references it will lose it.</>}
+        blastRadius={roleGroups.length > 0 ? <>Used by <b>{roleGroups.length}</b> group{roleGroups.length !== 1 ? "s" : ""} · <b>{roleUserCount}</b> user{roleUserCount !== 1 ? "s" : ""} affected.</> : undefined}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={deleteRole}
+      />
     </>
   );
 }
