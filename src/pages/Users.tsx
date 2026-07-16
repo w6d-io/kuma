@@ -20,6 +20,17 @@ function useDebounced<T>(value: T, ms = 250): T {
   return v;
 }
 
+// Small debounce so typing a name doesn't re-filter (and, for emails, re-query
+// the server) on every keystroke.
+function useDebounced<T>(value: T, ms = 250): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
 export function UsersPage() {
   const { setUserDrawer, setGrant } = useApp();
   const [q, setQ] = useState("");
