@@ -10,7 +10,7 @@
 //     on every unrelated mutation (kills the PERF-1 full-directory re-walk);
 //   • TanStack Query is the single source of truth (no `setState` mirror);
 //   • `staleTime` and dedup are per-entity.
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   useUsers,
   useGroups,
@@ -39,6 +39,18 @@ export interface StoreResult {
  */
 export function useStore(): StoreResult {
   const usersQ = useUsers();
+
+  // Background directory fill: after the first page paints, keep pulling the
+  // remaining keyset pages so cross-entity views (Dashboard counts, Groups
+  // user-counts, Simulator, CmdK) see the whole directory. This is the lazy
+  // infinite query advancing itself — NOT the old eager pre-mutation re-walk;
+  // scoped invalidation (STORE-3) means an unrelated edit won't restart it.
+  useEffect(() => {
+    if (usersQ.hasNextPage && !usersQ.isFetchingNextPage) {
+      usersQ.fetchNextPage();
+    }
+  }, [usersQ.hasNextPage, usersQ.isFetchingNextPage, usersQ.data, usersQ.fetchNextPage]);
+
   const groupsQ = useGroups();
   const servicesQ = useServices();
   const rulesQ = useAccessRules();
@@ -53,7 +65,7 @@ export function useStore(): StoreResult {
   const auditQ = useAudit();
 
   const state = useMemo<AppState>(() => {
-    const usersRaw = usersQ.data ?? [];
+    const usersRaw = usersQ.users;
     const groupsRaw = groupsQ.data ?? [];
     const servicesRaw = servicesQ.data ?? [];
     const rules = rulesQ.data ?? [];
@@ -104,12 +116,12 @@ export function useStore(): StoreResult {
       groups,
       groupsMeta,
       users: usersRaw,
-      usersLoading: usersQ.isLoading,
+      usersLoading: usersQ.usersLoading,
       routeMaps,
       accessRules: rules,
       audit: auditQ.data ?? [],
     };
-  }, [usersQ.data, usersQ.isLoading, groupsQ.data, servicesQ.data, rulesQ.data, rolesQ.data, routesQ.data, auditQ.data]);
+  }, [usersQ.users, usersQ.usersLoading, groupsQ.data, servicesQ.data, rulesQ.data, rolesQ.data, routesQ.data, auditQ.data]);
 
   // Any admin endpoint (groups/services/rules/users) 401/403s identically when
   // the caller lacks access, so any of them is a valid auth probe. Surface the
