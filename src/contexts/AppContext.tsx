@@ -141,16 +141,13 @@ const ALL_ENTITY_KEYS = [
   ['all-roles'], ['all-routes'], ['access-rules'], ['audit'],
 ] as const;
 
-// Pages that still stream the whole user directory for per-user views the stats
-// endpoint doesn't cover yet: Simulator's user picker and the Services
-// workspace's per-service member counts. Dashboard and Groups used to be here
-// but now read cached counts from GET /admin/stats (rbacService.getDirectoryStats),
-// so they no longer walk the ~10k-identity directory (was ~45s). Users/Audit/
-// Settings/etc. were never here. Simulator + Services move to server-side search
-// in Phase 2, after which this set can empty out entirely.
-const DIRECTORY_PAGES: ReadonlySet<PageId> = new Set<PageId>([
-  'services', 'simulator',
-]);
+// No page streams the whole user directory anymore. Every aggregate (Dashboard,
+// Groups, Services per-service counts) reads cached counts from GET /admin/stats,
+// and every user lookup (Users, Grant wizard, Simulator) uses server-side search
+// (GET /admin/users/search). The store keeps only page 1 of users for incidental
+// consumers (e.g. CmdK quick-jump). Kept as an explicit empty set so the store's
+// fillDirectory contract stays visible.
+const DIRECTORY_PAGES: ReadonlySet<PageId> = new Set<PageId>();
 
 const pageFromHash = (): PageId => {
   const hash = window.location.hash.replace(/^#\/?/, '');

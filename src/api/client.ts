@@ -287,6 +287,7 @@ export interface DirectoryStats {
   unassigned: number;
   perGroup: Record<string, number>;
   perOrg: Record<string, number>;
+  perService: Record<string, number>;
   computedAt: string;
 }
 

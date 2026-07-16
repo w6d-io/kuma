@@ -4,6 +4,7 @@ import { I } from '../components/ui/Icons';
 import { Chip, Drawer, AccessLevel } from '../components/ui/Primitives';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
+import { useStats } from '../api/hooks';
 import { RolesPage } from './Roles';
 import { RoutesPage } from './Routes';
 import { RulesPage } from './Rules';
@@ -15,14 +16,15 @@ const SVC_TABS: SvcTab[] = ['overview', 'health', 'roles', 'routes', 'gateway'];
 const SVC_TAB_LABEL: Record<SvcTab, string> = { overview: 'Overview', health: 'Health', roles: 'Roles', routes: 'Routes', gateway: 'Gateway' };
 
 // Per-service summary used by the left-rail rows.
-function svcSummary(state: ReturnType<typeof useApp>['state'], name: string) {
+function svcSummary(state: ReturnType<typeof useApp>['state'], name: string, perService?: Record<string, number>) {
   const roles = Object.keys(state.roles[name] || {}).length;
   const routes = state.routeMaps[name] || [];
   const openRoutes = routes.filter(r => !r.permission).length;
   const rules = state.accessRules.filter(r => r.service === name);
   const protectedRules = rules.filter(r => r.authorizer === 'remote_json').length;
   const groups = Object.entries(state.groups).filter(([, m]) => m[name]).length;
-  const users = state.users.filter(u => u.groups.some(g => state.groups[g]?.[name])).length;
+  // Per-service member count comes from the cached stats endpoint — no directory walk.
+  const users = perService?.[name] ?? 0;
   return { roles, routes: routes.length, openRoutes, rules: rules.length, protectedRules, groups, users };
 }
 
@@ -32,6 +34,7 @@ function svcSummary(state: ReturnType<typeof useApp>['state'], name: string) {
 // four scattered top-level tabs sharing a hidden active-service.
 export function ServicesPage() {
   const { state, setServiceDrawer, activeService, setActiveService, isLoading, apiError } = useApp();
+  const { data: stats } = useStats();
   const names = state.services.map(s => s.name);
   // Gateway rules whose (re-associated) service isn't in the registry — infra /
   // legacy rules that would otherwise be invisible in every tab.
@@ -80,7 +83,7 @@ export function ServicesPage() {
           </div>
           {(() => {
             const renderRow = (s: typeof filtered[number]) => {
-              const sm = svcSummary(state, s.name);
+              const sm = svcSummary(state, s.name, stats?.perService);
               const on = s.name === sel;
               return (
                 <button key={s.name} onClick={() => setActiveService(s.name)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderBottom: '1px solid var(--line)', background: on ? 'var(--panel-2)' : 'transparent', color: 'var(--ink)', cursor: 'pointer', display: 'flex', gap: 9, alignItems: 'center' }}>
@@ -169,7 +172,8 @@ export function ServicesPage() {
 
 function ServiceOverview({ name, onEdit }: { name: string; onEdit: () => void }) {
   const { state } = useApp();
-  const sm = svcSummary(state, name);
+  const { data: stats } = useStats();
+  const sm = svcSummary(state, name, stats?.perService);
   const perms = Object.values(state.roles[name] || {}).flat();
   const level = perms.length === 0 ? 'none' : accessLevelOf(perms);
   return (

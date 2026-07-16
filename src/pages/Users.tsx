@@ -73,7 +73,7 @@ export function UsersPage() {
         <div style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--line)" }}>
           <div style={{ position: "relative", flex: 1, maxWidth: 360 }}>
             <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: "var(--ink-3)" }}>{I.search}</span>
-            <input className="input" style={{ paddingLeft: 30 }} placeholder="Search name or email…" value={q} onChange={e => setQ(e.target.value)} />
+            <input className="input" type="search" autoComplete="off" data-1p-ignore data-lpignore="true" style={{ paddingLeft: 30 }} placeholder="Search name or email…" value={q} onChange={e => setQ(e.target.value)} />
           </div>
           <select className="input" style={{ width: "auto" }} value={groupFilter} onChange={e => setGroupFilter(e.target.value)}>
             <option value="all">All groups</option>
