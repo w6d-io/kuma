@@ -4,69 +4,152 @@ import { I } from '../components/ui/Icons';
 import { Chip, Drawer, AccessLevel } from '../components/ui/Primitives';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
+import { RolesPage } from './Roles';
+import { RoutesPage } from './Routes';
+import { RulesPage } from './Rules';
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 
+type SvcTab = 'overview' | 'roles' | 'routes' | 'gateway';
+const SVC_TABS: SvcTab[] = ['overview', 'roles', 'routes', 'gateway'];
+const SVC_TAB_LABEL: Record<SvcTab, string> = { overview: 'Overview', roles: 'Roles', routes: 'Routes', gateway: 'Gateway' };
+
+// Per-service summary used by the left-rail rows.
+function svcSummary(state: ReturnType<typeof useApp>['state'], name: string) {
+  const roles = Object.keys(state.roles[name] || {}).length;
+  const routes = state.routeMaps[name] || [];
+  const openRoutes = routes.filter(r => !r.permission).length;
+  const rules = state.accessRules.filter(r => r.service === name);
+  const protectedRules = rules.filter(r => r.authorizer === 'remote_json').length;
+  const groups = Object.entries(state.groups).filter(([, m]) => m[name]).length;
+  const users = state.users.filter(u => u.groups.some(g => state.groups[g]?.[name])).length;
+  return { roles, routes: routes.length, openRoutes, rules: rules.length, protectedRules, groups, users };
+}
+
+// The Services workspace: one entry per service (no more repeated rows), each
+// nesting everything it owns — Overview · Roles · Routes · Gateway — so the
+// service↔role↔route↔gateway relationship is a single drill-down instead of
+// four scattered top-level tabs sharing a hidden active-service.
 export function ServicesPage() {
-  const { state, setServiceDrawer, setPage, setActiveService } = useApp();
+  const { state, setServiceDrawer, activeService, setActiveService } = useApp();
+  const names = state.services.map(s => s.name);
+  const sel = activeService && names.includes(activeService) ? activeService : (names[0] ?? "");
+  const service = state.services.find(s => s.name === sel);
+  const [tab, setTab] = useState<SvcTab>('overview');
+  const [q, setQ] = useState("");
+
+  const isGlobal = service?.name === 'global';
+  const effectiveTab: SvcTab = isGlobal && (tab === 'routes' || tab === 'gateway') ? 'overview' : tab;
+  const filtered = state.services.filter(s => !q || s.name.toLowerCase().includes(q.toLowerCase()));
+
+  const header = (
+    <div className="page-head">
+      <div><h1>Services</h1><div className="sub">Everything a service owns — roles, routes and gateway — in one place</div></div>
+      <div className="page-actions">
+        <button className="btn primary" onClick={() => setServiceDrawer({ mode: "create" })}>
+          <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.plus}</span> Register service
+        </button>
+      </div>
+    </div>
+  );
+
+  if (names.length === 0) {
+    return <>{header}<div className="panel" style={{ padding: 40, textAlign: 'center' }}><div className="muted small">No services yet — register one to define its roles and routes.</div></div></>;
+  }
+
   return (
     <>
-      <div className="page-head">
-        <div><h1>Services</h1><div className="sub">Protected upstreams behind Oathkeeper</div></div>
-        <div className="page-actions">
-          <button className="btn primary" onClick={() => setServiceDrawer({ mode: "create" })}>
-            <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.plus}</span> Register service
-          </button>
-        </div>
-      </div>
-      <div className="grid g2">
-        {state.services.map(s => {
-          const roles = Object.keys(state.roles[s.name] || {});
-          const routes = (state.routeMaps[s.name] || []).length;
-          const perms = Object.values(state.roles[s.name] || {}).flat();
-          const level = perms.length === 0 ? "none" : accessLevelOf(perms);
-          const groupsTargeting = Object.entries(state.groups).filter(([, m]) => m[s.name]).length;
-          const usersTargeting = state.users.filter(u => u.groups.some(g => state.groups[g]?.[s.name])).length;
-          return (
-            <div key={s.name} className="panel" style={{ padding: 0 }}>
-              <div style={{ padding: 14, display: "flex", gap: 12, alignItems: "flex-start", borderBottom: "1px solid var(--line)" }}>
-                <span style={{ width: 36, height: 36, borderRadius: 8, background: "var(--panel-2)", border: "1px solid var(--line)", display: "grid", placeItems: "center", color: "var(--ink-2)", flexShrink: 0 }}>{s.name === "global" ? I.globe : I.box}</span>
+      {header}
+      <div className="grid" style={{ gridTemplateColumns: "280px 1fr", gap: 14, alignItems: 'start' }}>
+        {/* Left rail — one row per service */}
+        <div className="panel" style={{ padding: 0 }}>
+          <div style={{ padding: 8, borderBottom: '1px solid var(--line)' }}>
+            <input className="input" placeholder="Search services…" value={q} onChange={e => setQ(e.target.value)} style={{ width: '100%' }} />
+          </div>
+          {filtered.map(s => {
+            const sm = svcSummary(state, s.name);
+            const on = s.name === sel;
+            const dotColor = sm.protectedRules > 0 ? 'var(--ok)' : sm.rules > 0 ? 'var(--warn)' : 'var(--ink-3)';
+            return (
+              <button key={s.name} onClick={() => setActiveService(s.name)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderBottom: '1px solid var(--line)', background: on ? 'var(--panel-2)' : 'transparent', color: 'var(--ink)', cursor: 'pointer', display: 'flex', gap: 9, alignItems: 'center' }}>
+                <span style={{ color: dotColor, flexShrink: 0, display: 'grid', placeItems: 'center', width: 15, height: 15 }}>{s.name === 'global' ? I.globe : I.box}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="row" style={{ gap: 8 }}>
-                    <span className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</span>
-                    {s.name === "global" && <Chip tone="info">virtual</Chip>}
-                    {s.system && <Chip tone="info" title="Bootstrap-protected — cannot be deleted">🔒 system</Chip>}
-                    <div className="flex-1" />
-                    <AccessLevel level={level} compact />
+                  <div className="row" style={{ gap: 6 }}>
+                    <span className="mono" style={{ fontWeight: on ? 600 : 500, fontSize: 12.5 }}>{s.name}</span>
+                    {s.system && <Chip tone="info" title="System service">🔒</Chip>}
                   </div>
-                  <div className="small muted mt-4">{s.description}</div>
-                  {s.upstreamUrl && <div className="small mono muted mt-4">↗ {s.upstreamUrl}</div>}
+                  <div className="small muted mt-4">{sm.roles} roles · {sm.routes} routes{sm.openRoutes > 0 ? <> · <span style={{ color: 'var(--warn)' }}>{sm.openRoutes} public</span></> : ''}</div>
                 </div>
-              </div>
-              <div className="svc-stats">
-                <div className="svc-stat"><span className="n">{roles.length}</span><span className="l">roles</span></div>
-                <div className="svc-stat"><span className="n">{routes}</span><span className="l">routes</span></div>
-                <div className="svc-stat"><span className="n">{groupsTargeting}</span><span className="l">groups</span></div>
-                <div className="svc-stat"><span className="n">{usersTargeting}</span><span className="l">users</span></div>
-              </div>
-              <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 6, fontSize: 12, borderTop: "1px solid var(--line)" }}>
-                <button className="btn ghost sm" onClick={() => { setActiveService(s.name); setPage("roles"); }}>
-                  <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.shield}</span> Roles
-                </button>
-                <button className="btn ghost sm" onClick={() => { setActiveService(s.name); setPage("routes"); }} disabled={s.name === "global"}>
-                  <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.route}</span> Routes
-                </button>
-                <div className="flex-1" />
-                {s.name !== "global" && (
-                  <button className="btn ghost sm" onClick={() => setServiceDrawer({ mode: "edit", serviceName: s.name })}>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right — the selected service and its nested config */}
+        <div style={{ minWidth: 0 }}>
+          {service && (
+            <>
+              <div className="panel-head" style={{ marginBottom: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <h3 className="row" style={{ gap: 8 }}>
+                    <span className="mono">{service.name}</span>
+                    {isGlobal && <Chip tone="info">virtual</Chip>}
+                    {service.system && <Chip tone="info" title="Bootstrap-protected — cannot be deleted">🔒 system</Chip>}
+                  </h3>
+                  <div className="sub">{service.upstreamUrl ? <>Internal service · <span className="mono">{service.upstreamUrl}</span></> : 'Virtual service — roles only, no gateway'}</div>
+                </div>
+                {!isGlobal && (
+                  <button className="btn" onClick={() => setServiceDrawer({ mode: 'edit', serviceName: service.name })}>
                     <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.edit}</span> Edit
                   </button>
                 )}
-                {s.createdAt && <span className="small muted mono">since {s.createdAt}</span>}
               </div>
+
+              <div className="seg" style={{ marginBottom: 12 }}>
+                {SVC_TABS.map(t => {
+                  const disabled = isGlobal && (t === 'routes' || t === 'gateway');
+                  return <button key={t} className={effectiveTab === t ? 'active' : ''} disabled={disabled} onClick={() => setTab(t)}>{SVC_TAB_LABEL[t]}</button>;
+                })}
+              </div>
+
+              {effectiveTab === 'overview' && <ServiceOverview name={service.name} onEdit={() => setServiceDrawer({ mode: 'edit', serviceName: service.name })} />}
+              {effectiveTab === 'roles' && <RolesPage svc={service.name} embedded />}
+              {effectiveTab === 'routes' && !isGlobal && <RoutesPage svc={service.name} embedded />}
+              {effectiveTab === 'gateway' && !isGlobal && <RulesPage svc={service.name} embedded />}
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ServiceOverview({ name, onEdit }: { name: string; onEdit: () => void }) {
+  const { state } = useApp();
+  const sm = svcSummary(state, name);
+  const perms = Object.values(state.roles[name] || {}).flat();
+  const level = perms.length === 0 ? 'none' : accessLevelOf(perms);
+  return (
+    <>
+      <div className="grid g4 mb-12" style={{ gap: 10 }}>
+        <div className="stat"><div className="lbl">Roles</div><div className="val">{sm.roles}</div></div>
+        <div className="stat"><div className="lbl">Routes</div><div className="val">{sm.routes}</div></div>
+        <div className="stat"><div className="lbl">Groups</div><div className="val">{sm.groups}</div></div>
+        <div className="stat"><div className="lbl">Users</div><div className="val">{sm.users}</div></div>
+      </div>
+      <div className="panel">
+        <div className="panel-head"><div><h3>Access summary</h3><div className="sub">Who can reach this service, and how it's protected</div></div><AccessLevel level={level} /></div>
+        <div className="panel-body col" style={{ gap: 10 }}>
+          <div className="small">{sm.openRoutes > 0
+            ? <><span style={{ color: 'var(--warn)' }}>⚠ {sm.openRoutes} public route{sm.openRoutes !== 1 ? 's' : ''}</span> — reachable with no permission.</>
+            : sm.routes > 0 ? 'Every route requires a permission.' : 'No routes defined yet.'}</div>
+          <div className="small muted">Reached via <b>{sm.groups}</b> group{sm.groups !== 1 ? 's' : ''} → <b>{sm.users}</b> user{sm.users !== 1 ? 's' : ''}.</div>
+          {!!state.services.find(s => s.name === name && !s.system) && (
+            <div className="row" style={{ gap: 8, marginTop: 4 }}>
+              <button className="btn ghost sm" onClick={onEdit}><span style={{ width: 13, height: 13, display: 'grid', placeItems: 'center' }}>{I.edit}</span> Edit service</button>
             </div>
-          );
-        })}
+          )}
+        </div>
       </div>
     </>
   );
