@@ -133,11 +133,36 @@ const ALL_ENTITY_KEYS = [
   ['all-roles'], ['all-routes'], ['access-rules'], ['audit'],
 ] as const;
 
+// Pages that consume directory-wide user aggregates (counts, posture signals,
+// full identity dropdown) and therefore need the whole directory streamed in.
+// Everywhere else the store holds only page 1 — no mass fetching on Audit,
+// Settings, Roles, Routes, Rules, or the org-admin tab. NOTE: the Users page is
+// deliberately absent — it manages its own lazy "Load more" pagination, so
+// auto-streaming the whole directory behind it would be the very mass-fetch
+// we're eliminating.
+const DIRECTORY_PAGES: ReadonlySet<PageId> = new Set<PageId>([
+  'dashboard', 'groups', 'services', 'simulator',
+]);
+
+const pageFromHash = (): PageId => {
+  const hash = window.location.hash.replace(/^#\/?/, '');
+  const valid: PageId[] = ['dashboard','simulator','users','groups','services','roles','routes','rules','audit','settings','orgadmin'];
+  return valid.includes(hash as PageId) ? (hash as PageId) : 'dashboard';
+};
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  // Single source of truth: the composite store folds the scoped per-entity
-  // queries into the AppState shape. No `useState` mirror (STORE-1).
-  const { state, isLive, isLoading, apiError } = useStore();
   const qc = useQueryClient();
+
+  // Hash-based routing: read initial page from URL hash (#/page). Computed
+  // before the store so we can tell it whether this page needs the directory.
+  const [page, setPageRaw] = useState<PageId>(pageFromHash);
+
+  // Single source of truth: the composite store folds the scoped per-entity
+  // queries into the AppState shape. No `useState` mirror (STORE-1). The
+  // directory only streams in on pages that show directory-wide aggregates.
+  const { state, isLive, isLoading, apiError } = useStore({
+    fillDirectory: DIRECTORY_PAGES.has(page),
+  });
 
   const invalidateKeys = useCallback((keys: readonly (readonly string[])[]) => {
     for (const key of keys) qc.invalidateQueries({ queryKey: key as string[] });
@@ -152,14 +177,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const invalidateAudit = useCallback(() => {
     invalidateKeys([['audit']]);
   }, [invalidateKeys]);
-
-  // Hash-based routing: read initial page from URL hash (#/page)
-  const pageFromHash = (): PageId => {
-    const hash = window.location.hash.replace(/^#\/?/, '');
-    const valid: PageId[] = ['dashboard','simulator','users','groups','services','roles','routes','rules','audit','settings'];
-    return valid.includes(hash as PageId) ? (hash as PageId) : 'dashboard';
-  };
-  const [page, setPageRaw] = useState<PageId>(pageFromHash);
 
   const setPage = (p: PageId) => {
     window.location.hash = `/${p}`;
