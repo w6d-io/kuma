@@ -9,6 +9,7 @@ import { UsersPage, UserDrawer } from './pages/Users';
 import { OrgAdminPage } from './pages/OrgAdmin';
 import { GroupsPage, GroupDrawer } from './pages/Groups';
 import { ServicesPage, ServiceDrawer } from './pages/Services';
+import { GrantAccess } from './pages/GrantAccess';
 import { AuditPage } from './pages/Audit';
 import { SettingsPage } from './pages/Settings';
 import type { PageId } from './api/types';
@@ -246,7 +247,7 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
 }
 
 function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { setPage, state, setUserDrawer, setGroupDrawer, setServiceDrawer, setActiveService, setTheme, theme } = useApp();
+  const { setPage, state, setGroupDrawer, setServiceDrawer, setActiveService, setGrant, setTheme, theme } = useApp();
   const [q, setQ] = useState("");
   const [idx, setIdx] = useState(0);
   useEffect(() => { if (open) { setQ(""); setIdx(0); } }, [open]);
@@ -256,7 +257,7 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
     const match = (s: string) => !low || s.toLowerCase().includes(low);
     const nav = NAV.filter(n => match(n.name)).map(n => ({ kind: "nav", label: `Go to · ${n.name}`, sub: n.id, run: () => setPage(n.id) }));
     const users = state.users.filter(u => match(u.name) || match(u.email)).slice(0, 6).map(u => ({
-      kind: "user", label: u.name, sub: u.email, run: () => { setPage("users"); setUserDrawer({ mode: "edit", user: u }); }
+      kind: "user", label: u.name, sub: u.email, run: () => { setGrant({ user: u }); }
     }));
     const grps = Object.keys(state.groups).filter(match).slice(0, 6).map(g => ({
       kind: "group", label: `Edit group · ${g}`, sub: "groups.json", run: () => { setPage("groups"); setGroupDrawer({ mode: "edit", name: g }); }
@@ -265,7 +266,7 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
       kind: "service", label: `Service · ${s.name}`, sub: s.upstreamUrl || "virtual", run: () => { setActiveService(s.name); setPage("services"); }
     }));
     const actions = [
-      { kind: "action", label: "Assign user to group", sub: "Kratos", run: () => { setUserDrawer({ mode: "assign" }); } },
+      { kind: "action", label: "Grant access to a user", sub: "guided", run: () => { setGrant({}); } },
       { kind: "action", label: "New group", sub: "groups.json", run: () => { setGroupDrawer({ mode: "create" }); } },
       { kind: "action", label: "Register service", sub: "creates roles + route_map + rule", run: () => { setServiceDrawer({ mode: "create" }); } },
       { kind: "action", label: `Toggle ${theme === "dark" ? "light" : "dark"} theme`, sub: "ui", run: () => setTheme(theme === "dark" ? "light" : "dark") },
@@ -441,6 +442,7 @@ function AppShell() {
       <UserDrawer />
       <GroupDrawer />
       <ServiceDrawer />
+      <GrantAccess />
       <CmdK open={cmdkOpen} onClose={() => setCmdkOpen(false)} />
       <TweaksPanel open={tweaksOpen} onClose={() => setTweaksOpen(false)} />
       <Toasts toasts={toasts} />
