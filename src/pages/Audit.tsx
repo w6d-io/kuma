@@ -113,6 +113,24 @@ export function AuditPage() {
     return gs;
   })();
 
+  // Client-side CSV export of the currently filtered events. (Bounded to the
+  // loaded window today; a server-side full export is a Phase-3 item.)
+  const exportCsv = () => {
+    const cols = ["ts", "who", "verb", "category", "target", "service", "method", "path", "status", "statusCode", "ip", "reason"] as const;
+    const esc = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const body = filtered.map(e => cols.map(c => esc((e as unknown as Record<string, unknown>)[c])).join(","));
+    const csv = [cols.join(","), ...body].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `audit-${tab}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       <div className="page-head">
@@ -128,7 +146,7 @@ export function AuditPage() {
             <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: "var(--ink-3)" }}>{I.search}</span>
             <input className="input" style={{ paddingLeft: 30, minWidth: 280 }} placeholder="Search actor, target, IP, path…" value={q} onChange={e => setQ(e.target.value)} />
           </div>
-          <button className="btn">{I.download} Export CSV</button>
+          <button className="btn" onClick={exportCsv} disabled={filtered.length === 0}>{I.download} Export CSV</button>
         </div>
       </div>
 
