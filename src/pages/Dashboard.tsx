@@ -7,7 +7,7 @@ import { ROLE_LEVEL } from '../hooks/useRbac';
 
 export function DashboardPage() {
   const app = useApp();
-  const { state, setPage, setUserDrawer, setGroupDrawer, setServiceDrawer, apiError } = app;
+  const { state, setPage, setGrant, setGroupDrawer, setServiceDrawer, apiError } = app;
   // Real audit stream (not the SEED-polluted AppContext.audit mirror — same
   // fix as the Audit page; "Recent changes" must show real events only).
   const { data: audit = [] } = useAudit();
@@ -106,9 +106,9 @@ export function DashboardPage() {
             <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.sparkle}</span>
             Simulate access
           </button>
-          <button className="btn primary" onClick={() => setUserDrawer({ mode: "assign" })}>
-            <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.plus}</span>
-            Assign user to group
+          <button className="btn primary" onClick={() => setGrant({})}>
+            <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.shield}</span>
+            Grant access
           </button>
         </div>
       </div>

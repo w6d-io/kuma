@@ -34,7 +34,7 @@ interface PipelineState {
 }
 
 export interface UserDrawerState {
-  mode: 'edit' | 'assign' | 'create';
+  mode: 'edit' | 'create';
   user?: import('../api/types').User;
 }
 

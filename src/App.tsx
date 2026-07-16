@@ -90,7 +90,6 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
                 n.id === "users" ? state.users.length :
                 n.id === "groups" ? Object.keys(state.groups).length :
                 n.id === "services" ? state.services.length :
-                n.id === "rules" ? state.accessRules.length :
                 null;
               return (
                 <button key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => setPage(n.id)}>

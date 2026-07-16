@@ -1,4 +1,4 @@
-import type { AppState, User, RouteEntry } from '../api/types';
+import type { AppState, User } from '../api/types';
 
 export function accessLevelOf(perms: string[]): string {
   if (!perms || perms.length === 0) return "none";
@@ -75,17 +75,4 @@ export function isPrivilegedGroup(g: string, state: AppState): boolean {
     }
   }
   return false;
-}
-
-export function matchRoute(routes: RouteEntry[], method: string, path: string) {
-  for (const r of routes) {
-    if (r.method !== method) continue;
-    const re = "^" + r.path
-      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-      .replace(/:any\*/g, ".+")
-      .replace(/:[a-zA-Z_]+/g, "[^/]+")
-      + "$";
-    if (new RegExp(re).test(path)) return r;
-  }
-  return null;
 }

@@ -127,7 +127,7 @@ export function ServicesPage() {
               <div className="panel-head" style={{ marginBottom: 12 }}>
                 <div><h3>Unassigned gateway rules</h3><div className="sub">Rules whose service isn't in your registry — infrastructure or legacy routing</div></div>
               </div>
-              <RulesPage unassigned embedded />
+              <RulesPage unassigned />
             </>
           ) : service && (
             <>
@@ -156,9 +156,9 @@ export function ServicesPage() {
 
               {effectiveTab === 'overview' && <ServiceOverview name={service.name} onEdit={() => setServiceDrawer({ mode: 'edit', serviceName: service.name })} />}
               {effectiveTab === 'health' && <ServiceHealth name={service.name} />}
-              {effectiveTab === 'roles' && <RolesPage svc={service.name} embedded />}
-              {effectiveTab === 'routes' && !isGlobal && <RoutesPage svc={service.name} embedded />}
-              {effectiveTab === 'gateway' && !isGlobal && <RulesPage svc={service.name} embedded />}
+              {effectiveTab === 'roles' && <RolesPage svc={service.name} />}
+              {effectiveTab === 'routes' && !isGlobal && <RoutesPage svc={service.name} />}
+              {effectiveTab === 'gateway' && !isGlobal && <RulesPage svc={service.name} />}
             </>
           )}
         </div>

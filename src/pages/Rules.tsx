@@ -47,7 +47,7 @@ function Toggle({ on, tone, onClick, children }: { on: boolean; tone?: string; o
   );
 }
 
-export function RulesPage({ svc, embedded = false, unassigned = false }: { svc?: string; embedded?: boolean; unassigned?: boolean } = {}) {
+export function RulesPage({ svc, unassigned = false }: { svc?: string; unassigned?: boolean } = {}) {
   const { state } = useApp();
   const applyChange = useApplyChange();
   const updateRule = useUpdateAccessRule();
@@ -62,7 +62,7 @@ export function RulesPage({ svc, embedded = false, unassigned = false }: { svc?:
   // Per-rule editing targets ONE rule by id (safe on multi-rule services). Only
   // regular, registered, non-system services are editable; infra/system are
   // read-only. Each field is overlaid on the raw rule so nothing is dropped.
-  const canEdit = embedded && !!svc && svc !== 'global' && !svcObj?.system && !unassigned;
+  const canEdit = !!svc && svc !== 'global' && !svcObj?.system && !unassigned;
 
   const [editing, setEditing] = useState(false);
   const [dMethods, setDMethods] = useState<string[]>([]);
@@ -119,12 +119,6 @@ export function RulesPage({ svc, embedded = false, unassigned = false }: { svc?:
 
   return (
     <>
-      {!embedded && (
-        <div className="page-head">
-          <div><h1>Gateway routing</h1><div className="sub">How the gateway routes and protects each service · read-only</div></div>
-        </div>
-      )}
-
       <div className="panel mb-12" style={{ padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'center' }}>
         <span style={{ width: 15, height: 15, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', flexShrink: 0 }}>{I.info}</span>
         <span className="small muted">
@@ -146,7 +140,7 @@ export function RulesPage({ svc, embedded = false, unassigned = false }: { svc?:
         <div className="grid" style={{ gridTemplateColumns: "300px 1fr", gap: 14 }}>
           <div className="panel" style={{ padding: 0 }}>
             <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--ink-3)" }}>{svc ? `${rules.length} rule${rules.length !== 1 ? 's' : ''}` : 'Rules'}</div>
-            {embedded && !unassigned && rules.length > 1 && (
+            {!unassigned && rules.length > 1 && (
               <div className="small muted" style={{ padding: "8px 14px", borderBottom: "1px solid var(--line)", lineHeight: 1.5 }}>
                 This service's surface is split into {rules.length} rules (e.g. CORS preflight, the protected API, the app) — each matches its own paths and is protected independently.
               </div>
@@ -155,7 +149,7 @@ export function RulesPage({ svc, embedded = false, unassigned = false }: { svc?:
               const s = authzStatus(r.authorizer);
               return (
                 <button key={r.id} onClick={() => setSelectedId(r.id)} style={{ width: "100%", textAlign: "left", padding: "10px 14px", border: "none", borderBottom: "1px solid var(--line)", background: r.id === rule?.id ? "var(--panel-2)" : "transparent", color: "var(--ink)", cursor: "pointer" }}>
-                  <div className={unassigned ? "mono" : undefined} style={{ fontSize: 12.5, fontWeight: r.id === rule?.id ? 600 : 500 }}>{unassigned ? r.id : embedded ? ruleLabel(r.id, svc) : r.service}</div>
+                  <div className={unassigned ? "mono" : undefined} style={{ fontSize: 12.5, fontWeight: r.id === rule?.id ? 600 : 500 }}>{unassigned ? r.id : ruleLabel(r.id, svc)}</div>
                   <div className="small mt-4"><Chip tone={s.tone} title={s.hint}>{s.label}</Chip></div>
                 </button>
               );
@@ -164,7 +158,7 @@ export function RulesPage({ svc, embedded = false, unassigned = false }: { svc?:
           {rule && (
             <div className="panel">
               <div className="panel-head">
-                <div style={{ minWidth: 0, flex: 1 }}><h3>{unassigned ? <span className="mono">{rule.id}</span> : embedded ? ruleLabel(rule.id, svc) : <span className="mono">{rule.service}</span>}</h3><div className="sub">Matches these methods &amp; paths, then forwards to the service</div></div>
+                <div style={{ minWidth: 0, flex: 1 }}><h3>{unassigned ? <span className="mono">{rule.id}</span> : ruleLabel(rule.id, svc)}</h3><div className="sub">Matches these methods &amp; paths, then forwards to the service</div></div>
                 <div className="row" style={{ gap: 8 }}>
                   <Chip tone={authzStatus(rule.authorizer).tone} title={authzStatus(rule.authorizer).hint}>{authzStatus(rule.authorizer).label}</Chip>
                   {canEdit && (editing ? (
