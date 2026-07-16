@@ -195,6 +195,18 @@ export function GroupDrawer() {
                   );
                 })}
               </div>
+              {current.length > 0 && (() => {
+                const uniq = [...new Set(perms)];
+                return (
+                  <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+                    <span className="small muted">grants:</span>
+                    {uniq.includes("*")
+                      ? <Chip tone="accent">everything (*)</Chip>
+                      : uniq.slice(0, 12).map(p => <Chip key={p}>{p}</Chip>)}
+                    {!uniq.includes("*") && uniq.length > 12 && <span className="small muted">+{uniq.length - 12} more</span>}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
