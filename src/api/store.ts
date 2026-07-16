@@ -37,18 +37,26 @@ export interface StoreResult {
  * mirrored into React state — this recomputes (memoised) whenever any scoped
  * query updates, so edits surface through the normal cache-invalidation path.
  */
-export function useStore(): StoreResult {
+export interface StoreOptions {
+  /** When true, stream the whole user directory in the background (pages that
+   *  show directory-wide aggregates). When false, keep only page 1 — no mass
+   *  fetching on pages that don't need it. */
+  fillDirectory?: boolean;
+}
+
+export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreResult {
   const usersQ = useUsers();
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = usersQ;
 
   // Background directory fill: after the first page paints, keep pulling the
   // remaining keyset pages so cross-entity views (Dashboard counts, Groups
-  // user-counts, Simulator, CmdK) see the whole directory. This is the lazy
-  // infinite query advancing itself — NOT the old eager pre-mutation re-walk;
-  // scoped invalidation (STORE-3) means an unrelated edit won't restart it.
+  // user-counts, Simulator, CmdK) see the whole directory. Only runs on pages
+  // that need it (fillDirectory) and only advances a query that is already
+  // cached one-time (5-min staleTime) — navigation never re-walks. The infinite
+  // query is self-capped at USERS_MAX_PAGES so this can't run away.
   useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+    if (fillDirectory && hasNextPage && !isFetchingNextPage) fetchNextPage();
+  }, [fillDirectory, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const groupsQ = useGroups();
   const servicesQ = useServices();

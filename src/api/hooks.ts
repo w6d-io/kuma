@@ -9,6 +9,14 @@ import { cachePatch } from './mutations';
 // per-identity RBAC enrichment jinbe does per row (PERF-2) — bounded, so the
 // first page paints fast and the rest stream lazily.
 const USERS_PAGE_SIZE = 100;
+// Runaway guard: never walk more than this many pages in the background
+// (matches the old eager-walk cap). 100 × 100 = 100k identities.
+const USERS_MAX_PAGES = 100;
+// The directory is expensive to assemble (keyset walk + per-row RBAC enrichment
+// server-side). Treat it as effectively static for the session: fetch ONCE,
+// keep it fresh for 5 min, and never re-walk just because the user navigated
+// between pages. Mutations invalidate ['users'] explicitly when it must refresh.
+const DIRECTORY_STALE_TIME = 5 * 60_000;
 
 // RBAC config (groups/services/roles/routes/rules) is effectively static within
 // a session and only changes through mutations we invalidate explicitly, so a
@@ -42,7 +50,15 @@ export function useUsersInfinite(search?: string) {
       return { users: data.map(kratosToUser), nextPageToken };
     },
     initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => last.nextPageToken,
+    // Stop advancing past the runaway cap even if the server keeps handing out
+    // tokens, so the background fill can never turn into an unbounded walk.
+    getNextPageParam: (last, pages) =>
+      pages.length >= USERS_MAX_PAGES ? undefined : last.nextPageToken,
+    // Fetch once per session window; navigation between pages reuses the cache
+    // instead of re-walking the directory (the core "no mass fetching" fix).
+    staleTime: DIRECTORY_STALE_TIME,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 
