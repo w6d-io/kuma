@@ -6,7 +6,7 @@
 // path a refactor happened to pick changed behaviour silently (PROBLEM-MAP
 // STORE-6). This module is the canonical, richer implementation.
 
-import type { KratosIdentity, JinbeGroup, JinbeAccessRule } from './client';
+import type { KratosIdentity, JinbeGroup, JinbeAccessRule, SearchedUser } from './client';
 import type { User, GroupsMap, AccessRule, AuditEvent } from './types';
 
 /** Relative "x ago" formatting for updated_at / audit timestamps. */
@@ -61,6 +61,21 @@ export function kratosToUser(k: KratosIdentity): User {
     last: k.updated_at ? timeAgo(k.updated_at) : 'never',
     organizationId: k.organization_id,
     ...(mfa !== undefined ? { mfa } : {}),
+  };
+}
+
+/** Lightweight search hit → Kuma User row. Search omits mfa/last (it's for
+ *  finding people, not the full profile) — those surface on the detail drawer. */
+export function searchedToUser(s: SearchedUser): User {
+  return {
+    id: s.id,
+    name: s.name || s.email,
+    email: s.email,
+    groups: s.groups,
+    title: '',
+    active: s.active,
+    last: '',
+    organizationId: s.organizationId ?? undefined,
   };
 }
 
