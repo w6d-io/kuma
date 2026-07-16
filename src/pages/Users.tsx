@@ -286,7 +286,7 @@ export function UserDrawer() {
       >
         <div className="mb-12">
           <label className="input-label">Email *</label>
-          <input className="input mono" type="email" placeholder="user@example.com" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
+          <input className="input mono" type="text" inputMode="email" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="user@example.com" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
         </div>
         <div className="mb-12">
           <label className="input-label">Full name *</label>
