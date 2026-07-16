@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession, useUsers, useGroupsMap } from '../api/hooks';
+import { useSession, useUsers, useGroupsMap, useUserSearch, useStats } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, Switch, ConfirmDialog } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
 import { isPrivilegedGroup } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
+import { searchedToUser } from '../api/transforms';
+import type { User } from '../api/types';
 
 // Small debounce so typing a name doesn't re-filter (and, for emails, re-query
 // the server) on every keystroke.
@@ -24,34 +26,37 @@ export function UsersPage() {
   const [groupFilter, setGroupFilter] = useState("all");
   const dq = useDebounced(q.trim());
 
-  // Server-side exact-email fast path: a full email queries Kratos directly
-  // (credentials_identifier, J9) so one user is found instantly in a huge
-  // directory without loading every page. Anything else (a name, partial
-  // email) uses the shared full-directory cache + client-side filter.
-  const isEmailSearch = dq.includes('@');
-  const { users, count, usersLoading, isComplete, hasNextPage, isFetchingNextPage, fetchNextPage } =
-    useUsers(isEmailSearch ? dq : undefined);
+  // Search = server-side substring match over email + name (cached in-memory,
+  // no directory walk). Browse (no query) = page 1 + manual load-more. Both
+  // hooks always run; we render whichever mode is active. The total count comes
+  // from the cached stats endpoint, not a full directory walk.
+  const searching = dq.length >= 2;
+  const searchQ = useUserSearch(dq);
+  const browseQ = useUsers();
+  const { data: stats } = useStats();
   const { data: groupsMap = {} } = useGroupsMap();
 
-  const filtered = useMemo(() => users.filter(u => {
-    if (!isEmailSearch && dq && !`${u.name} ${u.email} ${u.title}`.toLowerCase().includes(dq.toLowerCase())) return false;
-    if (groupFilter !== "all" && !u.groups.includes(groupFilter)) return false;
-    return true;
-  }), [users, isEmailSearch, dq, groupFilter]);
+  const rows = useMemo<User[]>(
+    () => (searching ? (searchQ.data ?? []).map(searchedToUser) : browseQ.users),
+    [searching, searchQ.data, browseQ.users],
+  );
+  const filtered = useMemo(
+    () => rows.filter(u => groupFilter === "all" || u.groups.includes(groupFilter)),
+    [rows, groupFilter],
+  );
 
   const pg = usePagination(filtered.length, 25);
   const paged = filtered.slice(pg.from, pg.to);
 
-  // Directory total for the header: while streaming, show "N+"; exact once the
-  // keyset is exhausted (there is no server-provided count — keyset pagination).
-  const totalLabel = isEmailSearch ? `${count}` : `${count}${isComplete ? '' : '+'}`;
+  const loading = searching ? searchQ.isLoading : browseQ.usersLoading;
+  const total = stats?.total ?? browseQ.count;
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Users</h1>
-          <div className="sub">{totalLabel} identities{usersLoading && !isEmailSearch ? ' · loading more…' : ''} · Kratos <span className="mono">metadata_admin.groups</span></div>
+          <div className="sub">{searching ? `${filtered.length} match${filtered.length === 1 ? '' : 'es'}` : `${total} identities`}{loading ? ' · loading…' : ''} · Kratos <span className="mono">metadata_admin.groups</span></div>
         </div>
         <div className="page-actions">
           <button className="btn" onClick={() => setGrant({})}>
@@ -68,14 +73,14 @@ export function UsersPage() {
         <div style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--line)" }}>
           <div style={{ position: "relative", flex: 1, maxWidth: 360 }}>
             <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: "var(--ink-3)" }}>{I.search}</span>
-            <input className="input" style={{ paddingLeft: 30 }} placeholder="Search name, email, title…" value={q} onChange={e => setQ(e.target.value)} />
+            <input className="input" style={{ paddingLeft: 30 }} placeholder="Search name or email…" value={q} onChange={e => setQ(e.target.value)} />
           </div>
           <select className="input" style={{ width: "auto" }} value={groupFilter} onChange={e => setGroupFilter(e.target.value)}>
             <option value="all">All groups</option>
             {Object.keys(groupsMap).map(g => <option key={g} value={g}>{g}</option>)}
           </select>
           <div className="flex-1" />
-          <span className="small muted mono">{filtered.length} / {totalLabel}</span>
+          <span className="small muted mono">{searching ? `${filtered.length} shown` : `${filtered.length} / ${total}`}</span>
         </div>
         <table className="table">
           <thead><tr><th>Identity</th><th>Groups</th><th>2FA</th><th>Last seen</th><th></th></tr></thead>
@@ -107,6 +112,9 @@ export function UsersPage() {
                 <td style={{ width: 24, textAlign: "right" }}><span style={{ color: "var(--ink-4)" }}>{I.chev}</span></td>
               </tr>
             ))}
+            {!loading && filtered.length === 0 && (
+              <tr><td colSpan={5} className="small muted" style={{ padding: 16 }}>{searching ? `No users match "${dq}".` : "No users."}</td></tr>
+            )}
           </tbody>
         </table>
         {filtered.length > pg.pageSize && (
@@ -115,10 +123,10 @@ export function UsersPage() {
         {/* Manual load-more for very large directories: the store streams pages
             in the background, but this lets an operator pull the next page on
             demand (e.g. to widen a client-side name filter) without waiting. */}
-        {!isEmailSearch && hasNextPage && (
+        {!searching && browseQ.hasNextPage && (
           <div style={{ padding: "10px 14px", borderTop: "1px solid var(--line)", display: "flex", justifyContent: "center" }}>
-            <button className="btn ghost sm" disabled={isFetchingNextPage} onClick={() => fetchNextPage()}>
-              {isFetchingNextPage ? "Loading…" : `Load more (${count} loaded)`}
+            <button className="btn ghost sm" disabled={browseQ.isFetchingNextPage} onClick={() => browseQ.fetchNextPage()}>
+              {browseQ.isFetchingNextPage ? "Loading…" : `Load more (${browseQ.count} loaded)`}
             </button>
           </div>
         )}

@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession, useUsers } from '../api/hooks';
+import { useSession, useUserSearch } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, AccessLevel } from '../components/ui/Primitives';
 import { accessLevelOf, resolvePerms, isPrivilegedGroup } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
+import { searchedToUser } from '../api/transforms';
 import type { User } from '../api/types';
 
 // Intent-first "Grant access" wizard. The RBAC data model is service → role →
@@ -56,13 +57,11 @@ export function GrantAccess() {
   const [pq, setPq] = useState(''); // person search
   const [gq, setGq] = useState(''); // outcome / group search
 
-  // Person search: exact-email fast path queries Kratos directly; anything else
-  // filters client-side over the shared directory cache (same contract as the
-  // Users page — NO extra full-directory pull for this wizard).
+  // Person search: server-side substring match over email + name (cached
+  // in-memory; no directory pull). Fires for >=2 chars.
   const dpq = useDebounced(pq.trim());
-  const isEmailSearch = dpq.includes('@');
-  const { users, count, hasNextPage, isFetchingNextPage, fetchNextPage, isLoading } =
-    useUsers(isEmailSearch ? dpq : undefined);
+  const searching = dpq.length >= 2;
+  const searchQ = useUserSearch(dpq);
 
   // Seed state each time the wizard opens. If launched against a specific user
   // (from a row action), skip the picker and land on "What".
@@ -77,12 +76,10 @@ export function GrantAccess() {
     // Reseed only when the wizard is (re)opened, not on every cache tick.
   }, [grant]);
 
-  const matches = useMemo(() => {
-    if (!dpq) return users.slice(0, 40);
-    if (isEmailSearch) return users;
-    const low = dpq.toLowerCase();
-    return users.filter((u) => `${u.name} ${u.email}`.toLowerCase().includes(low)).slice(0, 40);
-  }, [users, dpq, isEmailSearch]);
+  const matches = useMemo<User[]>(
+    () => (searching ? (searchQ.data ?? []).map(searchedToUser) : []),
+    [searching, searchQ.data],
+  );
 
   // Groups as outcomes, with the permissions each one grants, filterable by
   // group name, a service it touches, or a permission it confers (so typing
@@ -233,8 +230,9 @@ export function GrantAccess() {
             />
           </div>
           <div className="panel" style={{ padding: 0, maxHeight: 340, overflowY: 'auto' }}>
-            {isLoading && <div className="small muted" style={{ padding: 14 }}>Searching…</div>}
-            {!isLoading && matches.length === 0 && (
+            {!searching && <div className="small muted" style={{ padding: 14 }}>Type at least 2 characters to search by name or email.</div>}
+            {searching && searchQ.isLoading && <div className="small muted" style={{ padding: 14 }}>Searching…</div>}
+            {searching && !searchQ.isLoading && matches.length === 0 && (
               <div className="small muted" style={{ padding: 14 }}>
                 No one matches “{dpq}”.{' '}
                 <button className="btn ghost sm" onClick={() => { setGrant(null); setUserDrawer({ mode: 'create' }); }}>Invite someone new</button>
@@ -266,12 +264,8 @@ export function GrantAccess() {
               </button>
             ))}
           </div>
-          {!isEmailSearch && hasNextPage && (
-            <div style={{ padding: '10px 0', display: 'flex', justifyContent: 'center' }}>
-              <button className="btn ghost sm" disabled={isFetchingNextPage} onClick={() => fetchNextPage()}>
-                {isFetchingNextPage ? 'Loading…' : `Load more (${count} loaded)`}
-              </button>
-            </div>
+          {searching && matches.length >= 50 && (
+            <div className="small muted" style={{ padding: '8px 2px' }}>Showing the first 50 — refine your search to narrow it.</div>
           )}
         </>
       )}

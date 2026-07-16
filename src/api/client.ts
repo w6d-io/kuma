@@ -34,6 +34,13 @@ export const api = {
   // ─── Directory stats (cached server-side counts; no directory walk) ───
   getStats: () => request<DirectoryStats>('/admin/stats'),
 
+  // ─── User substring search (cached in-memory server-side; no directory walk) ───
+  searchUsers: (q: string, limit = 50) => {
+    const qs = new URLSearchParams({ q });
+    if (limit) qs.set('limit', String(limit));
+    return request<{ data: SearchedUser[] }>(`/admin/users/search?${qs.toString()}`).then(r => r.data);
+  },
+
   // ─── Users (Kratos identities) ───
   // Kratos paginates with keyset tokens (no total count) and defaults to a
   // single 250-row page. page_size=1000 (Kratos/jinbe max) keeps directories
@@ -278,6 +285,15 @@ export interface DirectoryStats {
   perGroup: Record<string, number>;
   perOrg: Record<string, number>;
   computedAt: string;
+}
+
+export interface SearchedUser {
+  id: string;
+  email: string;
+  name: string | null;
+  groups: string[];
+  organizationId: string | null;
+  active: boolean;
 }
 
 export interface WhoamiResponse {

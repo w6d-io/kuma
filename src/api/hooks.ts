@@ -271,6 +271,20 @@ export function useStats() {
   });
 }
 
+// Server-side substring search over email + name (cached in-memory server-side;
+// no directory walk). Fires only for a query of >=2 chars. Dynamic: short
+// staleTime + refetch-on-focus so results reflect recent changes.
+export function useUserSearch(q: string) {
+  const term = q.trim();
+  return useQuery({
+    queryKey: ['user-search', term],
+    queryFn: () => api.searchUsers(term, 50),
+    enabled: term.length >= 2,
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
 // ─── Mutation hooks ───
 // User/group/service mutations live in AppContext (optimistic wrappers); the
 // hooks below cover config edits pages call directly + delegated org-admin.
