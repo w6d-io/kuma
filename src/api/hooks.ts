@@ -304,14 +304,30 @@ export function useRealtime(enabled: boolean) {
   const qc = useQueryClient();
   useEffect(() => {
     if (!enabled) return;
-    const es = new EventSource(`${API_BASE}/admin/events`, { withCredentials: true });
+    let es: EventSource | null = null;
     const onChange = () => {
       for (const key of REALTIME_KEYS) qc.invalidateQueries({ queryKey: key as string[] });
     };
-    es.addEventListener('change', onChange);
-    // EventSource reconnects itself; swallow the error event to avoid console noise.
-    es.onerror = () => {};
-    return () => { es.removeEventListener('change', onChange); es.close(); };
+    const connect = () => {
+      es?.close();
+      es = new EventSource(`${API_BASE}/admin/events`, { withCredentials: true });
+      es.addEventListener('change', onChange);
+      // A 200 stream that drops auto-reconnects natively; a failed handshake
+      // (e.g. server down at load) does NOT, so we re-arm on focus below.
+      es.onerror = () => {};
+    };
+    connect();
+    // Recover realtime without a page reload if the stream was closed (server
+    // wasn't up when the tab loaded) and the tab regains focus.
+    const onVis = () => {
+      if (document.visibilityState === 'visible' && es?.readyState === EventSource.CLOSED) connect();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      es?.removeEventListener('change', onChange);
+      es?.close();
+    };
   }, [enabled, qc]);
 }
 
