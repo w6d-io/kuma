@@ -255,13 +255,19 @@ export function useSession() {
 
 // Directory counts (total/active/fullAccess/unassigned/perGroup/perOrg) from the
 // cached server endpoint — replaces walking the whole user directory client-side
-// (PERF: 9k users was ~45s). Server serves in ~1ms warm; 60s staleTime here
-// matches its freshness window. Mutations invalidate ['stats'] for prompt refresh.
+// (PERF: 9k users was ~45s). Server serves in ~1ms warm.
+//
+// Dynamic / stays-updated: mutations invalidate ['stats'] (instant for changes
+// made in the console), and we poll + refetch on window-focus so changes made
+// OUTSIDE the console (Kratos self-registration, another service) surface within
+// ~20s. Cheap — warm reads are ~1ms.
 export function useStats() {
   return useQuery({
     queryKey: ['stats'],
     queryFn: () => api.getStats(),
-    staleTime: 60_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
+    refetchOnWindowFocus: true,
   });
 }
 
