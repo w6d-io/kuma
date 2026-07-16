@@ -49,6 +49,12 @@ export interface ServiceDrawerState {
   serviceName?: string;
 }
 
+// Grant-access wizard. `user` pre-selects a person (row action); omit to open
+// on the person-picker step.
+export interface GrantState {
+  user?: import('../api/types').User;
+}
+
 interface AppContextType {
   state: AppState;
   isLive: boolean;
@@ -66,6 +72,8 @@ interface AppContextType {
   setGroupDrawer: (d: GroupDrawerState | null) => void;
   serviceDrawer: ServiceDrawerState | null;
   setServiceDrawer: (d: ServiceDrawerState | null) => void;
+  grant: GrantState | null;
+  setGrant: (g: GrantState | null) => void;
   pushToast: (msg: string, opts?: { err?: boolean; sub?: string; ttl?: number }) => void;
   toasts: Toast[];
   pipeline: PipelineState;
@@ -194,6 +202,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [userDrawer, setUserDrawer] = useState<UserDrawerState | null>(null);
   const [groupDrawer, setGroupDrawer] = useState<GroupDrawerState | null>(null);
   const [serviceDrawer, setServiceDrawer] = useState<ServiceDrawerState | null>(null);
+  const [grant, setGrant] = useState<GrantState | null>(null);
 
   const [theme, setThemeRaw] = useState(TWEAK_DEFAULTS.theme);
   const [persona, setPersonaRaw] = useState(TWEAK_DEFAULTS.persona);
@@ -314,6 +323,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     userDrawer, setUserDrawer,
     groupDrawer, setGroupDrawer,
     serviceDrawer, setServiceDrawer,
+    grant, setGrant,
     pushToast, toasts, pipeline,
     theme, setTheme, persona, setPersona,
     tweaks, setTweak,

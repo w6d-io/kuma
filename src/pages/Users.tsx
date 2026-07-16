@@ -4,6 +4,7 @@ import { useSession, useUsers, useGroupsMap } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, Switch, ConfirmDialog } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
+import { isPrivilegedGroup } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
 
 // Small debounce so typing a name doesn't re-filter (and, for emails, re-query
@@ -18,7 +19,7 @@ function useDebounced<T>(value: T, ms = 250): T {
 }
 
 export function UsersPage() {
-  const { setUserDrawer } = useApp();
+  const { setUserDrawer, setGrant } = useApp();
   const [q, setQ] = useState("");
   const [groupFilter, setGroupFilter] = useState("all");
   const dq = useDebounced(q.trim());
@@ -53,9 +54,9 @@ export function UsersPage() {
           <div className="sub">{totalLabel} identities{usersLoading && !isEmailSearch ? ' · loading more…' : ''} · Kratos <span className="mono">metadata_admin.groups</span></div>
         </div>
         <div className="page-actions">
-          <button className="btn" onClick={() => setUserDrawer({ mode: "assign" })}>
-            <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.plus}</span>
-            Assign to group
+          <button className="btn" onClick={() => setGrant({})}>
+            <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.shield}</span>
+            Grant access
           </button>
           <button className="btn primary" onClick={() => setUserDrawer({ mode: "create" })}>
             <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.plus}</span>
@@ -208,33 +209,10 @@ export function UserDrawer() {
     if (ok) setUserDrawer(null);
   };
 
-  // A group is "privileged" when its RESOLVED permissions grant admin power:
-  // the global super_admin role, a global role resolving to "*", or any
-  // service role resolving to "*". Derived purely from resolved perms — NOT the
-  // `system` metadata flag (finding K8): a non-system group that grants "*" is
-  // still privileged and must be gated, and jinbe enforces it as 422 regardless.
-  const isPrivilegedGroup = (g: string): boolean => {
-    const map = state.groups[g] || {};
-    const globalRoles = map.global ?? [];
-    if (globalRoles.includes('super_admin')) return true;
-    const globalDefs = state.roles.global || {};
-    for (const r of globalRoles) {
-      if ((globalDefs[r] ?? []).includes('*')) return true;
-    }
-    for (const [svc, roles] of Object.entries(map)) {
-      if (svc === 'global' || !roles?.length) continue;
-      const allRoles = state.roles[svc] || {};
-      for (const r of roles) {
-        if ((allRoles[r] ?? []).includes('*')) return true;
-      }
-    }
-    return false;
-  };
-
   const groupRows = (checked: string[], toggle: (g: string) => void, targetMfa?: boolean) =>
     Object.entries(state.groups).map(([g, map], i) => {
       const on = checked.includes(g);
-      const privileged = isPrivilegedGroup(g);
+      const privileged = isPrivilegedGroup(g, state);
       // MFA gate (frontend mirror of jinbe's backend refusal): a privileged
       // group cannot be picked for a target user without a second factor.
       const blockedByMfa = privileged && targetMfa === false && !on;

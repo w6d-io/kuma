@@ -51,6 +51,32 @@ export function resolvePerms(user: User, state: AppState) {
   return { roles, perms, granters };
 }
 
+/**
+ * A group is "privileged" when its RESOLVED permissions grant admin power: the
+ * global super_admin role, a global role resolving to "*", or any service role
+ * resolving to "*". Derived purely from resolved perms — NOT the `system`
+ * metadata flag (finding K8): a non-system group that grants "*" is still
+ * privileged and must be gated. jinbe enforces this as 422 regardless; this is
+ * the frontend mirror used to disable the control up front and explain why.
+ */
+export function isPrivilegedGroup(g: string, state: AppState): boolean {
+  const map = state.groups[g] || {};
+  const globalRoles = map.global ?? [];
+  if (globalRoles.includes("super_admin")) return true;
+  const globalDefs = state.roles.global || {};
+  for (const r of globalRoles) {
+    if ((globalDefs[r] ?? []).includes("*")) return true;
+  }
+  for (const [svc, roles] of Object.entries(map)) {
+    if (svc === "global" || !roles?.length) continue;
+    const allRoles = state.roles[svc] || {};
+    for (const r of roles) {
+      if ((allRoles[r] ?? []).includes("*")) return true;
+    }
+  }
+  return false;
+}
+
 export function matchRoute(routes: RouteEntry[], method: string, path: string) {
   for (const r of routes) {
     if (r.method !== method) continue;
