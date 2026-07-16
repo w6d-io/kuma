@@ -66,23 +66,34 @@ export function ServicesPage() {
           <div style={{ padding: 8, borderBottom: '1px solid var(--line)' }}>
             <input className="input" placeholder="Search services…" value={q} onChange={e => setQ(e.target.value)} style={{ width: '100%' }} />
           </div>
-          {filtered.map(s => {
-            const sm = svcSummary(state, s.name);
-            const on = s.name === sel;
-            const dotColor = sm.protectedRules > 0 ? 'var(--ok)' : sm.rules > 0 ? 'var(--warn)' : 'var(--ink-3)';
-            return (
-              <button key={s.name} onClick={() => setActiveService(s.name)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderBottom: '1px solid var(--line)', background: on ? 'var(--panel-2)' : 'transparent', color: 'var(--ink)', cursor: 'pointer', display: 'flex', gap: 9, alignItems: 'center' }}>
-                <span style={{ color: dotColor, flexShrink: 0, display: 'grid', placeItems: 'center', width: 15, height: 15 }}>{s.name === 'global' ? I.globe : I.box}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="row" style={{ gap: 6 }}>
+          {(() => {
+            const renderRow = (s: typeof filtered[number]) => {
+              const sm = svcSummary(state, s.name);
+              const on = s.name === sel;
+              return (
+                <button key={s.name} onClick={() => setActiveService(s.name)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderBottom: '1px solid var(--line)', background: on ? 'var(--panel-2)' : 'transparent', color: 'var(--ink)', cursor: 'pointer', display: 'flex', gap: 9, alignItems: 'center' }}>
+                  <span style={{ color: 'var(--ink-3)', flexShrink: 0, display: 'grid', placeItems: 'center', width: 15, height: 15 }}>{s.name === 'global' ? I.globe : I.box}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <span className="mono" style={{ fontWeight: on ? 600 : 500, fontSize: 12.5 }}>{s.name}</span>
-                    {s.system && <Chip tone="info" title="System service">🔒</Chip>}
+                    <div className="small muted mt-4">
+                      {sm.roles} roles · {sm.routes} routes
+                      {sm.openRoutes > 0 && <> · <span style={{ color: 'var(--warn)' }} title={`${sm.openRoutes} route${sm.openRoutes !== 1 ? 's' : ''} reachable with no permission (public)`}>{sm.openRoutes} public</span></>}
+                    </div>
                   </div>
-                  <div className="small muted mt-4">{sm.roles} roles · {sm.routes} routes{sm.openRoutes > 0 ? <> · <span style={{ color: 'var(--warn)' }}>{sm.openRoutes} public</span></> : ''}</div>
-                </div>
-              </button>
+                </button>
+              );
+            };
+            const regular = filtered.filter(s => !s.system);
+            const sys = filtered.filter(s => s.system);
+            return (
+              <>
+                {regular.length > 0 && <div className="nav-section" style={{ padding: '8px 12px 4px' }}>Your services</div>}
+                {regular.map(renderRow)}
+                {sys.length > 0 && <div className="nav-section" style={{ padding: '10px 12px 4px', borderTop: regular.length ? '1px solid var(--line)' : undefined }}>System</div>}
+                {sys.map(renderRow)}
+              </>
             );
-          })}
+          })()}
         </div>
 
         {/* Right — the selected service and its nested config */}
