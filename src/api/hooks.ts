@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { api } from './client';
 import type { RolesMap, RouteMapsMap, AuditEvent, User } from './types';
 import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents } from './transforms';
+import { cachePatch } from './mutations';
 
 // Directory page size. 100 (not the old 1000) keeps each round trip — and the
 // per-identity RBAC enrichment jinbe does per row (PERF-2) — bounded, so the
@@ -121,6 +122,44 @@ export function useOrgServiceMap() {
     queryKey: ['org-service-map'],
     queryFn: () => api.getOrgServiceMap(),
     staleTime: CONFIG_STALE_TIME,
+  });
+}
+
+type OrgServiceMapCache = Record<string, string>;
+
+export function useSetOrgServiceMapping() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ organizationId, serviceName }: { organizationId: string; serviceName: string }) =>
+      api.setOrgServiceMapping(organizationId, serviceName),
+    onMutate: async ({ organizationId, serviceName }) => {
+      await qc.cancelQueries({ queryKey: ['org-service-map'] });
+      const snapshot = qc.getQueryData<OrgServiceMapCache>(['org-service-map']);
+      qc.setQueryData<OrgServiceMapCache>(['org-service-map'], (m) => ({ ...(m ?? {}), [organizationId]: serviceName }));
+      return { snapshot };
+    },
+    onError: (_e, _v, ctx) => qc.setQueryData(['org-service-map'], ctx?.snapshot),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['org-service-map'] }),
+  });
+}
+
+export function useDeleteOrgServiceMapping() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (organizationId: string) => api.deleteOrgServiceMapping(organizationId),
+    onMutate: async (organizationId) => {
+      await qc.cancelQueries({ queryKey: ['org-service-map'] });
+      const snapshot = qc.getQueryData<OrgServiceMapCache>(['org-service-map']);
+      qc.setQueryData<OrgServiceMapCache>(['org-service-map'], (m) => {
+        if (!m) return m;
+        const next = { ...m };
+        delete next[organizationId];
+        return next;
+      });
+      return { snapshot };
+    },
+    onError: (_e, _v, ctx) => qc.setQueryData(['org-service-map'], ctx?.snapshot),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['org-service-map'] }),
   });
 }
 
@@ -286,15 +325,31 @@ export function useDeleteService() {
   });
 }
 
+// These three edit RBAC config the composite store reads via aggregate keys
+// (['all-roles']/['all-routes']/['access-rules']). They use TanStack's native
+// onMutate/onError/onSettled optimism: snapshot → patch → rollback on error →
+// invalidate on settle (STORE-4). They invalidate BOTH the per-service key
+// (pages using the scoped hook directly) and the aggregate key (the store).
+
 export function useUpdateServiceRoutes(serviceName: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (rules: { method: string; path: string; permission?: string }[]) =>
       api.updateServiceRoutes(serviceName, rules),
-    onSuccess: () => {
+    onMutate: async (rules) => {
+      const keys = [['routes', serviceName], ['all-routes']];
+      await Promise.all(keys.map((k) => qc.cancelQueries({ queryKey: k })));
+      const snapshot = keys.map((k) => [k, qc.getQueriesData({ queryKey: k })] as const);
+      cachePatch.setServiceRoutes(qc, serviceName, rules);
+      return { snapshot };
+    },
+    onError: (_e, _v, ctx) => {
+      for (const [, entries] of ctx?.snapshot ?? []) {
+        for (const [key, data] of entries) qc.setQueryData(key, data);
+      }
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['routes', serviceName] });
-      // The composite store reads route maps via the aggregate ['all-routes']
-      // query, so it must be invalidated too or the UI won't reflect the edit.
       qc.invalidateQueries({ queryKey: ['all-routes'] });
     },
   });
@@ -305,23 +360,102 @@ export function useUpdateAccessRule() {
   return useMutation({
     mutationFn: ({ id, rule }: { id: string; rule: import('./client').JinbeAccessRule }) =>
       api.updateAccessRule(id, rule),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['access-rules'] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['access-rules'] }),
   });
 }
-
-// NOTE on aggregate keys: the composite store (api/store.ts) reads roles/routes
-// through useAllRoles/useAllRoutes (keys ['all-roles']/['all-routes']). Mutation
-// hooks therefore invalidate BOTH the per-service key (for any page using the
-// scoped hook directly) and the aggregate key (for the store).
 
 export function useUpdateServiceRoles(serviceName: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (roles: Record<string, string[]>) => api.updateServiceRoles(serviceName, roles),
-    onSuccess: () => {
+    onMutate: async (roles) => {
+      const keys = [['roles', serviceName], ['all-roles']];
+      await Promise.all(keys.map((k) => qc.cancelQueries({ queryKey: k })));
+      const snapshot = keys.map((k) => [k, qc.getQueriesData({ queryKey: k })] as const);
+      cachePatch.setServiceRoles(qc, serviceName, roles);
+      return { snapshot };
+    },
+    onError: (_e, _v, ctx) => {
+      for (const [, entries] of ctx?.snapshot ?? []) {
+        for (const [key, data] of entries) qc.setQueryData(key, data);
+      }
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['roles', serviceName] });
-      // Composite store reads roles via the aggregate ['all-roles'] query.
       qc.invalidateQueries({ queryKey: ['all-roles'] });
     },
+  });
+}
+
+// ─── Delegated org-admin (self-service; scoped to the caller's orgs) ─────────
+// Newest routes (feat/org-admin-tab). These wire the OrgAdmin page into the
+// same query-cache + optimistic-mutation model as the rest of the console,
+// replacing its ad-hoc local useState/Promise flow.
+
+export function useMyOrganizations() {
+  return useQuery({
+    queryKey: ['my-orgs'],
+    queryFn: () => api.myOrganizations(),
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
+export function useAssignableGroups(orgId: string) {
+  return useQuery({
+    queryKey: ['assignable-groups', orgId],
+    queryFn: () => api.getAssignableGroups(orgId),
+    enabled: !!orgId,
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
+// Org-scoped user list. `search` is an exact email match (credentials_identifier)
+// like the global directory (J9). Keyed by org + search so switching orgs or
+// searching doesn't clobber the other's cache.
+export function useOrgUsers(orgId: string, search?: string) {
+  return useQuery({
+    queryKey: ['org-users', orgId, search ?? ''],
+    queryFn: () => api.getOrgUsers(orgId, { search: search || undefined }),
+    enabled: !!orgId,
+  });
+}
+
+type OrgUsersCache = { data: { id: string; metadata_admin?: { groups?: string[] } }[]; total: number };
+
+export function useCreateOrgUser(orgId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { email: string; name?: string; sendInvite?: boolean; groups?: string[] }) =>
+      api.createOrgUser(orgId, payload),
+    // Server assigns the identity id → invalidate-only (no fabricated row).
+    onSettled: () => qc.invalidateQueries({ queryKey: ['org-users', orgId] }),
+  });
+}
+
+export function useSetOrgUserGroups(orgId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, groups }: { userId: string; groups: string[] }) =>
+      api.setOrgUserGroups(orgId, userId, groups),
+    onMutate: async ({ userId, groups }) => {
+      const key = ['org-users', orgId];
+      await qc.cancelQueries({ queryKey: key });
+      const snapshot = qc.getQueriesData({ queryKey: key });
+      qc.setQueriesData<OrgUsersCache>({ queryKey: key }, (prev) =>
+        prev === undefined ? prev : {
+          ...prev,
+          data: prev.data.map((u) =>
+            u.id === userId
+              ? { ...u, metadata_admin: { ...u.metadata_admin, groups } }
+              : u,
+          ),
+        },
+      );
+      return { snapshot };
+    },
+    onError: (_e, _v, ctx) => {
+      for (const [key, data] of ctx?.snapshot ?? []) qc.setQueryData(key, data);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['org-users', orgId] }),
   });
 }

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useQueryClient } from '@tanstack/react-query';
 import type { AppState, PageId, TweakDefaults } from '../api/types';
 import { useStore } from '../api/store';
+import { withOptimism, cachePatch } from '../api/mutations';
 import { api } from '../api/client';
 
 const TWEAK_DEFAULTS: TweakDefaults = {
@@ -205,74 +206,86 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     html.setAttribute("data-navcollapsed", tweaks.navCollapsed ? "on" : "off");
   }, [tweaks]);
 
-  // ─── Live API mutations (call jinbe, then invalidate only the touched keys) ───
-  // Scoped invalidation (STORE-3): a group edit refetches groups, not the whole
-  // world. User-directory mutations touch `['users']` (+ `['groups-map']` for
-  // membership) so editing a group no longer re-streams every user (PERF-1).
+  // ─── Live API mutations: optimistic cache patch + rollback (STORE-4) ───
+  // Predictable edits patch the cache immediately (instant UI, rubber-band on
+  // error via withOptimism). Creates whose server shape we can't predict (ids,
+  // counts) pass no `apply` — they just invalidate on settle (honest: we don't
+  // fabricate the row). Scoped keys keep unrelated data from re-streaming
+  // (PERF-1/STORE-3).
 
   const apiSetUserGroups = useCallback(async (email: string, groups: string[]) => {
-    await api.setUserGroups(email, groups);
-    invalidateKeys([['users'], ['groups-map']]);
-  }, [invalidateKeys]);
+    await withOptimism(qc, [['users'], ['groups-map']],
+      () => cachePatch.patchUserGroupsByEmail(qc, email, groups),
+      () => api.setUserGroups(email, groups));
+  }, [qc]);
 
   const apiCreateUser = useCallback(async (payload: { email: string; name: string; groups?: string[]; sendInvite?: boolean }) => {
-    await api.createUser(payload);
-    invalidateKeys([['users']]);
-  }, [invalidateKeys]);
+    // Create → server assigns the id; invalidate-only (no fabricated row).
+    await withOptimism(qc, [['users']], undefined, () => api.createUser(payload));
+  }, [qc]);
 
   const apiDeleteUser = useCallback(async (id: string) => {
-    await api.deleteUser(id);
-    invalidateKeys([['users']]);
-  }, [invalidateKeys]);
+    await withOptimism(qc, [['users']],
+      () => cachePatch.removeUser(qc, id),
+      () => api.deleteUser(id));
+  }, [qc]);
 
   const apiSendRecoveryEmail = useCallback(async (id: string) => {
+    // No cache impact — pure side effect.
     await api.sendRecoveryEmail(id);
   }, []);
 
   const apiSetUserState = useCallback(async (id: string, state: 'active' | 'inactive') => {
-    await api.setUserState(id, state);
-    invalidateKeys([['users']]);
-  }, [invalidateKeys]);
+    await withOptimism(qc, [['users']],
+      () => cachePatch.patchUser(qc, id, { active: state === 'active' }),
+      () => api.setUserState(id, state));
+  }, [qc]);
 
   const apiSetUserMetadata = useCallback(async (id: string, metadata: Record<string, unknown>) => {
-    await api.setUserMetadata(id, metadata);
-    invalidateKeys([['users']]);
-  }, [invalidateKeys]);
+    await withOptimism(qc, [['users']], undefined, () => api.setUserMetadata(id, metadata));
+  }, [qc]);
 
   const apiSetUserOrganization = useCallback(async (id: string, organizationId: string | undefined) => {
-    await api.setUserOrganization(id, organizationId);
-    invalidateKeys([['users']]);
-  }, [invalidateKeys]);
+    await withOptimism(qc, [['users']],
+      () => cachePatch.patchUser(qc, id, { organizationId }),
+      () => api.setUserOrganization(id, organizationId));
+  }, [qc]);
 
   const apiCreateGroup = useCallback(async (name: string, services: Record<string, string[]>) => {
-    await api.createGroup({ name, services });
-    invalidateKeys([['groups'], ['groups-map']]);
-  }, [invalidateKeys]);
+    await withOptimism(qc, [['groups'], ['groups-map']],
+      () => cachePatch.upsertGroup(qc, name, services),
+      () => api.createGroup({ name, services }));
+  }, [qc]);
 
   const apiUpdateGroup = useCallback(async (name: string, services: Record<string, string[]>) => {
-    await api.updateGroup(name, services);
-    invalidateKeys([['groups'], ['groups-map']]);
-  }, [invalidateKeys]);
+    await withOptimism(qc, [['groups'], ['groups-map']],
+      () => cachePatch.upsertGroup(qc, name, services),
+      () => api.updateGroup(name, services));
+  }, [qc]);
 
   const apiDeleteGroup = useCallback(async (name: string) => {
-    await api.deleteGroup(name);
-    invalidateKeys([['groups'], ['groups-map'], ['users']]);
-  }, [invalidateKeys]);
+    await withOptimism(qc, [['groups'], ['groups-map'], ['users']],
+      () => cachePatch.removeGroup(qc, name),
+      () => api.deleteGroup(name));
+  }, [qc]);
 
   const apiCreateService = useCallback(async (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string }) => {
-    await api.createService(svc);
-    invalidateKeys([['services'], ['access-rules'], ['all-roles'], ['all-routes']]);
-  }, [invalidateKeys]);
+    // Create spawns roles/routes/rules server-side; invalidate-only.
+    await withOptimism(qc, [['services'], ['access-rules'], ['all-roles'], ['all-routes']],
+      undefined, () => api.createService(svc));
+  }, [qc]);
 
   const apiUpdateService = useCallback(async (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null }) => {
-    await api.updateService(name, payload);
-    invalidateKeys([['services'], ['access-rules']]);
-  }, [invalidateKeys]);
+    await withOptimism(qc, [['services'], ['access-rules']],
+      () => { if (payload.upstreamUrl !== undefined) cachePatch.updateService(qc, name, { upstreamUrl: payload.upstreamUrl }); },
+      () => api.updateService(name, payload));
+  }, [qc]);
 
   const apiDeleteService = useCallback(async (name: string) => {
-    await api.deleteService(name);
-    invalidateKeys([['services'], ['access-rules'], ['all-roles'], ['all-routes']]);
-  }, [invalidateKeys]);
+    await withOptimism(qc, [['services'], ['access-rules'], ['all-roles'], ['all-routes']],
+      () => cachePatch.removeService(qc, name),
+      () => api.deleteService(name));
+  }, [qc]);
 
   const ctx: AppContextType = {
     state,
