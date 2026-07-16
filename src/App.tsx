@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, Fragment } from 'react';
 import { AppProvider, useApp } from './contexts/AppContext';
-import { useSession, useStats, useRealtime } from './api/hooks';
+import { useSession, useStats, useRealtime, useUserSearch } from './api/hooks';
+import { searchedToUser } from './api/transforms';
 import { I } from './components/ui/Icons';
 import { Avatar, Switch, Toasts, EmptyHint } from './components/ui/Primitives';
 import { DashboardPage } from './pages/Dashboard';
@@ -254,11 +255,16 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [idx, setIdx] = useState(0);
   useEffect(() => { if (open) { setQ(""); setIdx(0); } }, [open]);
 
+  // Users come from server-side search (no full-directory dependency), so ⌘K
+  // finds anyone in the ~10k directory, not just the loaded page.
+  const userSearch = useUserSearch(q);
+  const userResults = useMemo(() => (userSearch.data ?? []).map(searchedToUser), [userSearch.data]);
+
   const groups = useMemo(() => {
     const low = q.toLowerCase();
     const match = (s: string) => !low || s.toLowerCase().includes(low);
     const nav = NAV.filter(n => match(n.name)).map(n => ({ kind: "nav", label: `Go to · ${n.name}`, sub: n.id, run: () => setPage(n.id) }));
-    const users = state.users.filter(u => match(u.name) || match(u.email)).slice(0, 6).map(u => ({
+    const users = userResults.slice(0, 6).map(u => ({
       kind: "user", label: u.name, sub: u.email, run: () => { setGrant({ user: u }); }
     }));
     const grps = Object.keys(state.groups).filter(match).slice(0, 6).map(g => ({
@@ -280,9 +286,9 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
       { name: "Groups", items: grps },
       { name: "Services", items: svcs },
     ].filter(g => g.items.length > 0);
-    // Context setters are stable; results recompute on q/state/theme only.
+    // Context setters are stable; results recompute on q/state/theme/search only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, state, theme]);
+  }, [q, state, theme, userResults]);
 
   const flat = groups.flatMap(g => g.items);
   const fire = (i: number) => { const it = flat[i]; if (it) { it.run(); onClose(); } };
