@@ -138,9 +138,9 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
               // the flow and returns JSON { logout_url } (carrying the CSRF
               // token); you must then navigate to logout_url. Navigating
               // straight to the browser endpoint just renders that JSON — the
-              // bug this fixes. kuma and auth are the same site (*.stairling.com)
-              // so the session cookie is sent, and Kratos CORS allows
-              // *.dev.stairling.com with credentials, so this fetch is reliable.
+              // bug this fixes. kuma and auth are served from the same parent
+              // domain, so the session cookie is sent, and Kratos CORS allows
+              // the app's subdomain with credentials, so this fetch is reliable.
               try {
                 const res = await fetch(
                   `https://${authDomain}/self-service/logout/browser?return_to=${encodeURIComponent(returnTo)}`,
