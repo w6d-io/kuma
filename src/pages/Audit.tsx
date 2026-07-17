@@ -62,7 +62,7 @@ export function AuditPage() {
   // that mirror was seeded with SEED placeholder demo events in DEV and a
   // `> 0` guard kept the fake rows when live audit was empty (GHOST-3). The
   // audit log must never show fabricated entries.
-  const { data: audit = [] } = useAudit();
+  const { data: audit = [], isError: auditError, isLoading: auditLoading } = useAudit();
   const [q, setQ] = useState("");
   const [tab, setTab] = useState<"changes" | "access" | "auth">("changes");
   const [cat, setCat] = useState("all");
@@ -206,7 +206,19 @@ export function AuditPage() {
       </div>
 
       <div className="panel" style={{ padding: 0 }}>
-        {filtered.length === 0 && <div style={{ padding: 28 }}><EmptyHint>No events match.</EmptyHint></div>}
+        {/* Distinguish a failed load from a genuinely empty log — a blank audit
+            trail must never be mistaken for "no activity" (finding #6). */}
+        {auditError && (
+          <div style={{ padding: 28 }}>
+            <span className="small" style={{ color: "var(--danger, #c0392b)" }}>
+              Failed to load the audit log — this is a load error, not an empty log. Reload to retry;
+              do not treat the absence of events as "no activity".
+            </span>
+          </div>
+        )}
+        {!auditError && filtered.length === 0 && (
+          <div style={{ padding: 28 }}><EmptyHint>{auditLoading ? "Loading…" : "No events match."}</EmptyHint></div>
+        )}
         {groups.map(g => (
           <div key={g.day} className="audit-day">
             <div className="audit-day-head">

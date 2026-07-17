@@ -186,14 +186,19 @@ export function useAllRoles(serviceNames: string[]) {
             const { roles } = await api.getRoles(name);
             const map: Record<string, string[]> = {};
             for (const r of roles) map[r.name] = r.permissions;
-            return { name, map };
+            return { name, map: map as Record<string, string[]> | null };
           } catch {
-            return { name, map: {} };
+            // A failed fetch must NOT become an empty map: empty ({}) reads as
+            // "loaded, no roles", and any replace-PUT built on it (Roles page)
+            // would wipe the service's real roles. Omit the service so its state
+            // is "unknown" — the store surfaces it via rolesErrored and the page
+            // blocks edits. See PROBLEM-MAP #5 / audit finding.
+            return { name, map: null };
           }
         })
       );
       const rolesMap: RolesMap = {};
-      for (const r of results) rolesMap[r.name] = r.map;
+      for (const r of results) if (r.map !== null) rolesMap[r.name] = r.map;
       return rolesMap;
     },
     enabled: serviceNames.length > 0,
@@ -213,14 +218,19 @@ export function useAllRoutes(serviceNames: string[]) {
         serviceNames.map(async name => {
           try {
             const { rules } = await api.getServiceRoutes(name);
-            return { name, rules: rules || [] };
+            return { name, rules: (rules || []) as RouteMapsMap[string] | null };
           } catch {
-            return { name, rules: [] };
+            // A failed fetch must NOT become an empty list: empty ([]) reads as
+            // "loaded, no routes", and any replace-PUT built on it (Routes page)
+            // would wipe the service's real routes. Omit the service so its state
+            // is "unknown" — the store surfaces it via routesErrored and the page
+            // blocks edits. See PROBLEM-MAP #4 / audit finding.
+            return { name, rules: null };
           }
         })
       );
       const map: RouteMapsMap = {};
-      for (const r of results) map[r.name] = r.rules;
+      for (const r of results) if (r.rules !== null) map[r.name] = r.rules;
       return map;
     },
     enabled: serviceNames.length > 0,

@@ -179,15 +179,30 @@ export async function fetchAuditEvents(client: {
   getHistory: () => Promise<any[]>;
 }): Promise<AuditEvent[]> {
   let events: any[] = [];
+  // Track whether EITHER source responded. A swallowed total failure used to
+  // return [], which is indistinguishable from a genuinely empty log — an
+  // admin investigating a compromise would see a blank, "healthy" audit trail
+  // with no hint the fetch failed. So: if neither endpoint responds, throw and
+  // let useAudit surface the error. A successful-but-empty response is still a
+  // valid empty result (no throw). See audit finding #6.
+  let anyOk = false;
+  let lastErr: unknown;
   try {
     const raw = await client.getAuditEvents({ limit: 200 });
     events = (raw.events || []).filter((e: any) => e && Object.keys(e).length > 0);
-  } catch { /* enriched endpoint may not exist */ }
+    anyOk = true;
+  } catch (e) { lastErr = e; /* enriched endpoint may not exist — try legacy */ }
   if (events.length === 0) {
     try {
       const commits = await client.getHistory();
       events = commits.map((c: any) => ({ ...c }));
-    } catch { /* history may also fail */ }
+      anyOk = true;
+    } catch (e) { lastErr = e; /* history may also fail */ }
+  }
+  if (!anyOk) {
+    throw new Error(
+      `Audit log unavailable: could not load events from either endpoint (${lastErr instanceof Error ? lastErr.message : String(lastErr)})`,
+    );
   }
   return normalizeAuditEvents(events);
 }

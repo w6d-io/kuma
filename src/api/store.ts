@@ -138,6 +138,19 @@ export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreRes
       if (m) authDomain = m[1].replace(/\\/g, '');
     }
 
+    // Services whose roles/routes FAILED to load (absent from the aggregate map
+    // after it settled — the hooks omit a failed service rather than folding it
+    // into an empty map). "Unknown", not "empty": the Roles/Routes pages must
+    // block a replace-write for these, since a PUT built on a false-empty base
+    // would wipe the service's real config. Only meaningful once the aggregate
+    // query has succeeded; while loading, treat nothing as errored.
+    const rolesErrored = rolesQ.isSuccess
+      ? servicesRaw.map(s => s.name).filter(n => !(n in rolesMap))
+      : [];
+    const routesErrored = routesQ.isSuccess
+      ? servicesRaw.map(s => s.name).filter(n => !(n in routeMaps))
+      : [];
+
     return {
       meta: { ...EMPTY_META, lastSync: 'live', authDomain },
       services,
@@ -147,10 +160,12 @@ export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreRes
       users: usersRaw,
       usersLoading: usersQ.usersLoading,
       routeMaps,
+      rolesErrored,
+      routesErrored,
       accessRules: rules,
       audit: auditQ.data ?? [],
     };
-  }, [usersQ.users, usersQ.usersLoading, groupsQ.data, servicesQ.data, rulesQ.data, rolesQ.data, routesQ.data, auditQ.data]);
+  }, [usersQ.users, usersQ.usersLoading, groupsQ.data, servicesQ.data, rulesQ.data, rolesQ.data, rolesQ.isSuccess, routesQ.data, routesQ.isSuccess, auditQ.data]);
 
   // Any admin endpoint (groups/services/rules/users) 401/403s identically when
   // the caller lacks access, so any of them is a valid auth probe. Surface the
