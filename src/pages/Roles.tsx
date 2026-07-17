@@ -137,6 +137,11 @@ export function RolesPage({ svc: svcProp }: { svc?: string } = {}) {
   const serviceNames = state.services.map(s => s.name);
   const svc = svcProp ?? (serviceNames[0] ?? "");
   const svcRoles = state.roles[svc] || {};
+  // This service's roles failed to load (unknown, NOT empty). Every mutation
+  // here is a full replace built on `svcRoles`, so writing while it's a
+  // false-empty {} would wipe the service's real roles. Block edits until a
+  // successful reload. See audit finding #5 / PROBLEM-MAP.
+  const rolesUnavailable = (state.rolesErrored ?? []).includes(svc);
   const [selectedRole, setSelectedRole] = useState(Object.keys(svcRoles)[0] || "");
   const [newRoleName, setNewRoleName] = useState("");
   const [addingRole, setAddingRole] = useState(false);
@@ -168,8 +173,11 @@ export function RolesPage({ svc: svcProp }: { svc?: string } = {}) {
   // The scoped mutation hook invalidates ['roles', svc] on success, so the
   // composite store re-derives from the server truth. No local setState mirror
   // (STORE-4) — avoids the double-write / rubber-band on refetch.
-  const applyRoleUpdate = (updated: Record<string, string[]>): Promise<void> =>
-    updateServiceRoles.mutateAsync(updated).then(() => undefined);
+  const applyRoleUpdate = (updated: Record<string, string[]>): Promise<void> => {
+    // Hard stop: never replace-write a service whose roles we couldn't read.
+    if (rolesUnavailable) return Promise.reject(new Error('roles unavailable'));
+    return updateServiceRoles.mutateAsync(updated).then(() => undefined);
+  };
 
   const togglePerm = (p: string) => {
     if (!role || role.includes("*")) return;
@@ -199,6 +207,7 @@ export function RolesPage({ svc: svcProp }: { svc?: string } = {}) {
   };
 
   const deleteRole = () => {
+    if (rolesUnavailable) return;
     const rest = { ...svcRoles };
     delete rest[selectedRole];
     applyChange("delete", `role:${svc}.${selectedRole}`, () => {
@@ -213,7 +222,7 @@ export function RolesPage({ svc: svcProp }: { svc?: string } = {}) {
 
   const addRole = () => {
     const name = newRoleName.trim();
-    if (!name || svcRoles[name] !== undefined) return;
+    if (rolesUnavailable || !name || svcRoles[name] !== undefined) return;
     applyChange("create", `role:${svc}.${name}`, () => {
       const updated = { ...svcRoles, [name]: [] as string[] };
       return updateServiceRoles.mutateAsync(updated).then(() => {
@@ -224,7 +233,7 @@ export function RolesPage({ svc: svcProp }: { svc?: string } = {}) {
     setAddingRole(false);
   };
 
-  const validNewRole = newRoleName.trim().length > 0 && svcRoles[newRoleName.trim()] === undefined;
+  const validNewRole = !rolesUnavailable && newRoleName.trim().length > 0 && svcRoles[newRoleName.trim()] === undefined;
 
   // No services yet (loading / 403 / empty tenant): render an empty state
   // rather than a broken selector. Placed after all hooks so hook order stays
@@ -235,6 +244,14 @@ export function RolesPage({ svc: svcProp }: { svc?: string } = {}) {
 
   return (
     <>
+      {rolesUnavailable && (
+        <div className="panel mb-12" style={{ padding: "10px 14px", borderColor: "var(--danger, #c0392b)" }}>
+          <span className="small" style={{ color: "var(--danger, #c0392b)" }}>
+            Couldn't load the current roles for <span className="mono">{svc}</span>. Editing is disabled to avoid
+            overwriting them — refresh to retry before making changes.
+          </span>
+        </div>
+      )}
       <div className="grid" style={{ gridTemplateColumns: "240px 1fr", gap: 14 }}>
 
         {/* ── Role list sidebar ── */}
@@ -272,7 +289,9 @@ export function RolesPage({ svc: svcProp }: { svc?: string } = {}) {
               </button>
             );
           })}
-          {Object.keys(svcRoles).length === 0 && <EmptyHint>No roles defined.</EmptyHint>}
+          {Object.keys(svcRoles).length === 0 && (
+            <EmptyHint>{rolesUnavailable ? "Roles unavailable — reload to retry." : "No roles defined."}</EmptyHint>
+          )}
         </div>
 
         {/* ── Role detail panel ── */}

@@ -129,22 +129,27 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
           <button
             type="button"
             className="logout-link"
-            onClick={(e) => {
+            onClick={async (e) => {
               e.stopPropagation();
               const authDomain = (window as any).__AUTH_DOMAIN__;
               if (!authDomain) return;
-              // Top-level navigation rather than XHR + redirect: under
-              // Safari ITP and stricter third-party-cookie regimes the
-              // session cookie may not be sent on a cross-origin XHR
-              // even with credentials:'include', so fetching
-              // /self-service/logout/browser as JSON can return an
-              // unusable logout_url. A direct nav from kuma to auth
-              // travels as a top-level request that always carries the
-              // first-party cookie on the auth domain. Kratos serves
-              // its own logout page or 303s through to return_to.
-              window.location.href =
-                `https://${authDomain}/self-service/logout/browser?return_to=` +
-                encodeURIComponent(`https://${authDomain}/login`);
+              const returnTo = `https://${authDomain}/login`;
+              // Kratos logout is TWO steps: /self-service/logout/browser CREATES
+              // the flow and returns JSON { logout_url } (carrying the CSRF
+              // token); you must then navigate to logout_url. Navigating
+              // straight to the browser endpoint just renders that JSON — the
+              // bug this fixes. kuma and auth are served from the same parent
+              // domain, so the session cookie is sent, and Kratos CORS allows
+              // the app's subdomain with credentials, so this fetch is reliable.
+              try {
+                const res = await fetch(
+                  `https://${authDomain}/self-service/logout/browser?return_to=${encodeURIComponent(returnTo)}`,
+                  { credentials: 'include', headers: { Accept: 'application/json' } },
+                );
+                const data = await res.json();
+                if (data?.logout_url) { window.location.href = data.logout_url; return; }
+              } catch { /* fall through to a best-effort redirect */ }
+              window.location.href = returnTo;
             }}
             title="Sign out"
             style={{
