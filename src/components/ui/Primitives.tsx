@@ -152,6 +152,37 @@ export function EmptyHint({ children }: { children: React.ReactNode }) {
   return <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--ink-3)", fontSize: 12 }}>{children}</div>;
 }
 
+// Toggle-chip multi-select (same visual language as the Groups role picker).
+// `selected` is the current set; clicking a pill toggles it via `onToggle`.
+// Kept generic so the org→service bundle editor and any future set-picker share
+// one accessible control (aria-pressed reflects state).
+export function MultiSelectPills({ options, selected, onToggle, empty }: {
+  options: string[]; selected: string[]; onToggle: (value: string) => void; empty?: React.ReactNode;
+}) {
+  if (options.length === 0) {
+    return <div className="small muted">{empty ?? "No options available."}</div>;
+  }
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {options.map(o => {
+        const on = selected.includes(o);
+        return (
+          <button
+            key={o}
+            type="button"
+            className="chip mono"
+            aria-pressed={on}
+            onClick={() => onToggle(o)}
+            style={{ cursor: "pointer", fontWeight: 500, background: on ? "var(--accent)" : "var(--panel-2)", color: on ? "white" : "var(--ink-2)", borderColor: on ? "var(--accent)" : "var(--line)" }}
+          >
+            {on && <span style={{ fontSize: 10 }}>✓</span>} {o}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function AccessLevel({ level, count, compact = false }: { level: string; count?: number; compact?: boolean }) {
   const m = LevelMeta[level] || LevelMeta.none;
   return (

@@ -139,7 +139,8 @@ export function useServicePermissions(serviceName: string) {
   });
 }
 
-// Org → service map (Settings). Cached instead of a per-mount fetch (PERF-4).
+// Org → service bundle map (J14). Array-valued: each org bundles a SET of
+// services. Cached instead of a per-mount fetch (PERF-4).
 export function useOrgServiceMap() {
   return useQuery({
     queryKey: ['org-service-map'],
@@ -148,17 +149,19 @@ export function useOrgServiceMap() {
   });
 }
 
-type OrgServiceMapCache = Record<string, string>;
+type OrgServiceMapCache = Record<string, string[]>;
 
-export function useSetOrgServiceMapping() {
+// Replace an org's ENTIRE service bundle (PUT). jinbe requires >=1 service, so
+// callers clear a bundle via useDeleteOrgServiceMapping — never an empty PUT.
+export function useSetOrgServiceBundle() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ organizationId, serviceName }: { organizationId: string; serviceName: string }) =>
-      api.setOrgServiceMapping(organizationId, serviceName),
-    onMutate: async ({ organizationId, serviceName }) => {
+    mutationFn: ({ organizationId, services }: { organizationId: string; services: string[] }) =>
+      api.setOrgServiceBundle(organizationId, services),
+    onMutate: async ({ organizationId, services }) => {
       await qc.cancelQueries({ queryKey: ['org-service-map'] });
       const snapshot = qc.getQueryData<OrgServiceMapCache>(['org-service-map']);
-      qc.setQueryData<OrgServiceMapCache>(['org-service-map'], (m) => ({ ...(m ?? {}), [organizationId]: serviceName }));
+      qc.setQueryData<OrgServiceMapCache>(['org-service-map'], (m) => ({ ...(m ?? {}), [organizationId]: services }));
       return { snapshot };
     },
     onError: (_e, _v, ctx) => qc.setQueryData(['org-service-map'], ctx?.snapshot),
