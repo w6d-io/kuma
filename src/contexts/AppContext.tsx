@@ -91,6 +91,13 @@ interface AppContextType {
   apiSetUserState: (id: string, state: 'active' | 'inactive') => Promise<void>;
   apiSetUserMetadata: (id: string, metadata: Record<string, unknown>) => Promise<void>;
   apiSetUserOrganization: (id: string, organizationId: string | undefined) => Promise<void>;
+  /**
+   * Replace a user's ADDITIONAL org memberships (`metadata_admin.organizations`).
+   * Writes through the merge-patch metadata endpoint, which preserves groups
+   * (it 422s any group change) and fires jinbe's OPA/OPAL bindings refresh.
+   * Errors bubble so the drawer can surface why and keep the drafted list.
+   */
+  apiSetUserOrganizations: (id: string, organizations: string[]) => Promise<void>;
   apiCreateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
   apiUpdateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
   apiDeleteGroup: (name: string) => Promise<void>;
@@ -272,6 +279,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await withOptimism(qc, [['users'], ['stats']],
       () => cachePatch.patchUser(qc, id, { organizationId }),
       () => api.setUserOrganization(id, organizationId));
+    qc.invalidateQueries({ queryKey: ['user-identity', id] });
+  }, [qc]);
+
+  const apiSetUserOrganizations = useCallback(async (id: string, organizations: string[]) => {
+    // Multi-org membership has no dedicated jinbe writer; the metadata merge-PATCH
+    // carries it (and refuses group changes, so this is not an escalation path).
+    // Optimistically patch the directory row's org list, then reconcile the
+    // authoritative identity + directory counts.
+    await withOptimism(qc, [['users'], ['stats']],
+      () => cachePatch.patchUser(qc, id, { organizations }),
+      () => api.setUserMetadata(id, { organizations }));
+    qc.invalidateQueries({ queryKey: ['user-identity', id] });
   }, [qc]);
 
   const apiCreateGroup = useCallback(async (name: string, services: Record<string, string[]>) => {
@@ -324,7 +343,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     pushToast, toasts, pipeline,
     theme, setTheme, persona, setPersona,
     tweaks, setTweak,
-    apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata, apiSetUserOrganization, apiSendRecoveryEmail,
+    apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata, apiSetUserOrganization, apiSetUserOrganizations, apiSendRecoveryEmail,
     apiCreateGroup, apiUpdateGroup, apiDeleteGroup,
     apiCreateService, apiUpdateService, apiDeleteService,
   };

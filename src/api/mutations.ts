@@ -68,7 +68,7 @@ type ServicesList = { name: string; [k: string]: unknown }[];
 type AccessRulesList = { id: string; [k: string]: unknown }[];
 // Infinite-query cache shape for the directory (['users', <search>]).
 type UsersInfinite = {
-  pages: { users: { id: string; email: string; groups: string[]; active: boolean; organizationId?: string }[]; nextPageToken?: string }[];
+  pages: { users: { id: string; email: string; groups: string[]; active: boolean; organizationId?: string; organizations?: string[] }[]; nextPageToken?: string }[];
   pageParams: unknown[];
 };
 
