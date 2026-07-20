@@ -219,18 +219,21 @@ export const api = {
       body: JSON.stringify(bundle),
     }),
 
-  // ─── Org → Service map ───
+  // ─── Org → Service bundle map (J14 org-service entitlement) ───
+  // Array-valued: each org bundles a SET of services. GET returns the whole
+  // map; PUT replaces one org's entire bundle (jinbe enforces >=1 service);
+  // DELETE clears an org's bundle entirely.
   getOrgServiceMap: () =>
-    request<{ mappings: Record<string, string> }>('/admin/rbac/org-service-map').then(r => r.mappings),
+    request<{ mappings: Record<string, string[]> }>('/admin/rbac/org-service-map').then(r => r.mappings),
 
-  setOrgServiceMapping: (organizationId: string, serviceName: string) =>
+  setOrgServiceBundle: (organizationId: string, services: string[]) =>
     request<{ success: boolean; message: string }>('/admin/rbac/org-service-map', {
-      method: 'POST',
-      body: JSON.stringify({ organizationId, serviceName }),
+      method: 'PUT',
+      body: JSON.stringify({ organizationId, services }),
     }),
 
   deleteOrgServiceMapping: (organizationId: string) =>
-    request<{ success: boolean; message: string }>(`/admin/rbac/org-service-map/${organizationId}`, {
+    request<{ success: boolean; message: string }>(`/admin/rbac/org-service-map/${encodeURIComponent(organizationId)}`, {
       method: 'DELETE',
     }),
 
