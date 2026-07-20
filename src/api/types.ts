@@ -17,7 +17,17 @@ export interface User {
   title: string;
   active: boolean;
   last: string;
+  /** Primary organization — native Kratos `organization_id` (single). */
   organizationId?: string;
+  /**
+   * Additional org memberships (`metadata_admin.organizations`). The user's
+   * effective membership is this list UNION the primary `organizationId`,
+   * matching how jinbe builds OPA's `user_organizations`. Populated by
+   * `kratosToUser`; `undefined` when a row came from a source that omits it
+   * (e.g. a search hit) — the Users drawer refetches the authoritative
+   * identity before editing so a stale row can never clobber the list.
+   */
+  organizations?: string[];
   /** True when the identity has at least one second factor (TOTP, WebAuthn, lookup_secret). */
   mfa?: boolean;
 }
