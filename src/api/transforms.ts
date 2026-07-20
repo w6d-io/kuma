@@ -51,6 +51,13 @@ export function kratosToUser(k: KratosIdentity): User {
     if (totpReg || webauthnReg || lookupReg) mfa = true;
     else if (Object.keys(c).length > 0) mfa = false;
   }
+  // Multi-org membership lives in metadata_admin.organizations (authoritative
+  // on post-migration backends; unioned with the native organization_id by
+  // jinbe). Legacy identities have no such field — default to [] so call sites
+  // can read `.length` without guarding for undefined.
+  const organizations = Array.isArray(k.metadata_admin?.organizations)
+    ? (k.metadata_admin!.organizations as string[])
+    : [];
   return {
     id: k.id,
     name: k.traits.name || k.traits.email,
@@ -60,6 +67,7 @@ export function kratosToUser(k: KratosIdentity): User {
     active: k.state === 'active',
     last: k.updated_at ? timeAgo(k.updated_at) : 'never',
     organizationId: k.organization_id,
+    organizations,
     ...(mfa !== undefined ? { mfa } : {}),
   };
 }

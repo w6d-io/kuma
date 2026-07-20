@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession, useUsers, useGroupsMap, useUserSearch, useStats } from '../api/hooks';
+import { useSession, useUsers, useGroupsMap, useUserSearch, useStats, useMyOrganizations, useUserIdentity } from '../api/hooks';
 import { I } from '../components/ui/Icons';
-import { Chip, Avatar, Drawer, PermTree, Switch, ConfirmDialog } from '../components/ui/Primitives';
+import { Chip, Avatar, Drawer, PermTree, Switch, ConfirmDialog, EmptyHint } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
 import { isPrivilegedGroup } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
@@ -83,7 +83,7 @@ export function UsersPage() {
           <span className="small muted mono">{searching ? `${filtered.length} shown` : `${filtered.length} / ${total}`}</span>
         </div>
         <table className="table">
-          <thead><tr><th>Identity</th><th>Groups</th><th>2FA</th><th>Last seen</th><th></th></tr></thead>
+          <thead><tr><th>Identity</th><th>Groups</th><th>Organizations</th><th>2FA</th><th>Last seen</th><th></th></tr></thead>
           <tbody>
             {paged.map(u => (
               <tr key={u.id} className="row-click" onClick={() => setUserDrawer({ mode: "edit", user: u })}>
@@ -104,6 +104,27 @@ export function UsersPage() {
                     : <span style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{u.groups.map(g => <Chip key={g}>{g}</Chip>)}</span>}
                 </td>
                 <td>
+                  {(() => {
+                    // Effective membership we can show for this row = primary org
+                    // UNION the additional list. `organizations` is undefined for
+                    // search-hit rows (which omit it), so this shows at least the
+                    // primary — never a misleading "none".
+                    const orgs = Array.from(new Set([
+                      ...(u.organizationId ? [u.organizationId] : []),
+                      ...(u.organizations ?? []),
+                    ]));
+                    if (orgs.length === 0) return <span className="small muted">— none —</span>;
+                    const preview = orgs.slice(0, 2);
+                    return (
+                      <span style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+                        <span className="small muted mono" title={`${orgs.length} organization${orgs.length === 1 ? "" : "s"}`}>{orgs.length}</span>
+                        {preview.map(o => <Chip key={o} title={o}>{o.length > 10 ? `${o.slice(0, 10)}…` : o}</Chip>)}
+                        {orgs.length > preview.length && <Chip tone="plain" title={orgs.slice(2).join("\n")}>+{orgs.length - preview.length} more</Chip>}
+                      </span>
+                    );
+                  })()}
+                </td>
+                <td>
                   {u.mfa === true && <Chip tone="ok" title="Has second factor (TOTP / WebAuthn / backup codes)">🔐 enabled</Chip>}
                   {u.mfa === false && <Chip tone="warn" title="No second factor — required before admin / super_admin assignment">⚠️ off</Chip>}
                   {u.mfa === undefined && <span className="small muted">—</span>}
@@ -113,7 +134,7 @@ export function UsersPage() {
               </tr>
             ))}
             {!loading && filtered.length === 0 && (
-              <tr><td colSpan={5} className="small muted" style={{ padding: 16 }}>{searching ? `No users match "${dq}".` : "No users."}</td></tr>
+              <tr><td colSpan={6} className="small muted" style={{ padding: 16 }}>{searching ? `No users match "${dq}".` : "No users."}</td></tr>
             )}
           </tbody>
         </table>
@@ -136,7 +157,7 @@ export function UsersPage() {
 }
 
 export function UserDrawer() {
-  const { userDrawer, setUserDrawer, state, pushToast, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserOrganization, apiSendRecoveryEmail } = useApp();
+  const { userDrawer, setUserDrawer, state, pushToast, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSendRecoveryEmail } = useApp();
   const applyChange = useApplyChange();
   const { data: session } = useSession();
   // Privilege-escalation guard mirror: only super_admin actors can grant
@@ -152,9 +173,6 @@ export function UserDrawer() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
 
-  // metadata state
-  const [organizationId, setOrganizationId] = useState(editing?.organizationId || "");
-
   const [sendingRecovery, setSendingRecovery] = useState(false);
 
   // create state
@@ -169,8 +187,6 @@ export function UserDrawer() {
   // edits. eslint-disable is the correct call here, not adding the deps.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setGroups(user?.groups || []); }, [user?.id]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { setOrganizationId(user?.organizationId || ""); }, [user?.id]);
   useEffect(() => {
     setDrawerTab("groups");
     setConfirmDelete(false);
@@ -202,12 +218,6 @@ export function UserDrawer() {
     const next: 'active' | 'inactive' = user.active ? 'inactive' : 'active';
     const verb = next === 'inactive' ? 'deactivate' : 'reactivate';
     applyChange(verb, user.email, () => apiSetUserState(user.id, next));
-  };
-
-  const saveMetadata = () => {
-    if (!user) return;
-    const ok = applyChange("metadata", user.email, () => apiSetUserOrganization(user.id, organizationId || undefined));
-    if (ok) setUserDrawer(null);
   };
 
   const doDelete = () => {
@@ -339,7 +349,7 @@ export function UserDrawer() {
           {editing && (
             <div className="drawer-tabs">
               <button className={drawerTab === "groups" ? "on" : ""} onClick={() => setDrawerTab("groups")}>Access</button>
-              <button className={drawerTab === "metadata" ? "on" : ""} onClick={() => setDrawerTab("metadata")}>Organization</button>
+              <button className={drawerTab === "orgs" ? "on" : ""} onClick={() => setDrawerTab("orgs")}>Organizations</button>
               <button className={drawerTab === "danger" ? "on" : ""} onClick={() => { setDrawerTab("danger"); setConfirmDelete(false); }}>Danger</button>
             </div>
           )}
@@ -381,23 +391,7 @@ export function UserDrawer() {
               </div>
             </>
           )}
-          {drawerTab === "metadata" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <div>
-                <label className="input-label">Organization ID</label>
-                <input
-                  className="input mono"
-                  placeholder="e.g. acme-corp"
-                  value={organizationId}
-                  onChange={e => setOrganizationId(e.target.value)}
-                />
-                <div className="small muted" style={{ marginTop: 4 }}>Stored as <span className="mono">organization_id</span> in Kratos (native field)</div>
-              </div>
-              <div>
-                <button className="btn primary" onClick={saveMetadata}>Save metadata</button>
-              </div>
-            </div>
-          )}
+          {drawerTab === "orgs" && <OrgMembershipTab user={user} />}
           {drawerTab === "danger" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div className="panel" style={{ padding: 14 }}>
@@ -453,5 +447,204 @@ export function UserDrawer() {
         onConfirm={() => { setConfirmDeactivate(false); toggleActive(); }}
       />
     </Drawer>
+  );
+}
+
+// Multi-organization membership editor (Users drawer · Organizations tab).
+//
+// A user's EFFECTIVE membership = the native primary `organization_id` UNION the
+// additional `metadata_admin.organizations` list — the exact union jinbe folds
+// into OPA's `user_organizations`. Both are edited against EXISTING endpoints:
+//   • primary    → PATCH /admin/users/:id/organization  (native, UUID-checked)
+//   • additional → PATCH /admin/users/:id/metadata       (merge; refuses groups)
+// The org catalog for the picker comes from GET /me/organizations (a super_admin
+// sees every org).
+//
+// Editors seed from the AUTHORITATIVE identity (useUserIdentity), never the
+// directory row: a search-hit row omits the multi-org list, and a merge-write
+// built on that false-empty base would wipe real memberships. Membership grants
+// NO permission on its own (permissions come from groups, gated separately) —
+// but it is a sensitive tenant-scoping action, so the additional-org write
+// mirrors the super_admin gate as defence in depth. The backend independently
+// enforces admin on the metadata endpoint and refuses any group change (422).
+function OrgMembershipTab({ user }: { user: User }) {
+  const { apiSetUserOrganization, apiSetUserOrganizations } = useApp();
+  const applyChange = useApplyChange();
+  const { data: session } = useSession();
+  const actorIsSuperAdmin = (session?.roles || []).includes('super_admin');
+
+  const identityQ = useUserIdentity(user.id);
+  const identity = identityQ.data;
+  const catalogQ = useMyOrganizations();
+  const catalog = useMemo(() => catalogQ.data ?? [], [catalogQ.data]);
+  const baselineAdditional = useMemo(
+    () => (Array.isArray(identity?.metadata_admin?.organizations)
+      ? (identity!.metadata_admin!.organizations as string[])
+      : []),
+    [identity],
+  );
+
+  const [primary, setPrimary] = useState("");
+  const [additional, setAdditional] = useState<string[]>([]);
+  const [addId, setAddId] = useState("");
+  const [seeded, setSeeded] = useState(false);
+
+  // Seed once, from the source of truth, when it lands. The `seeded` guard keeps
+  // a post-save refetch (or a realtime invalidation) from wiping in-progress edits.
+  useEffect(() => {
+    if (!identity || seeded) return;
+    setPrimary(identity.organization_id ?? "");
+    setAdditional(baselineAdditional);
+    setSeeded(true);
+  }, [identity, baselineAdditional, seeded]);
+
+  if (identityQ.isLoading || !seeded) {
+    return (
+      <div className="panel" style={{ padding: 24, textAlign: "center" }}>
+        <span className="small muted">Loading organization membership…</span>
+      </div>
+    );
+  }
+  if (identityQ.isError) {
+    return (
+      <div className="panel" style={{ padding: 20 }}>
+        <EmptyHint>Couldn&apos;t load this user&apos;s organizations — {(identityQ.error as Error).message}</EmptyHint>
+      </div>
+    );
+  }
+
+  const baselinePrimary = identity?.organization_id ?? "";
+  const toggle = (o: string) =>
+    setAdditional(prev => (prev.includes(o) ? prev.filter(x => x !== o) : [...prev, o]));
+  const addById = () => {
+    const v = addId.trim();
+    if (!v) return;
+    setAdditional(prev => (prev.includes(v) ? prev : [...prev, v]));
+    setAddId("");
+  };
+
+  // Candidate rows = catalog ∪ drafted additional, minus the primary (managed in
+  // its own section, always part of the effective set).
+  const candidates = Array.from(new Set([...catalog, ...additional]))
+    .filter(o => o && o !== primary.trim())
+    .sort();
+  const effective = Array.from(new Set([...(primary.trim() ? [primary.trim()] : []), ...additional]));
+
+  const primaryChanged = primary.trim() !== baselinePrimary;
+  const additionalChanged =
+    JSON.stringify([...additional].sort()) !== JSON.stringify([...baselineAdditional].sort());
+
+  const savePrimary = () =>
+    applyChange("organization", user.email, () => apiSetUserOrganization(user.id, primary.trim() || undefined));
+  const saveAdditional = () => {
+    if (!actorIsSuperAdmin) return;
+    applyChange("organizations", user.email, () => apiSetUserOrganizations(user.id, additional));
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="small muted">
+        Effective membership is the primary organization UNION the additional
+        organizations — the same union jinbe resolves into OPA&apos;s{" "}
+        <span className="mono">user_organizations</span>. Membership scopes a user
+        to a tenant; it grants no permissions on its own (those come from groups).
+      </div>
+
+      <div className="panel" style={{ padding: 14 }}>
+        <div className="input-label">Effective organizations</div>
+        {effective.length === 0
+          ? <span className="small muted">— none —</span>
+          : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+              {effective.map(o => (
+                <Chip key={o} tone={o === primary.trim() ? "accent" : ""} title={o === primary.trim() ? `${o} · primary` : o}>{o}</Chip>
+              ))}
+            </div>
+          )}
+      </div>
+
+      <div>
+        <label className="input-label">Primary organization</label>
+        <div className="row" style={{ gap: 8 }}>
+          <input
+            className="input mono"
+            style={{ flex: 1 }}
+            placeholder="e.g. acme-corp (empty for none)"
+            value={primary}
+            onChange={e => setPrimary(e.target.value)}
+          />
+          <button className="btn" onClick={savePrimary} disabled={!primaryChanged}>Save primary</button>
+        </div>
+        <div className="small muted" style={{ marginTop: 4 }}>
+          Native <span className="mono">organization_id</span> — the org the scoped delegated endpoints key on.
+        </div>
+      </div>
+
+      <div>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+          <label className="input-label" style={{ margin: 0 }}>Additional organizations</label>
+          <span className="small muted mono">metadata_admin.organizations</span>
+        </div>
+        {candidates.length === 0
+          ? (
+            <div className="panel" style={{ padding: 14, marginTop: 6 }}>
+              <span className="small muted">No other organizations known. Add one by ID below.</span>
+            </div>
+          )
+          : (
+            <div className="panel" style={{ padding: 0, marginTop: 6 }}>
+              {candidates.map((o, i) => {
+                const on = additional.includes(o);
+                return (
+                  <label
+                    key={o}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                      borderBottom: i < candidates.length - 1 ? "1px solid var(--line)" : "none",
+                      cursor: actorIsSuperAdmin ? "pointer" : "not-allowed",
+                      background: on ? "var(--accent-soft)" : "transparent",
+                      opacity: actorIsSuperAdmin ? 1 : 0.6,
+                    }}
+                    title={o}
+                  >
+                    <input type="checkbox" checked={on} disabled={!actorIsSuperAdmin} onChange={() => toggle(o)} />
+                    <span className="mono small" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{o}</span>
+                    {on && <Chip tone="ok">member</Chip>}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+
+        <div className="row" style={{ gap: 8, marginTop: 8 }}>
+          <input
+            className="input mono"
+            style={{ flex: 1 }}
+            placeholder="Add organization by ID…"
+            value={addId}
+            disabled={!actorIsSuperAdmin}
+            onChange={e => setAddId(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addById(); } }}
+          />
+          <button className="btn" onClick={addById} disabled={!actorIsSuperAdmin || !addId.trim()}>Add</button>
+        </div>
+
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+          <span className="small muted">
+            {actorIsSuperAdmin
+              ? "Replaces the additional-org list; the primary org is unaffected."
+              : "Multi-org assignment requires super_admin."}
+          </span>
+          <button
+            className="btn primary"
+            onClick={saveAdditional}
+            disabled={!actorIsSuperAdmin || !additionalChanged}
+            title={!actorIsSuperAdmin ? "Requires super_admin" : undefined}
+          >
+            Apply additional orgs
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
