@@ -85,6 +85,22 @@ export function useUsers(search?: string) {
   };
 }
 
+// Authoritative single identity (raw Kratos identity, enriched by jinbe) from
+// GET /admin/users/:id. The Users drawer's Organizations tab seeds its editors
+// from this — the SOURCE OF TRUTH for `metadata_admin.organizations` + the
+// native `organization_id` — rather than the directory row, which for a search
+// hit doesn't carry the multi-org list. Fetching here also prevents a stale row
+// from clobbering the array on save (a merge-PUT built on a false-empty base
+// would wipe real memberships). Enabled lazily so it only fires when needed.
+export function useUserIdentity(id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['user-identity', id],
+    queryFn: () => api.getUser(id as string),
+    enabled: !!id && enabled,
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
 export function useGroups() {
   return useQuery({
     queryKey: ['groups'],

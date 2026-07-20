@@ -341,6 +341,14 @@ export interface KratosIdentity {
   };
   metadata_admin?: {
     groups?: string[];
+    /**
+     * Multi-org membership (org UUIDs / slugs). Authoritative multi-tenant
+     * list; jinbe unions it with the native `organization_id` into OPA's
+     * `user_organizations`. There is no dedicated writer — it is merged in via
+     * `PATCH /admin/users/:id/metadata` (which refuses group changes). Absent
+     * on legacy identities → treat as an empty array.
+     */
+    organizations?: string[];
     [key: string]: unknown;
   };
   organization_id?: string;
