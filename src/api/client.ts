@@ -237,6 +237,19 @@ export const api = {
       method: 'DELETE',
     }),
 
+  // ─── Org → Admin roster (per-org admin list) ───
+  // Symmetric with the org→service map: each org has an admin roster (emails).
+  // GET returns the whole map; PUT replaces one org's entire roster (empty list
+  // clears it). super_admin + a recent second factor (15-min step-up) required.
+  getOrgAdminMap: () =>
+    request<{ mappings: Record<string, string[]> }>('/admin/rbac/org-admin-map').then(r => r.mappings),
+
+  setOrgAdmins: (organizationId: string, admins: string[]) =>
+    request<{ success: boolean; message: string }>('/admin/rbac/org-admin-map', {
+      method: 'PUT',
+      body: JSON.stringify({ organizationId, admins }),
+    }),
+
   // ─── Permission simulator (live OPA query) ───
   simulate: (input: { email: string; service: string; method: string; path: string }) =>
     request<SimulateResponse>('/admin/rbac/simulate', {

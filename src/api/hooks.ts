@@ -189,6 +189,32 @@ export function useDeleteOrgServiceMapping() {
   });
 }
 
+// Org → admin roster (per-org admin list). Symmetric with the service-bundle map.
+export function useOrgAdminMap() {
+  return useQuery({
+    queryKey: ['org-admin-map'],
+    queryFn: () => api.getOrgAdminMap(),
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
+// Replace an org's ENTIRE admin roster (PUT). An empty list clears the roster.
+export function useSetOrgAdmins() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ organizationId, admins }: { organizationId: string; admins: string[] }) =>
+      api.setOrgAdmins(organizationId, admins),
+    onMutate: async ({ organizationId, admins }) => {
+      await qc.cancelQueries({ queryKey: ['org-admin-map'] });
+      const snapshot = qc.getQueryData<OrgServiceMapCache>(['org-admin-map']);
+      qc.setQueryData<OrgServiceMapCache>(['org-admin-map'], (m) => ({ ...(m ?? {}), [organizationId]: admins }));
+      return { snapshot };
+    },
+    onError: (_e, _v, ctx) => qc.setQueryData(['org-admin-map'], ctx?.snapshot),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['org-admin-map'] }),
+  });
+}
+
 export function useAllRoles(serviceNames: string[]) {
   // Stable key: a single sorted, joined token rather than spreading the array
   // into the key. Spreading made the key change on service reordering, busting
@@ -320,7 +346,7 @@ export function useUserSearch(q: string) {
 const REALTIME_KEYS: readonly (readonly string[])[] = [
   ['stats'], ['users'], ['user-search'], ['groups'], ['groups-map'],
   ['services'], ['all-roles'], ['all-routes'], ['access-rules'],
-  ['org-users'], ['my-orgs'], ['org-service-map'], ['assignable-groups'], ['audit'],
+  ['org-users'], ['my-orgs'], ['org-service-map'], ['org-admin-map'], ['assignable-groups'], ['audit'],
 ];
 
 // True real-time: subscribe to the server's SSE change stream (GET
