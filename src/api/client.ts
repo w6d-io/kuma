@@ -301,6 +301,7 @@ export interface SearchedUser {
   groups: string[];
   organizationId: string | null;
   active: boolean;
+  mfa?: boolean; // real second-factor status (jinbe enriches search hits via hasMFA)
 }
 
 export interface WhoamiResponse {
