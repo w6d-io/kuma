@@ -215,7 +215,7 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
                     <div className="row" style={{ gap: 10 }}>
                       <Avatar name={u.traits?.name || u.traits?.email} />
                       <div>
-                        <div style={{ fontWeight: 500 }}>{u.traits?.name || u.traits?.email}{u.state !== 'active' && <> <Chip tone="warn">inactive</Chip></>}</div>
+                        <div style={{ fontWeight: 500 }}>{u.traits?.name || u.traits?.email}{roster.includes(u.traits?.email || '') && <> <Chip tone="accent" title="Administrator of this organization">admin</Chip></>}{u.state !== 'active' && <> <Chip tone="warn">inactive</Chip></>}</div>
                         <div className="small muted mono">{u.traits?.email}</div>
                       </div>
                     </div>
