@@ -4,7 +4,7 @@ import { useSession, useUsers, useGroupsMap, useUserSearch, useStats, useMyOrgan
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, Switch, ConfirmDialog, EmptyHint } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
-import { isPrivilegedGroup } from '../hooks/useRbac';
+import { isPrivilegedGroup, ORG_ADMIN_FLAG_GROUP } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
 import { searchedToUser } from '../api/transforms';
 import type { User } from '../api/types';
@@ -266,12 +266,15 @@ export function UserDrawer() {
           />
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6 }}>
-              {g}
+              {g === ORG_ADMIN_FLAG_GROUP ? 'Org admin' : g}
+              {g === ORG_ADMIN_FLAG_GROUP && <Chip tone="warn">org-scoped</Chip>}
               {privileged && <Chip tone="warn">🔒 privileged</Chip>}
               {blockedByActor && <Chip tone="err">super_admin only</Chip>}
               {blockedByMfa && !blockedByActor && <Chip tone="err">MFA required</Chip>}
             </div>
-            <div className="small muted mono">{Object.entries(map).map(([s, rs]) => `${s}: ${rs.join(",")}`).join(" · ")}</div>
+            <div className="small muted mono">{g === ORG_ADMIN_FLAG_GROUP
+              ? 'manages the members of their own org(s), scoped to each org’s service bundle'
+              : Object.entries(map).map(([s, rs]) => `${s}: ${rs.join(",")}`).join(" · ")}</div>
           </div>
         </label>
       );

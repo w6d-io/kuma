@@ -59,7 +59,21 @@ export function resolvePerms(user: User, state: AppState) {
  * privileged and must be gated. jinbe enforces this as 422 regardless; this is
  * the frontend mirror used to disable the control up front and explain why.
  */
+/**
+ * The single service-agnostic org-admin flag group. Assigning it makes a user an
+ * admin of the org(s) they belong to, scoped to each org's service bundle —
+ * enforced entirely in policy (rbac.is_org_admin + rbac.delegation.manageable_orgs).
+ * Name is in lock-step with the rego constant `rbac.org_admin_group` and jinbe's
+ * `ORG_ADMIN_FLAG_GROUP`.
+ */
+export const ORG_ADMIN_FLAG_GROUP = "org_admins";
+
 export function isPrivilegedGroup(g: string, state: AppState): boolean {
+  // The org-admin flag confers NO resolved permissions (its authority is
+  // positional, granted in policy), so the perm-based checks below would miss
+  // it. Assigning it is a privileged, super_admin-only action — gate it by name,
+  // mirroring jinbe's userGroupsService guard.
+  if (g === ORG_ADMIN_FLAG_GROUP) return true;
   const map = state.groups[g] || {};
   const globalRoles = map.global ?? [];
   if (globalRoles.includes("super_admin")) return true;
