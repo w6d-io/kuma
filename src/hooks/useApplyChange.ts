@@ -41,6 +41,24 @@ export function useApplyChange() {
             );
             return;
           }
+          // R2 step-up: the actor's second factor is absent or older than the
+          // 15-minute window. Bounce through Kratos AAL2 re-verification and
+          // return here so the operator can retry the change.
+          if (err.code === 'reauth_required') {
+            pushToast(
+              'Two-factor re-verification required · redirecting to step-up',
+              { err: true, sub: err.details?.hint || err.message },
+            );
+            const authDomain = (window as any).__AUTH_DOMAIN__;
+            if (authDomain) {
+              const returnTo = window.location.href;
+              setTimeout(() => {
+                window.location.href =
+                  `https://${authDomain}/login?aal=aal2&refresh=true&return_to=${encodeURIComponent(returnTo)}`;
+              }, 1500);
+            }
+            return;
+          }
           if (err.status === 404) {
             pushToast(
               'User not found',

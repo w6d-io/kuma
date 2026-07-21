@@ -26,6 +26,18 @@ function makeToastErr(pushToast: PushToast) {
       pushToast('Not allowed · that group is outside your delegation', { err: true, sub: e.details?.hint || e.message });
       return;
     }
+    // R2 step-up: re-verify a recent second factor, then return to retry.
+    if (e.code === 'reauth_required') {
+      pushToast('Two-factor re-verification required · redirecting to step-up', { err: true, sub: e.details?.hint || e.message });
+      const authDomain = (window as any).__AUTH_DOMAIN__;
+      if (authDomain) {
+        const returnTo = window.location.href;
+        setTimeout(() => {
+          window.location.href = `https://${authDomain}/login?aal=aal2&refresh=true&return_to=${encodeURIComponent(returnTo)}`;
+        }, 1500);
+      }
+      return;
+    }
     if (e.status === 403) {
       pushToast('Not authorized for this organization', { err: true, sub: e.message });
       return;

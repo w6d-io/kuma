@@ -72,8 +72,8 @@ export function kratosToUser(k: KratosIdentity): User {
   };
 }
 
-/** Lightweight search hit → Kuma User row. Search omits mfa/last (it's for
- *  finding people, not the full profile) — those surface on the detail drawer. */
+/** Lightweight search hit → Kuma User row. jinbe enriches hits with real 2FA
+ *  status (`mfa`); `last` still surfaces only on the detail drawer. */
 export function searchedToUser(s: SearchedUser): User {
   return {
     id: s.id,
@@ -84,6 +84,7 @@ export function searchedToUser(s: SearchedUser): User {
     active: s.active,
     last: '',
     organizationId: s.organizationId ?? undefined,
+    ...(s.mfa !== undefined ? { mfa: s.mfa } : {}),
   };
 }
 

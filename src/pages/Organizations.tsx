@@ -10,6 +10,9 @@ import {
   useDeleteOrgServiceMapping,
   useOrgUsers,
   useAssignableGroups,
+  useOrgAdminMap,
+  useSetOrgAdmins,
+  useSession,
 } from '../api/hooks';
 import { InviteDrawer } from './OrgAdmin';
 
@@ -113,29 +116,24 @@ export function OrganizationsPage() {
 }
 
 function OrgDetail({ org, services }: { org: string; services: string[] }) {
-  const { state, setGrant, pushToast } = useApp();
+  const { setGrant, pushToast } = useApp();
+  const { data: session } = useSession();
+  const actorIsSuperAdmin = (session?.roles || []).includes('super_admin');
   const usersQ = useOrgUsers(org);
   const assignableQ = useAssignableGroups(org);
   const assignable = useMemo(() => assignableQ.data ?? [], [assignableQ.data]);
+  const { data: orgAdminMap = {} } = useOrgAdminMap();
+  const roster = orgAdminMap[org] ?? [];
   const delBundle = useDeleteOrgServiceMapping();
   const [invite, setInvite] = useState(false);
   const [editBundle, setEditBundle] = useState(false);
+  const [editAdmins, setEditAdmins] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
   const users = usersQ.data?.data ?? [];
   const total = usersQ.data?.total ?? users.length;
   const hasBundle = services.length > 0;
-
-  // "Admins" of the org = members holding a group that grants admin power on
-  // ANY bundled service (or globally). Purely derived from the group catalog.
-  const isAdminGroup = (g: string): boolean => {
-    const map = state.groups[g] || {};
-    if ((map.global ?? []).includes('super_admin')) return true;
-    const check = (svc: string) => (map[svc] ?? []).some(r => (state.roles[svc]?.[r] ?? []).includes('*'));
-    if (check('global')) return true;
-    return services.some(check);
-  };
-  const admins = users.filter(u => (u.metadata_admin?.groups ?? []).some(isAdminGroup));
+  const memberEmails = users.map(u => u.traits?.email).filter((e): e is string => !!e);
 
   const clearBundle = () => {
     delBundle.mutate(org, {
@@ -179,12 +177,26 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
         </div>
       </div>
 
-      {/* Admins summary */}
+      {/* Administrators — the org's per-org admin roster (data.org_admin_map). An
+          admin manages this org's members, scoped to its bundle. Assigning is
+          super_admin-only + step-up gated (enforced by jinbe). */}
       <div className="panel mb-12" style={{ padding: 14 }}>
-        <div style={{ fontWeight: 500, fontSize: 12.5, marginBottom: 6 }}>Administrators</div>
-        {admins.length === 0
-          ? <div className="small muted">No member of this org holds an admin group{hasBundle ? '' : ' (bundle a service first)'} — nobody can manage it yet.</div>
-          : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{admins.map(a => <Chip key={a.id} tone="accent">{a.traits?.name || a.traits?.email}</Chip>)}</div>}
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 500, fontSize: 12.5 }}>Administrators</div>
+            <div className="small muted" style={{ marginTop: 2 }}>
+              People who can manage this org's members (scoped to its bundle). Only super_admins can change this.
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {roster.length === 0
+                ? <span className="small muted">No admins yet — nobody can manage this org's members.</span>
+                : roster.map(a => <Chip key={a} tone="accent">{a}</Chip>)}
+            </div>
+          </div>
+          {actorIsSuperAdmin && (
+            <button className="btn ghost sm" onClick={() => setEditAdmins(true)}>{roster.length ? 'Edit admins' : 'Add admins'}</button>
+          )}
+        </div>
       </div>
 
       {/* Members */}
@@ -203,7 +215,7 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
                     <div className="row" style={{ gap: 10 }}>
                       <Avatar name={u.traits?.name || u.traits?.email} />
                       <div>
-                        <div style={{ fontWeight: 500 }}>{u.traits?.name || u.traits?.email}{u.state !== 'active' && <> <Chip tone="warn">inactive</Chip></>}</div>
+                        <div style={{ fontWeight: 500 }}>{u.traits?.name || u.traits?.email}{roster.includes(u.traits?.email || '') && <> <Chip tone="accent" title="Administrator of this organization">admin</Chip></>}{u.state !== 'active' && <> <Chip tone="warn">inactive</Chip></>}</div>
                         <div className="small muted mono">{u.traits?.email}</div>
                       </div>
                     </div>
@@ -237,6 +249,15 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
           current={services}
           onClose={() => setEditBundle(false)}
           onRequestClear={() => { setEditBundle(false); setConfirmClear(true); }}
+        />
+      )}
+
+      {editAdmins && (
+        <AdminsDrawer
+          org={org}
+          current={roster}
+          members={memberEmails}
+          onClose={() => setEditAdmins(false)}
         />
       )}
 
@@ -323,6 +344,88 @@ function BundleDrawer({ org, current, onClose, onRequestClear }: {
         />
       </div>
       <div className="input-hint" style={{ marginTop: 8 }}>Saving replaces the org's entire bundle with the selected services.</div>
+    </Drawer>
+  );
+}
+
+// The org admin ROSTER editor (data.org_admin_map). A PUT replaces the org's
+// ENTIRE roster with the selected emails; an empty roster is allowed (it clears
+// the org's admins). super_admin + a recent second factor are enforced by jinbe;
+// a stale factor returns 422 reauth_required, handled here with a step-up bounce.
+// The picker offers the org's members (you can't administer an org you don't
+// belong to — jinbe's manageable_orgs also enforces this), unioned with any
+// already-rostered email so a stale entry can still be removed.
+function AdminsDrawer({ org, current, members, onClose }: {
+  org: string; current: string[]; members: string[]; onClose: () => void;
+}) {
+  const { pushToast } = useApp();
+  const setAdmins = useSetOrgAdmins();
+  const options = useMemo(() => [...new Set([...members, ...current])], [members, current]);
+  const [selected, setSelected] = useState<string[]>(current);
+  const busy = setAdmins.isPending;
+  const dirty = selected.length !== current.length || selected.some(a => !current.includes(a));
+
+  const toggle = (email: string) =>
+    setSelected(prev => (prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email]));
+
+  const save = () => {
+    if (!dirty || busy) return;
+    setAdmins.mutate({ organizationId: org, admins: selected }, {
+      onSuccess: () => { pushToast(`Updated administrators for ${org}`, { sub: `${selected.length} admin${selected.length === 1 ? '' : 's'}` }); onClose(); },
+      onError: (e: unknown) => {
+        const err = e as Error & { code?: string; details?: { hint?: string } };
+        // Step-up (R2): re-verify a recent second factor, then return to retry.
+        if (err.code === 'reauth_required') {
+          pushToast('Two-factor re-verification required · redirecting to step-up', { err: true, sub: err.details?.hint || err.message });
+          const authDomain = (window as any).__AUTH_DOMAIN__;
+          if (authDomain) {
+            const returnTo = window.location.href;
+            setTimeout(() => { window.location.href = `https://${authDomain}/login?aal=aal2&refresh=true&return_to=${encodeURIComponent(returnTo)}`; }, 1500);
+          }
+          return;
+        }
+        if (err.code === 'privilege_escalation_blocked' || err.code === 'mfa_required') {
+          pushToast(err.message, { err: true, sub: err.details?.hint });
+          return;
+        }
+        pushToast(err.message || 'Failed to update administrators', { err: true });
+      },
+    });
+  };
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      size="lg"
+      eyebrow="PUT /api/admin/rbac/org-admin-map"
+      title="Edit administrators"
+      footer={
+        <>
+          <span className="small muted">super_admin + recent 2FA required.</span>
+          <div className="row">
+            <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
+            <button className="btn primary" onClick={save} disabled={!dirty || busy}>{busy ? 'Saving…' : 'Save admins'}</button>
+          </div>
+        </>
+      }
+    >
+      <div className="mb-12">
+        <div className="input-label">Organization</div>
+        <div className="mono" style={{ fontSize: 12.5 }}>{org}</div>
+      </div>
+      <label className="input-label">Administrators (org members)</label>
+      <div className="panel" style={{ padding: 12 }}>
+        <MultiSelectPills
+          options={options}
+          selected={selected}
+          onToggle={toggle}
+          empty="No members in this organization yet — invite someone first."
+        />
+      </div>
+      <div className="input-hint" style={{ marginTop: 8 }}>
+        Each selected member can manage this org's people (scoped to its service bundle). Saving replaces the entire roster; deselect everyone to remove all admins.
+      </div>
     </Drawer>
   );
 }
