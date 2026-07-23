@@ -116,7 +116,7 @@ export interface AppState {
   audit: AuditEvent[];
 }
 
-export type PageId = 'dashboard' | 'simulator' | 'users' | 'groups' | 'services' | 'roles' | 'routes' | 'rules' | 'audit' | 'settings' | 'orgadmin' | 'organizations';
+export type PageId = 'dashboard' | 'simulator' | 'users' | 'groups' | 'services' | 'roles' | 'routes' | 'rules' | 'audit' | 'settings' | 'orgadmin' | 'organizations' | 'backup';
 
 export interface TweakDefaults {
   theme: string;

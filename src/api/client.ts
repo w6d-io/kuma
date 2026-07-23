@@ -162,6 +162,13 @@ export const api = {
       body: JSON.stringify({ rules }),
     }),
 
+  // Dry-run: parse an OpenAPI/Swagger spec and preview the routes + diff.
+  importPreviewRoutes: (serviceName: string, source: ImportSource, options?: ImportOptions) =>
+    request<ImportPreview>(`/admin/rbac/services/${serviceName}/routes/import/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ source, options }),
+    }),
+
   // ─── Access Rules (Oathkeeper) ───
   getAccessRules: () =>
     request<{ rules: JinbeAccessRule[] }>(`/admin/rbac/access-rules`).then(r => r.rules),
@@ -195,9 +202,10 @@ export const api = {
     return request<{ events: AuditStreamEvent[]; total: number }>(`/admin/audit/events${q ? `?${q}` : ''}`)
   },
 
-  // ─── Bundle export / import ───
-  exportBundle: async (): Promise<void> => {
-    const res = await fetch(`${BASE}/admin/rbac/bundle/export`, { credentials: 'include' });
+  // ─── Bundle export / import / S3 backups ───
+  exportBundle: async (sections?: string[]): Promise<void> => {
+    const q = sections && sections.length ? `?sections=${sections.join(',')}` : '';
+    const res = await fetch(`${BASE}/admin/rbac/bundle/export${q}`, { credentials: 'include' });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw Object.assign(new Error(body.message || `HTTP ${res.status}`), { status: res.status });
@@ -218,6 +226,17 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(bundle),
     }),
+
+  // S3 backup snapshots (only meaningful when the chart enabled backup).
+  listBackups: () =>
+    request<BackupList>('/admin/rbac/bundle/backups'),
+  restoreBackup: (key: string) =>
+    request<{ success: boolean; restoredFrom: string; imported: BundleImportResult }>(
+      '/admin/rbac/bundle/backups/restore',
+      { method: 'POST', body: JSON.stringify({ key }) },
+    ),
+  backupNow: () =>
+    request<{ success: boolean; key: string }>('/admin/rbac/bundle/backups/now', { method: 'POST' }),
 
   // ─── Org → Service bundle map (J14 org-service entitlement) ───
   // Array-valued: each org bundles a SET of services. GET returns the whole
@@ -406,6 +425,29 @@ export interface JinbeRouteRule {
   permission?: string;
 }
 
+// ─── OpenAPI import (preview) ───
+export interface ImportSource { url?: string; content?: string; format?: 'json' | 'yaml' | 'auto'; }
+export interface ImportOptions {
+  resourceFrom?: 'tag' | 'path' | 'operationId';
+  verbMap?: Record<string, string>;
+  listAsRead?: boolean;
+  honorExtension?: boolean;
+  basePath?: 'prepend' | 'strip' | 'none';
+}
+export interface DerivedRoute {
+  method: string; path: string; permission?: string; public: boolean;
+  source: 'public-extension' | 'extension' | 'scope' | 'tag' | 'path' | 'operationId' | 'unmapped';
+  operationId?: string; summary?: string;
+}
+export interface ChangedRoute { method: string; path: string; from: (string | null)[]; to: DerivedRoute; }
+export interface StaleRoute { method: string; path: string; permission?: string; isCatchall: boolean; }
+export interface ImportPreview {
+  service: string; detectedBasePath: string; basePathMode: string; operationCount: number;
+  derived: DerivedRoute[];
+  diff: { add: DerivedRoute[]; changed: ChangedRoute[]; unchanged: DerivedRoute[]; stale: StaleRoute[]; };
+  warnings: { kind: string; message: string; detail?: string }[];
+}
+
 export interface JinbeAccessRule {
   id: string;
   upstream: { url: string; preserve_host?: boolean; strip_path?: string };
@@ -444,6 +486,15 @@ export interface SimulateResponse {
 
 export interface BundleImportResult {
   rbac: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number };
+}
+
+export interface BackupSnapshot { key: string; lastModified: string | null; size: number }
+export interface BackupList {
+  enabled: boolean;
+  bucket: string | null;
+  prefix: string;
+  region: string;
+  backups: BackupSnapshot[];
 }
 
 export interface AuditStreamEvent {

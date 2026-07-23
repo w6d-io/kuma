@@ -1,6 +1,7 @@
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useEffect } from 'react';
 import { api, API_BASE } from './client';
+import type { ImportSource, ImportOptions } from './client';
 import type { RolesMap, RouteMapsMap, AuditEvent, User } from './types';
 import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents } from './transforms';
 import { cachePatch } from './mutations';
@@ -417,6 +418,15 @@ export function useUpdateServiceRoutes(serviceName: string) {
       qc.invalidateQueries({ queryKey: ['routes', serviceName] });
       qc.invalidateQueries({ queryKey: ['all-routes'] });
     },
+  });
+}
+
+// Dry-run preview of an OpenAPI import. Not cached — a POST action that returns
+// the parsed rules + diff; the actual apply reuses useUpdateServiceRoutes.
+export function useImportPreview(serviceName: string) {
+  return useMutation({
+    mutationFn: (vars: { source: ImportSource; options?: ImportOptions }) =>
+      api.importPreviewRoutes(serviceName, vars.source, vars.options),
   });
 }
 
