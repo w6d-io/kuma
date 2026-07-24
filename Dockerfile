@@ -27,12 +27,13 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 ENV API_BASE=""
 ENV AUTH_DOMAIN=""
 ENV GRAFANA_URL=""
+ENV BACKUP_ENABLED=""
 
 EXPOSE 8080
 
 # Inject runtime config into index.html, then start nginx.
 # envsubst whitelist: only the listed vars are substituted (preserves other ${...} content).
 CMD ["/bin/sh", "-c", \
-  "envsubst '${API_BASE} ${AUTH_DOMAIN} ${GRAFANA_URL}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
+  "envsubst '${API_BASE} ${AUTH_DOMAIN} ${GRAFANA_URL} ${BACKUP_ENABLED}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
    mv /tmp/index.html /usr/share/nginx/html/index.html && \
    nginx -g 'daemon off;'"]

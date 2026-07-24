@@ -14,6 +14,7 @@ import { OrganizationsPage } from './pages/Organizations';
 import { GrantAccess } from './pages/GrantAccess';
 import { AuditPage } from './pages/Audit';
 import { SettingsPage } from './pages/Settings';
+import { BackupPage } from './pages/Backup';
 import type { PageId } from './api/types';
 
 type NavItem = {
@@ -33,6 +34,8 @@ const NAV: NavItem[] = [
   { id: "services",  name: "Services",  ico: I.service, section: "Policy",   perms: ["admin:read"] },
   { id: "organizations", name: "Organizations", ico: I.globe, section: "Policy", perms: ["admin:read"] },
   { id: "audit",     name: "Audit log", ico: I.audit,   section: "Changes",  perms: ["admin:read"] },
+  // Backup tab only appears when the chart enabled backup (see filter below).
+  { id: "backup",    name: "Backup",    ico: I.box,     section: "Changes",  perms: ["admin:read"] },
   { id: "settings",  name: "Settings",  ico: I.cog,     section: "Changes",  perms: [] },
   // Delegated org-admin self-service. perms [] = visible to any authenticated
   // user; the page itself shows an empty state when you administer no orgs.
@@ -453,6 +456,7 @@ function AppShell() {
             {(page === "services" || page === "roles" || page === "routes" || page === "rules") && <ServicesPage />}
             {page === "organizations" && <OrganizationsPage />}
             {page === "audit" && <AuditPage />}
+            {page === "backup" && <BackupPage />}
             {page === "settings" && <SettingsPage />}
             {page === "orgadmin" && <OrgAdminPage />}
           </>}
