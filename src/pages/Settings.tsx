@@ -5,6 +5,7 @@ import { I } from '../components/ui/Icons';
 import { Chip, Modal, ConfirmDialog, MultiSelectPills } from '../components/ui/Primitives';
 import { api } from '../api/client';
 import type { BundleImportResult } from '../api/client';
+import { ExportBundleModal } from '../components/ExportBundleModal';
 
 // Shape of a bundle we can preview before importing. Counts drive the confirm
 // dialog; the raw parsed object is POSTed on confirm.
@@ -22,7 +23,7 @@ export function SettingsPage() {
     : null;
 
   const fileRef = useRef<HTMLInputElement>(null);
-  const [exporting, setExporting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<BundleImportResult | null>(null);
   const [pending, setPending] = useState<PendingBundle | null>(null);
@@ -75,17 +76,7 @@ export function SettingsPage() {
   }
 
   // ─── Bundle export/import ───
-  async function handleExport() {
-    setExporting(true);
-    try {
-      await api.exportBundle();
-      pushToast('Bundle exported', { sub: 'JSON file downloaded' });
-    } catch (e: any) {
-      pushToast(e.message || 'Export failed', { err: true });
-    } finally {
-      setExporting(false);
-    }
-  }
+  // Export goes through ExportBundleModal (choose-what-to-export). Import stays inline below.
 
   function handleImportClick() {
     fileRef.current?.click();
@@ -245,8 +236,8 @@ export function SettingsPage() {
           Export or import a full snapshot of RBAC configuration (services, groups, roles, route maps, Oathkeeper rules).
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button className="btn" onClick={handleExport} disabled={exporting}>
-            {I.download} {exporting ? 'Exporting…' : 'Export bundle'}
+          <button className="btn" onClick={() => setExportOpen(true)}>
+            {I.download} Export bundle
           </button>
           <button className="btn" onClick={handleImportClick} disabled={importing}>
             {I.upload} {importing ? 'Importing…' : 'Import bundle'}
@@ -302,6 +293,8 @@ export function SettingsPage() {
         onCancel={() => setConfirmOrg(null)}
         onConfirm={() => { if (confirmOrg) handleDeleteMapping(confirmOrg); setConfirmOrg(null); }}
       />
+
+      <ExportBundleModal open={exportOpen} onClose={() => setExportOpen(false)} />
     </>
   );
 }
