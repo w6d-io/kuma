@@ -1,16 +1,36 @@
 import React, { useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession, useAudit, useStats } from '../api/hooks';
+import { useSession, useAudit, useStats, useAuditEvents } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar } from '../components/ui/Primitives';
 import { ROLE_LEVEL } from '../hooks/useRbac';
+import { riskOf } from './Audit';
 
 export function DashboardPage() {
   const app = useApp();
-  const { state, setPage, setGrant, setGroupDrawer, setServiceDrawer, apiError } = app;
+  const { state, setPage, setGrant, setGroupDrawer, setServiceDrawer, apiError, setAuditFocus } = app;
   // Real audit stream (not the SEED-polluted AppContext.audit mirror — same
   // fix as the Audit page; "Recent changes" must show real events only).
   const { data: audit = [] } = useAudit();
+  // Server-authoritative high-risk slice (spans retained history). Fail-closed:
+  // on error, derive from the loaded window via the shared riskOf classifier.
+  const riskQ = useAuditEvents({ risk: 'high', limit: 100 });
+  const riskEvents = riskQ.isSuccess ? riskQ.data : audit.filter(e => riskOf(e).level !== 'none');
+  const goSignals = () => { setAuditFocus({ tab: 'signals' }); setPage('audit'); };
+
+  const securityCards = useMemo(() => {
+    const has = (e: typeof riskEvents[number], f: string) => (e.changes?.flags ?? []).includes(f);
+    const grants = riskEvents.filter(e => has(e, 'grants_super_admin') || has(e, 'wildcard_permission') || (e.changes?.added ?? []).includes('*')).length;
+    const keys = riskEvents.filter(e => (e.category || '') === 'secret' && ['create', 'issue', 'add', 'rotate'].includes(e.verb)).length;
+    const denials = audit.filter(e => e.status === 'failed' || e.verb === 'fail' || e.verb === 'deny').length;
+    const critical = riskEvents.filter(e => riskOf(e).level === 'critical').length;
+    return [
+      { id: 'grants', label: 'Privileged grants', value: grants, tone: grants ? 'err' : 'ok', hint: 'super-admin or wildcard (*) granted' },
+      { id: 'keys', label: 'Keys issued', value: keys, tone: keys ? 'warn' : 'ok', hint: 'secrets / API keys created' },
+      { id: 'denials', label: 'Denials', value: denials, tone: denials > 10 ? 'err' : denials ? 'warn' : 'ok', hint: 'access denied / failed (loaded window)' },
+      { id: 'critical', label: 'High-risk events', value: critical, tone: critical ? 'err' : 'ok', hint: 'critical severity in the window' },
+    ];
+  }, [riskEvents, audit]);
   const { data: session } = useSession();
   // Directory counts from the cached stats endpoint — no full-directory walk.
   const { data: stats } = useStats();
@@ -117,6 +137,27 @@ export function DashboardPage() {
         <StatBtn lbl="Users" val={totalUsers} sub={`${activeUsers} active · ${totalUsers - activeUsers} inactive`} onClick={() => setPage("users")} />
         <StatBtn lbl="Groups" val={totalGroups} sub="bundles of roles across services" onClick={() => setPage("groups")} />
         <StatBtn lbl="Services" val={totalServices} sub="apps with their own roles" onClick={() => setPage("services")} />
+      </div>
+
+      {/* Security signals — deep-link into the Audit "Signals" (risk-only) tab */}
+      <div className="panel mb-12">
+        <div className="panel-head">
+          <div><h3>Security signals</h3><div className="sub">Risk activity — click to open the Signals log</div></div>
+          <button className="btn ghost sm" onClick={goSignals}>Open Signals →</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)" }}>
+          {securityCards.map((c, i) => (
+            <button key={c.id} onClick={goSignals}
+              style={{ padding: "14px 16px", textAlign: "left", background: "transparent", border: "none", borderLeft: i ? "1px solid var(--line)" : "none", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6 }}>
+              <div className="row" style={{ justifyContent: "space-between", gap: 8 }}>
+                <span className="small muted">{c.label}</span>
+                {c.tone !== "ok" && <Chip tone={c.tone}>{c.tone === "err" ? "review" : "watch"}</Chip>}
+              </div>
+              <span style={{ fontSize: 26, fontWeight: 600, letterSpacing: -0.4, color: c.value ? `var(--${c.tone})` : "var(--ink)" }}>{c.value}</span>
+              <div className="small muted">{c.hint}</div>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Signals */}

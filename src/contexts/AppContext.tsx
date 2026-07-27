@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AppState, PageId, TweakDefaults } from '../api/types';
 import { useStore } from '../api/store';
 import { withOptimism, cachePatch } from '../api/mutations';
 import { api } from '../api/client';
+import { ConfirmDialog } from '../components/ui/Primitives';
 
 const TWEAK_DEFAULTS: TweakDefaults = {
   theme: "light",
@@ -55,6 +56,14 @@ export interface GrantState {
   user?: import('../api/types').User;
 }
 
+// Cross-surface deep-link intent into the Audit page. A card on another surface
+// (Dashboard "Signals", a hero "Review" that crossed a page) sets it; the Audit
+// page consumes it once on mount, then clears it.
+export interface AuditFocus {
+  tab?: 'changes' | 'access' | 'auth' | 'signals';
+  eventId?: string;
+}
+
 interface AppContextType {
   state: AppState;
   isLive: boolean;
@@ -66,6 +75,13 @@ interface AppContextType {
   setPage: (page: PageId) => void;
   activeService: string;
   setActiveService: (s: string) => void;
+  /**
+   * Register (or clear, with `null`) a predicate that reports whether the
+   * current surface has unsaved changes. `setPage`, `setActiveService`, direct
+   * hash navigation and tab-close all consult it and prompt before discarding.
+   * A component registers on mount and clears on unmount.
+   */
+  registerUnsavedGuard: (fn: (() => boolean) | null) => void;
   userDrawer: UserDrawerState | null;
   setUserDrawer: (d: UserDrawerState | null) => void;
   groupDrawer: GroupDrawerState | null;
@@ -74,6 +90,8 @@ interface AppContextType {
   setServiceDrawer: (d: ServiceDrawerState | null) => void;
   grant: GrantState | null;
   setGrant: (g: GrantState | null) => void;
+  auditFocus: AuditFocus | null;
+  setAuditFocus: (f: AuditFocus | null) => void;
   pushToast: (msg: string, opts?: { err?: boolean; sub?: string; ttl?: number }) => void;
   toasts: Toast[];
   pipeline: PipelineState;
@@ -158,7 +176,7 @@ const DIRECTORY_PAGES: ReadonlySet<PageId> = new Set<PageId>();
 
 const pageFromHash = (): PageId => {
   const hash = window.location.hash.replace(/^#\/?/, '');
-  const valid: PageId[] = ['dashboard','simulator','users','groups','services','roles','routes','rules','audit','settings','orgadmin','organizations','backup'];
+  const valid: PageId[] = ['dashboard','simulator','users','groups','services','roles','routes','rules','audit','accessreview','settings','orgadmin','organizations','backup'];
   return valid.includes(hash as PageId) ? (hash as PageId) : 'dashboard';
 };
 
@@ -190,23 +208,88 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     invalidateKeys([['audit']]);
   }, [invalidateKeys]);
 
-  const setPage = (p: PageId) => {
+  // ─── Unsaved-changes guard (P1-6) ───────────────────────────────────────
+  // A single registered predicate reports whether the active surface (today: the
+  // gateway rule editor) holds unsaved edits. Every navigation path consults it:
+  // setPage (hash), setActiveService (Services rail), raw hash changes
+  // (back/forward, typed URL — these bypass setPage) and tab close. When dirty,
+  // the navigation is deferred behind one shared ConfirmDialog.
+  const unsavedGuard = useRef<(() => boolean) | null>(null);
+  const registerUnsavedGuard = useCallback((fn: (() => boolean) | null) => { unsavedGuard.current = fn; }, []);
+  const [pendingNav, setPendingNav] = useState<{ run: () => void } | null>(null);
+  const internalNav = useRef(false);   // a hash change we initiated (already vetted)
+  const suppressRevert = useRef(false); // a hash change that is our own revert
+
+  const commitPage = useCallback((p: PageId) => {
+    internalNav.current = true;
     window.location.hash = `/${p}`;
     setPageRaw(p);
-  };
-
-  // Keep page in sync when user navigates back/forward
-  useEffect(() => {
-    const onHashChange = () => setPageRaw(pageFromHash());
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
-  const [activeService, setActiveService] = useState("jinbe");
+  // Run `action` now, or, if the guard reports unsaved changes, hold it behind
+  // the confirm dialog.
+  const guardedNavigate = useCallback((action: () => void) => {
+    const g = unsavedGuard.current;
+    if (g && g()) setPendingNav({ run: action });
+    else action();
+  }, []);
+
+  const setPage = useCallback((p: PageId) => {
+    if (p === page) { commitPage(p); return; }
+    guardedNavigate(() => commitPage(p));
+  }, [page, guardedNavigate, commitPage]);
+
+  const confirmPendingNav = useCallback(() => {
+    const nav = pendingNav;
+    // The guarded surface is being discarded — drop its predicate so the pending
+    // action itself can't re-trigger the prompt mid-transition.
+    unsavedGuard.current = null;
+    setPendingNav(null);
+    nav?.run();
+  }, [pendingNav]);
+
+  // Keep page in sync when the user navigates via the hash directly (back/forward
+  // or a typed URL) — these bypass setPage, so the guard is enforced here too.
+  useEffect(() => {
+    const onHashChange = () => {
+      if (internalNav.current) { internalNav.current = false; setPageRaw(pageFromHash()); return; }
+      if (suppressRevert.current) { suppressRevert.current = false; return; }
+      const next = pageFromHash();
+      if (next === page) return;
+      const g = unsavedGuard.current;
+      if (g && g()) {
+        // Put the URL back where it was, then prompt; navigate only on confirm.
+        suppressRevert.current = true;
+        window.location.hash = `/${page}`;
+        setPendingNav({ run: () => commitPage(next) });
+      } else {
+        setPageRaw(next);
+      }
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, [page, commitPage]);
+
+  // Native tab-close / reload prompt when there are unsaved changes.
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      const g = unsavedGuard.current;
+      if (g && g()) { e.preventDefault(); e.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
+
+  const [activeService, setActiveServiceRaw] = useState("jinbe");
+  const setActiveService = useCallback((s: string) => {
+    if (s === activeService) { setActiveServiceRaw(s); return; }
+    guardedNavigate(() => setActiveServiceRaw(s));
+  }, [activeService, guardedNavigate]);
   const [userDrawer, setUserDrawer] = useState<UserDrawerState | null>(null);
   const [groupDrawer, setGroupDrawer] = useState<GroupDrawerState | null>(null);
   const [serviceDrawer, setServiceDrawer] = useState<ServiceDrawerState | null>(null);
   const [grant, setGrant] = useState<GrantState | null>(null);
+  const [auditFocus, setAuditFocus] = useState<AuditFocus | null>(null);
 
   const [theme, setThemeRaw] = useState(TWEAK_DEFAULTS.theme);
   const [persona, setPersonaRaw] = useState(TWEAK_DEFAULTS.persona);
@@ -336,10 +419,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refreshAudit: invalidateAudit,
     page, setPage,
     activeService, setActiveService,
+    registerUnsavedGuard,
     userDrawer, setUserDrawer,
     groupDrawer, setGroupDrawer,
     serviceDrawer, setServiceDrawer,
     grant, setGrant,
+    auditFocus, setAuditFocus,
     pushToast, toasts, pipeline,
     theme, setTheme, persona, setPersona,
     tweaks, setTweak,
@@ -348,5 +433,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     apiCreateService, apiUpdateService, apiDeleteService,
   };
 
-  return <AppCtx.Provider value={ctx}>{children}</AppCtx.Provider>;
+  return (
+    <AppCtx.Provider value={ctx}>
+      {children}
+      <ConfirmDialog
+        open={pendingNav !== null}
+        title="Discard unsaved changes?"
+        danger
+        confirmLabel="Discard changes"
+        body="You have unsaved changes here. Leaving now will discard them."
+        onCancel={() => setPendingNav(null)}
+        onConfirm={confirmPendingNav}
+      />
+    </AppCtx.Provider>
+  );
 }

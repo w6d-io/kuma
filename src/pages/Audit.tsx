@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Method, EmptyHint } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
-import { useAudit } from '../api/hooks';
-import type { AuditEvent } from '../api/types';
+import { useApp } from '../contexts/AppContext';
+import { useAudit, useAuditSummary, useAuditEvents } from '../api/hooks';
+import type { AuditEvent, AuditSummary } from '../api/types';
 
 // Audit timestamps are ISO/UTC. Render + bucket them in the operator's LOCAL
 // time — a UTC string-slice showed the wrong clock time and could file an event
@@ -24,7 +25,7 @@ const localTime = (t?: string): string => {
 function grafanaTraceUrl(e: AuditEvent): string | null {
   const base = ((window as any).__GRAFANA_URL__ as string | undefined)?.replace(/\/$/, '');
   if (!base || base.startsWith('${')) return null; // unset / un-substituted placeholder
-  const sid = (e as AuditEvent & { sessionId?: string }).sessionId;
+  const sid = e.sessionId;
   const params = new URLSearchParams();
   if (sid) params.set('var-sessionId', sid);
   if (e.who && e.who !== 'anon' && e.who !== 'system') params.set('var-actor', e.who);
@@ -39,6 +40,8 @@ const AUDIT_CATS: Record<string, { label: string; icon: keyof typeof I }> = {
   service: { label: "Service", icon: "cube" },
   route: { label: "Route", icon: "route" },
   secret: { label: "Secret", icon: "lock" },
+  directory: { label: "Directory", icon: "users" },
+  bundle: { label: "Bundle", icon: "box" },
   system: { label: "System", icon: "cog" },
 };
 
@@ -57,37 +60,182 @@ function statusTone(code?: number) {
   return "err";
 }
 
+// ─── Shared risk classifier (Part E) ────────────────────────────────────────
+// riskOf is DISPLAY-ONLY refinement. The `?risk=high` gate and the hero are
+// server-authoritative via emit-time `severity` + `changes.flags` ([P2-3]); this
+// only sharpens the label/badge for a row already in hand. Severity is expressed
+// strictly through semantic tokens (--err / --warn) — NEVER --accent.
+export interface RiskInfo { level: 'critical' | 'warn' | 'none'; label: string; tone: string }
+
+const RISK_FLAG_LABEL: Record<string, string> = {
+  grants_super_admin: 'grants super-admin',
+  wildcard_permission: 'grants wildcard (*)',
+  opened_to_public: 'opened to the public',
+  auth_disabled: 'authentication disabled',
+};
+
+export function riskOf(e: AuditEvent): RiskInfo {
+  const flags = e.changes?.flags ?? [];
+  const sev = (e.severity || '').toLowerCase();
+  const cat = (e.category || '').toLowerCase();
+  const verb = (e.verb || '').toLowerCase();
+  const target = (e.target || '').toLowerCase();
+  const isFail = e.status === 'failed' || verb === 'fail' || verb === 'deny';
+
+  // ── CRITICAL (P0) ─────────────────────────────────────────────
+  // 1) An authoritative critical flag on the before→after diff.
+  const critFlag = flags.find(f => f in RISK_FLAG_LABEL);
+  if (critFlag) return { level: 'critical', label: RISK_FLAG_LABEL[critFlag], tone: 'err' };
+  // 2) Server says critical/high (spans history; client just labels it).
+  if (sev === 'critical' || sev === 'high')
+    return { level: 'critical', label: shortLabel(e) || 'high-risk change', tone: 'err' };
+  // 3) A wildcard grant surfaced in the diff even without a flag.
+  if ((e.changes?.added ?? []).includes('*'))
+    return { level: 'critical', label: 'grants wildcard (*)', tone: 'err' };
+  // 4) Bundle import / restore — mass rewrite / exfil-adjacent.
+  if ((cat === 'bundle' || target.includes('bundle') || target.includes('backup'))
+      && ['import', 'restore', 'apply'].includes(verb) && !isFail)
+    return { level: 'critical', label: verb === 'restore' ? 'config restored' : 'bundle imported', tone: 'err' };
+
+  // ── WARN (P1/P2) ──────────────────────────────────────────────
+  if (sev === 'warn' || sev === 'warning' || sev === 'medium')
+    return { level: 'warn', label: shortLabel(e) || 'review', tone: 'warn' };
+  // MFA disabled / login without a second factor.
+  if (e.mfa === false && (cat === 'auth' || verb === 'login' || verb === 'mfa'))
+    return { level: 'warn', label: 'no second factor', tone: 'warn' };
+  // API-key / secret issuance.
+  if (cat === 'secret' && ['create', 'issue', 'add', 'rotate'].includes(verb) && !isFail)
+    return { level: 'warn', label: 'key issued', tone: 'warn' };
+  // Privileged delete.
+  if (verb === 'delete' && ['rbac', 'service', 'route', 'secret', 'access', 'directory'].includes(cat) && !isFail)
+    return { level: 'warn', label: 'privileged delete', tone: 'warn' };
+  // Denials (recon signal) on a privileged surface.
+  if (isFail && (cat === 'access' || cat === 'rbac' || verb === 'deny'))
+    return { level: 'warn', label: verb === 'deny' ? 'denied' : 'failed', tone: 'warn' };
+
+  return { level: 'none', label: '', tone: '' };
+}
+
+// A concise label for a high-severity event when no known flag names it.
+function shortLabel(e: AuditEvent): string {
+  if (e.changes?.summary) {
+    const s = e.changes.summary;
+    return s.length > 40 ? s.slice(0, 38) + '…' : s;
+  }
+  const flag = (e.changes?.flags ?? []).find(f => f in RISK_FLAG_LABEL);
+  if (flag) return RISK_FLAG_LABEL[flag];
+  return '';
+}
+
+// Reusable risk badge — used on the Audit log, both entity trails, and Signals.
+export function RiskBadge({ e }: { e: AuditEvent }) {
+  const r = riskOf(e);
+  if (r.level === 'none') return null;
+  return <Chip tone={r.tone} mono={false} title={`${r.level === 'critical' ? 'Critical' : 'Elevated'} risk · ${r.label}`}>{r.level === 'critical' ? '⬤ ' : '▲ '}{r.label}</Chip>;
+}
+
+// Plain-language sentence for a high-risk row on the hero.
+function plainSentence(e: AuditEvent): string {
+  if (e.changes?.summary) return e.changes.summary;
+  const who = !e.who || e.who === 'system' ? 'The system' : (e.actorName || e.who.split('@')[0]);
+  const verb = e.verb || 'changed';
+  const what = e.target || e.path || e.category;
+  return `${who} ${verb} ${what}`.trim();
+}
+
+// ─── Trend helper for the summary band ──────────────────────────────────────
+function trend(cur?: number, prev?: number): { dir: 'up' | 'down' | 'flat'; pct: number } | null {
+  if (cur == null || prev == null) return null;
+  const delta = cur - prev;
+  if (delta === 0) return { dir: 'flat', pct: 0 };
+  const pct = prev === 0 ? 100 : Math.round((delta / prev) * 100);
+  return { dir: delta > 0 ? 'up' : 'down', pct: Math.abs(pct) };
+}
+function TrendPill({ t }: { t: ReturnType<typeof trend> }) {
+  if (!t) return null;
+  const glyph = t.dir === 'up' ? '▲' : t.dir === 'down' ? '▼' : '→';
+  return <span className="small muted" style={{ fontFamily: 'var(--font-mono)' }}>{glyph} {t.pct}%</span>;
+}
+
+// Normalize a failure rate that may arrive as a fraction (0..1) or a percent.
+function failurePct(s?: AuditSummary, loaded?: AuditEvent[]): number {
+  if (s) {
+    if (typeof s.failureRate === 'number') return s.failureRate <= 1 ? s.failureRate * 100 : s.failureRate;
+    const r = s.byResult || {};
+    const failed = (r.denied || 0) + (r.failed || 0) + (r.error || 0);
+    const total = s.total || Object.values(r).reduce((a, b) => a + b, 0);
+    return total ? (failed / total) * 100 : 0;
+  }
+  if (loaded && loaded.length) {
+    const failed = loaded.filter(e => e.status === 'failed' || e.verb === 'fail' || e.verb === 'deny').length;
+    return (failed / loaded.length) * 100;
+  }
+  return 0;
+}
+const rateTone = (pct: number) => (pct >= 10 ? 'err' : pct >= 2 ? 'warn' : 'ok');
+
 export function AuditPage() {
+  const { setPage, setAuditFocus, auditFocus } = useApp();
   // Read the real audit stream directly (live query), NOT AppContext.audit —
   // that mirror was seeded with SEED placeholder demo events in DEV and a
   // `> 0` guard kept the fake rows when live audit was empty (GHOST-3). The
   // audit log must never show fabricated entries.
   const { data: audit = [], isError: auditError, isLoading: auditLoading } = useAudit();
+  const summaryQ = useAuditSummary('24h');
+  const summary = summaryQ.data;
+  // Server-authoritative high-risk slice (spans retained history, not the 200-row
+  // window). Fail-closed: on error fall back to client riskOf over the window.
+  const riskQ = useAuditEvents({ risk: 'high', limit: 100 });
+  const riskEvents = useMemo<AuditEvent[]>(() => {
+    if (riskQ.isSuccess) return riskQ.data;
+    if (riskQ.isError) return audit.filter(e => riskOf(e).level !== 'none');
+    return [];
+  }, [riskQ.isSuccess, riskQ.isError, riskQ.data, audit]);
+  const riskFromWindow = !riskQ.isSuccess; // hero/Signals sourced from loaded window
+
   const [q, setQ] = useState("");
-  const [tab, setTab] = useState<"changes" | "access" | "auth">("changes");
+  const [tab, setTab] = useState<"changes" | "access" | "auth" | "signals">("changes");
   const [cat, setCat] = useState("all");
   const [statusF, setStatusF] = useState("all");
   const [openId, setOpenId] = useState<string | null>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  const scrollToLog = () => logRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Deep-link intent from other surfaces (Dashboard "Signals" cards, hero Review
+  // that crossed a page). Applied once, then cleared.
+  useEffect(() => {
+    if (!auditFocus) return;
+    if (auditFocus.tab) setTab(auditFocus.tab as typeof tab);
+    if (auditFocus.eventId) setOpenId(auditFocus.eventId);
+    setAuditFocus(null);
+    // Let the tab switch commit before scrolling.
+    const id = setTimeout(scrollToLog, 60);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auditFocus]);
 
   // The three log layers (contract D1): Changes = the compliance record
   // (kind=change), Access = request/traffic telemetry (kind=access), Auth =
-  // session/authn decisions (kind=auth). Fall back to category for legacy rows
-  // that predate `kind` (access→access, auth→auth, everything else→change).
-  const kindOf = (a: typeof audit[number]): string =>
+  // session/authn decisions (kind=auth). Signals = risk-only (any kind).
+  const kindOf = (a: AuditEvent): string =>
     a.kind || (a.category === 'access' ? 'access' : a.category === 'auth' ? 'auth' : a.category === 'system' ? 'system' : 'change');
 
-  const inTab = audit.filter(a => {
-    const k = kindOf(a);
-    if (tab === "changes") return k === "change" || k === "system";
-    return k === tab;
-  });
+  // Signals is driven by the server risk slice; the other tabs by the window.
+  const inTab = tab === 'signals'
+    ? riskEvents
+    : audit.filter(a => {
+        const k = kindOf(a);
+        if (tab === "changes") return k === "change" || k === "system";
+        return k === tab;
+      });
 
   const filtered = inTab.filter(a => {
     if (cat !== "all" && a.category !== cat) return false;
     if (statusF === "failed" && a.status !== "failed" && a.verb !== "fail" && a.verb !== "deny") return false;
     if (statusF === "ok" && (a.status === "failed" || a.verb === "fail" || a.verb === "deny")) return false;
     if (q) {
-      const hay = `${a.who} ${a.verb} ${a.target} ${a.ip || ""} ${a.reason || ""} ${a.service || ""} ${a.path || ""} ${a.method || ""}`.toLowerCase();
+      const hay = `${a.who} ${a.verb} ${a.target} ${a.ip || ""} ${a.reason || ""} ${a.service || ""} ${a.path || ""} ${a.method || ""} ${a.changes?.summary || ""}`.toLowerCase();
       if (!hay.includes(q.toLowerCase())) return false;
     }
     return true;
@@ -97,6 +245,7 @@ export function AuditPage() {
     changes: audit.filter(a => { const k = kindOf(a); return k === "change" || k === "system"; }).length,
     access:  audit.filter(a => kindOf(a) === "access").length,
     auth:    audit.filter(a => kindOf(a) === "auth").length,
+    signals: riskEvents.length,
   };
   // Category pills reflect the active tab's rows only.
   const catCounts = inTab.reduce<Record<string, number>>((acc, a) => { acc[a.category] = (acc[a.category] || 0) + 1; return acc; }, {});
@@ -105,6 +254,7 @@ export function AuditPage() {
     { id: "changes", label: "Changes", sub: "compliance record" },
     { id: "access",  label: "Access",  sub: "request telemetry" },
     { id: "auth",    label: "Auth",    sub: "sessions" },
+    { id: "signals", label: "Signals", sub: "risk only" },
   ];
   const pg = usePagination(filtered.length, 50);
   const selectTab = (t: typeof tab) => { setTab(t); setCat("all"); pg.setPage(0); };
@@ -128,9 +278,9 @@ export function AuditPage() {
   })();
 
   // Client-side CSV export of the currently filtered events. (Bounded to the
-  // loaded window today; a server-side full export is a Phase-3 item.)
+  // loaded window today; server-side /audit/export is the full-range path.)
   const exportCsv = () => {
-    const cols = ["ts", "who", "verb", "category", "target", "service", "method", "path", "status", "statusCode", "ip", "reason"] as const;
+    const cols = ["ts", "who", "verb", "category", "target", "service", "method", "path", "status", "statusCode", "ip", "reason", "severity"] as const;
     const esc = (v: unknown) => {
       const s = v == null ? "" : String(v);
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -145,11 +295,209 @@ export function AuditPage() {
     URL.revokeObjectURL(url);
   };
 
+  // ── Summary band values (server window, else honest loaded-window fallback) ──
+  const usingServerSummary = summaryQ.isSuccess && !!summary;
+  const windowLabel = usingServerSummary ? (summary!.window || 'last 24h') : 'loaded window';
+  const activityVal = usingServerSummary ? summary!.total : audit.length;
+  const activityTrend = usingServerSummary ? trend(summary!.total, summary!.prevTotal) : null;
+  const changesVal = usingServerSummary ? (summary!.byKind?.change ?? 0) : audit.filter(a => kindOf(a) === 'change').length;
+  const changesTrend = usingServerSummary ? trend(summary!.byKind?.change, summary!.prevByKind?.change) : null;
+  const failPct = failurePct(usingServerSummary ? summary : undefined, usingServerSummary ? undefined : audit);
+  const peopleVal = usingServerSummary ? (summary!.activeActors ?? 0) : new Set(audit.map(a => a.who).filter(w => w && w !== 'system' && w !== 'anon')).size;
+  const peopleTrend = usingServerSummary ? trend(summary!.activeActors, summary!.prevActiveActors) : null;
+
+  // Analysis: category volume + failure overlay, and top denials/actors.
+  const catBars = useMemo(() => {
+    let rows: { key: string; total: number; failed: number }[];
+    if (usingServerSummary && summary!.byCategory) {
+      rows = Object.entries(summary!.byCategory).map(([key, v]) => ({ key, total: v.total, failed: v.failed }));
+    } else {
+      const acc: Record<string, { total: number; failed: number }> = {};
+      for (const e of audit) {
+        const k = e.category || 'system';
+        acc[k] = acc[k] || { total: 0, failed: 0 };
+        acc[k].total++;
+        if (e.status === 'failed' || e.verb === 'fail' || e.verb === 'deny') acc[k].failed++;
+      }
+      rows = Object.entries(acc).map(([key, v]) => ({ key, ...v }));
+    }
+    return rows.sort((a, b) => b.total - a.total).slice(0, 8);
+  }, [usingServerSummary, summary, audit]);
+  const maxBar = Math.max(1, ...catBars.map(b => b.total));
+
+  const topDenied = useMemo(() => {
+    if (usingServerSummary && summary!.topDenied)
+      return summary!.topDenied.slice(0, 6).map(d => ({ label: (d as { target?: string; key?: string }).target ?? (d as { key?: string }).key ?? '—', count: d.count }));
+    const acc: Record<string, number> = {};
+    for (const e of audit) {
+      if (e.status === 'failed' || e.verb === 'fail' || e.verb === 'deny') {
+        const k = e.who && e.who !== 'system' ? e.who : (e.target || 'unknown');
+        acc[k] = (acc[k] || 0) + 1;
+      }
+    }
+    return Object.entries(acc).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count).slice(0, 6);
+  }, [usingServerSummary, summary, audit]);
+
+  const topActors = useMemo(() => {
+    if (usingServerSummary && summary!.topActors)
+      return summary!.topActors.slice(0, 6).map(d => ({ label: (d as { actor?: string; key?: string }).actor ?? (d as { key?: string }).key ?? '—', count: d.count }));
+    const acc: Record<string, number> = {};
+    for (const e of audit) {
+      if (kindOf(e) === 'change' && e.who && e.who !== 'system' && e.who !== 'anon') acc[e.who] = (acc[e.who] || 0) + 1;
+    }
+    return Object.entries(acc).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count).slice(0, 6);
+  }, [usingServerSummary, summary, audit]);
+
+  const heroEvents = riskEvents.slice(0, 6);
+
+  const focusEvent = (e: AuditEvent) => {
+    selectTab('signals');
+    setOpenId(e.id);
+    setTimeout(scrollToLog, 60);
+  };
+
   return (
     <>
       <div className="page-head">
         <div>
-          <h1>Audit log</h1>
+          <h1>Audit</h1>
+          <div className="sub">
+            Who can do what, and who did what · <span className="mono">{windowLabel}</span>
+            {!usingServerSummary && !summaryQ.isLoading && <> · <span className="muted">live summary unavailable — showing the loaded window</span></>}
+          </div>
+        </div>
+        <div className="page-actions">
+          <button className="btn" onClick={() => setPage('accessreview')}>
+            <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.shield}</span>
+            Access review
+          </button>
+        </div>
+      </div>
+
+      {/* ── Summary band (posture) ── */}
+      <div className="grid g4 mb-12" style={{ gap: 10 }}>
+        <button className="stat stat-btn" onClick={scrollToLog}>
+          <div className="lbl">Activity</div>
+          <div className="val row" style={{ alignItems: 'baseline', gap: 8 }}>{activityVal}<TrendPill t={activityTrend} /></div>
+          <div className="sub">events · {windowLabel}</div>
+        </button>
+        <button className="stat stat-btn" onClick={() => { selectTab('changes'); scrollToLog(); }}>
+          <div className="lbl">Changes</div>
+          <div className="val row" style={{ alignItems: 'baseline', gap: 8 }}>{changesVal}<TrendPill t={changesTrend} /></div>
+          <div className="sub">config mutations</div>
+        </button>
+        <button className="stat stat-btn" onClick={() => { setStatusF('failed'); scrollToLog(); }}>
+          <div className="lbl">Failures / denials</div>
+          <div className="val" style={{ color: `var(--${rateTone(failPct)})` }}>{failPct.toFixed(failPct < 10 ? 1 : 0)}%</div>
+          <div className="sub">{rateTone(failPct) === 'err' ? 'elevated — investigate' : rateTone(failPct) === 'warn' ? 'above baseline' : 'within baseline'}</div>
+        </button>
+        <button className="stat stat-btn" onClick={() => setPage('accessreview')}>
+          <div className="lbl">Active people</div>
+          <div className="val row" style={{ alignItems: 'baseline', gap: 8 }}>{peopleVal}<TrendPill t={peopleTrend} /></div>
+          <div className="sub">distinct actors</div>
+        </button>
+      </div>
+
+      {/* ── HERO: recent high-risk changes ── */}
+      <div className="panel mb-12">
+        <div className="panel-head">
+          <div>
+            <h3>Recent high-risk changes</h3>
+            <div className="sub">
+              Grants of broad power, weakened protection, and mass rewrites
+              {riskFromWindow && <> · <span className="muted">from the loaded window (risk endpoint unavailable)</span></>}
+            </div>
+          </div>
+          {riskEvents.length > 0 && <button className="btn ghost sm" onClick={() => { selectTab('signals'); scrollToLog(); }}>All signals →</button>}
+        </div>
+        <div style={{ padding: 0 }}>
+          {riskQ.isLoading && !riskQ.isError ? (
+            <div style={{ padding: 20 }}><EmptyHint>Loading…</EmptyHint></div>
+          ) : heroEvents.length === 0 ? (
+            <div style={{ padding: 18, display: 'flex', gap: 10, alignItems: 'center', color: 'var(--ink-3)' }}>
+              <span style={{ color: 'var(--ok)' }}>{I.check}</span>
+              <div className="small">No high-risk changes recorded in this window.</div>
+            </div>
+          ) : (
+            heroEvents.map(e => {
+              const r = riskOf(e);
+              const tone = r.tone || 'warn';
+              return (
+                <div key={e.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--line)', borderLeft: `3px solid var(--${tone})` }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <RiskBadge e={e} />
+                      <span style={{ fontSize: 13, color: 'var(--ink)' }}>{plainSentence(e)}</span>
+                    </div>
+                    <div className="row small muted mt-4" style={{ gap: 8 }}>
+                      {!e.who || e.who === 'system' ? <span className="mono">system</span> : (
+                        <span className="row" style={{ gap: 6 }}><Avatar email={e.who} size={16} /><span className="mono">{e.who}</span></span>
+                      )}
+                      <span>·</span>
+                      <span className="mono">{localTime(e.ts) || e.when}</span>
+                      {e.service && <><span>·</span><span className="mono">{e.service}</span></>}
+                    </div>
+                  </div>
+                  <button className="btn ghost sm" onClick={() => focusEvent(e)}>Review</button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* ── Analysis row ── */}
+      <div className="grid g2 mb-12" style={{ gridTemplateColumns: '1.4fr 1fr', gap: 10 }}>
+        <div className="panel">
+          <div className="panel-head"><div><h3>Activity by category</h3><div className="sub">Events per category in this window</div></div></div>
+          <div className="panel-body col" style={{ gap: 8 }}>
+            {catBars.length === 0 ? <EmptyHint>No activity in this window.</EmptyHint> : catBars.map(b => {
+              const meta = AUDIT_CATS[b.key];
+              return (
+                <button key={b.key} onClick={() => { selectTab('changes'); setCat(b.key); scrollToLog(); }}
+                  style={{ display: 'grid', gridTemplateColumns: '84px 1fr 40px', gap: 10, alignItems: 'center', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
+                  <span className="small" style={{ color: 'var(--ink-2)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 12, height: 12, display: 'grid', placeItems: 'center', opacity: 0.7 }}>{meta ? I[meta.icon] : I.dot}</span>
+                    {meta?.label || b.key}
+                  </span>
+                  <span style={{ position: 'relative', height: 12, background: 'var(--panel-2)', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--line)' }}>
+                    <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${(b.total / maxBar) * 100}%`, background: 'color-mix(in srgb, var(--ink) 22%, transparent)' }} />
+                  </span>
+                  <span className="small mono muted" style={{ textAlign: 'right' }}>{b.total}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="panel">
+          <div className="panel-head"><div><h3>Top denials & actors</h3><div className="sub">Most-denied and most-active in this window</div></div></div>
+          <div className="panel-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div>
+              <div className="input-label">Denials</div>
+              {topDenied.length === 0 ? <span className="small muted">— none —</span> : topDenied.map(d => (
+                <div key={d.label} className="row" style={{ justifyContent: 'space-between', gap: 8, padding: '4px 0' }}>
+                  <span className="small mono ellip" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }} title={d.label}>{(d.label || '—').split('@')[0]}</span>
+                  <Chip tone="err">{d.count}</Chip>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="input-label">Actors</div>
+              {topActors.length === 0 ? <span className="small muted">— none —</span> : topActors.map(d => (
+                <div key={d.label} className="row" style={{ justifyContent: 'space-between', gap: 8, padding: '4px 0' }}>
+                  <span className="small mono ellip" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }} title={d.label}>{(d.label || '—').split('@')[0]}</span>
+                  <Chip>{d.count}</Chip>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Activity (merged into the same page as the overview) ── */}
+      <div ref={logRef} className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', margin: '22px 0 8px', borderTop: '1px solid var(--line)', paddingTop: 18 }}>
+        <div>
+          <h3 style={{ margin: 0 }}>Activity</h3>
           <div className="sub">
             Read-only stream · {inTab.length} {tab}
             {failedCount > 0 && <> · <span style={{ color: "var(--err)" }}>{failedCount} denied / failed</span></>}
@@ -164,8 +512,7 @@ export function AuditPage() {
         </div>
       </div>
 
-      {/* Log-layer tabs (contract D1): Changes = compliance record, Access =
-          request telemetry, Auth = sessions. Uses the existing .seg style. */}
+      {/* Log-layer tabs (contract D1) + Signals (risk only). */}
       <div className="audit-cats" style={{ marginBottom: 8 }}>
         <div className="seg">
           {TAB_META.map(t => (
@@ -216,8 +563,15 @@ export function AuditPage() {
             </span>
           </div>
         )}
-        {!auditError && filtered.length === 0 && (
-          <div style={{ padding: 28 }}><EmptyHint>{auditLoading ? "Loading…" : "No events match."}</EmptyHint></div>
+        {!auditError && tab === 'signals' && riskQ.isError && riskEvents.length === 0 && (
+          <div style={{ padding: 28 }}>
+            <span className="small" style={{ color: "var(--danger, #c0392b)" }}>
+              Failed to load the risk slice — this is a load error, not "no risk". Reload to retry.
+            </span>
+          </div>
+        )}
+        {!auditError && filtered.length === 0 && !(tab === 'signals' && riskQ.isError) && (
+          <div style={{ padding: 28 }}><EmptyHint>{auditLoading || (tab === 'signals' && riskQ.isLoading) ? "Loading…" : "No events match."}</EmptyHint></div>
         )}
         {groups.map(g => (
           <div key={g.day} className="audit-day">
@@ -229,8 +583,10 @@ export function AuditPage() {
               const meta = AUDIT_CATS[e.category] || { label: e.category, icon: "dot" as const };
               const isFail = e.status === "failed" || e.verb === "fail" || e.verb === "deny";
               const open = openId === e.id;
+              const risk = riskOf(e);
               return (
-                <div key={e.id} className={`audit-row ${isFail ? "is-fail" : ""} ${open ? "is-open" : ""}`} onClick={() => setOpenId(open ? null : e.id)}>
+                <div key={e.id} className={`audit-row ${isFail ? "is-fail" : ""} ${open ? "is-open" : ""}`} onClick={() => setOpenId(open ? null : e.id)}
+                     style={risk.level !== 'none' && !isFail ? { boxShadow: `inset 2px 0 0 var(--${risk.tone})` } : undefined}>
                   {/* Time */}
                   <div className="audit-col-time">
                     <div className="mono small" style={{ color: "var(--ink)" }}>{localTime(e.ts) || e.when}</div>
@@ -264,9 +620,10 @@ export function AuditPage() {
                       </span>
                       <Chip tone={verbTone(e.verb)}>{e.verb}</Chip>
                       {e.method && <Method m={e.method} />}
+                      <RiskBadge e={e} />
                     </div>
                     <div className="mono small" style={{ marginTop: 4, color: "var(--ink)" }}>
-                      {e.path || e.target}
+                      {e.changes?.summary || e.path || e.target}
                     </div>
                   </div>
 
@@ -299,16 +656,40 @@ export function AuditPage() {
                   {/* Expanded detail */}
                   {open && (
                     <div className="audit-detail" onClick={ev => ev.stopPropagation()}>
+                      {/* Before → after diff (change events) */}
+                      {e.changes && (e.changes.summary || e.changes.added?.length || e.changes.removed?.length || e.changes.flags?.length || e.changes.fields) && (
+                        <div className="panel" style={{ padding: 12, marginBottom: 10 }}>
+                          {e.changes.summary && <div className="small" style={{ marginBottom: 8 }}>{e.changes.summary}</div>}
+                          {(e.changes.flags?.length ?? 0) > 0 && (
+                            <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                              {e.changes.flags!.map(f => <Chip key={f} tone="err" mono={false}>{RISK_FLAG_LABEL[f] || f}</Chip>)}
+                            </div>
+                          )}
+                          {(e.changes.added?.length ?? 0) > 0 && (
+                            <div className="small" style={{ marginBottom: 4 }}><span className="muted">added</span> {e.changes.added!.map(a => <Chip key={a} tone="ok">+ {a}</Chip>)}</div>
+                          )}
+                          {(e.changes.removed?.length ?? 0) > 0 && (
+                            <div className="small" style={{ marginBottom: 4 }}><span className="muted">removed</span> {e.changes.removed!.map(a => <Chip key={a} tone="err">− {a}</Chip>)}</div>
+                          )}
+                          {e.changes.fields && Object.entries(e.changes.fields).map(([k, v]) => (
+                            <div key={k} className="small mono" style={{ marginTop: 2 }}>
+                              <span className="muted">{k}</span> {String(v.from ?? '∅')} → {String(v.to ?? '∅')}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div className="audit-detail-grid">
                         <div><div className="muted small">Event ID</div><div className="mono small">{e.id}</div></div>
                         <div><div className="muted small">Timestamp</div><div className="mono small">{e.ts || "—"}</div></div>
                         <div><div className="muted small">Category</div><div className="mono small">{e.category}</div></div>
                         <div><div className="muted small">Action</div><div className="mono small">{e.verb}</div></div>
+                        {e.severity && <div><div className="muted small">Severity</div><div className="mono small" style={{ color: risk.tone ? `var(--${risk.tone})` : undefined }}>{e.severity}</div></div>}
                         {e.method && <div><div className="muted small">HTTP Method</div><div className="mono small"><Method m={e.method} /></div></div>}
                         {e.path && <div><div className="muted small">Path</div><div className="mono small">{e.path}</div></div>}
                         {e.statusCode && <div><div className="muted small">Status Code</div><div className="mono small" style={{ color: `var(--${statusTone(e.statusCode)})` }}>{e.statusCode}</div></div>}
                         {e.responseTimeMs != null && <div><div className="muted small">Response Time</div><div className="mono small">{e.responseTimeMs.toFixed(2)} ms</div></div>}
                         {e.service && <div><div className="muted small">Service</div><div className="mono small">{e.service}</div></div>}
+                        {e.targetEmail && <div><div className="muted small">Target</div><div className="mono small">{e.targetEmail}</div></div>}
                         {e.ip && <div><div className="muted small">IP Address</div><div className="mono small">{e.ip}</div></div>}
                         {e.ua && <div style={{ gridColumn: "span 2" }}><div className="muted small">User Agent</div><div className="mono small">{e.ua}</div></div>}
                         {e.target && e.target !== e.path && <div style={{ gridColumn: "span 2" }}><div className="muted small">Target</div><div className="mono small">{e.target}</div></div>}
@@ -339,7 +720,10 @@ export function AuditPage() {
         <Pagination page={pg.page} pageSize={pg.pageSize} total={filtered.length} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} sizes={[25, 50, 100, 200]} />
       )}
       <div className="small muted" style={{ marginTop: 10, textAlign: "center" }}>
-        Showing {pg.from + 1}–{pg.to} of {filtered.length} events{filtered.length < inTab.length ? ` (${inTab.length} in ${tab})` : ""} · read-only
+        Showing {filtered.length === 0 ? 0 : pg.from + 1}–{Math.min(pg.to, filtered.length)} of {filtered.length} events{filtered.length < inTab.length ? ` (${inTab.length} in ${tab})` : ""} · read-only
+      </div>
+      <div className="small muted" style={{ marginTop: 6, textAlign: "center", opacity: 0.7 }}>
+        Retention is bounded by the audit stream cap and is not tamper-evident (Redis-only store). A durable/WORM store is a documented upgrade path.
       </div>
     </>
   );

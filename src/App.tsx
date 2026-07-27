@@ -13,6 +13,7 @@ import { ServicesPage, ServiceDrawer } from './pages/Services';
 import { OrganizationsPage } from './pages/Organizations';
 import { GrantAccess } from './pages/GrantAccess';
 import { AuditPage } from './pages/Audit';
+import { AccessReviewPage } from './pages/AccessReview';
 import { SettingsPage } from './pages/Settings';
 import { BackupPage } from './pages/Backup';
 import type { PageId } from './api/types';
@@ -34,6 +35,7 @@ const NAV: NavItem[] = [
   { id: "services",  name: "Services",  ico: I.service, section: "Policy",   perms: ["admin:read"] },
   { id: "organizations", name: "Organizations", ico: I.globe, section: "Policy", perms: ["admin:read"] },
   { id: "audit",     name: "Audit log", ico: I.audit,   section: "Changes",  perms: ["admin:read"] },
+  { id: "accessreview", name: "Access review", ico: I.shield, section: "Changes", perms: ["admin:read"] },
   // Backup tab only appears when the chart enabled backup (see filter below).
   { id: "backup",    name: "Backup",    ico: I.box,     section: "Changes",  perms: ["admin:read"] },
   { id: "settings",  name: "Settings",  ico: I.cog,     section: "Changes",  perms: [] },
@@ -456,6 +458,7 @@ function AppShell() {
             {(page === "services" || page === "roles" || page === "routes" || page === "rules") && <ServicesPage />}
             {page === "organizations" && <OrganizationsPage />}
             {page === "audit" && <AuditPage />}
+            {page === "accessreview" && <AccessReviewPage />}
             {page === "backup" && <BackupPage />}
             {page === "settings" && <SettingsPage />}
             {page === "orgadmin" && <OrgAdminPage />}

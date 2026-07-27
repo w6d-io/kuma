@@ -105,10 +105,11 @@ export function jinbeRuleToUi(r: JinbeAccessRule): AccessRule {
     match: { url: r.match.url, methods: r.match.methods },
     authenticators: r.authenticators.map(a => a.handler),
     authorizer: r.authorizer.handler,
-    opaUrl: typeof r.authorizer.config === 'object' && r.authorizer.config !== null
-      ? (r.authorizer.config as Record<string, string>).remote_json_url || undefined
-      : undefined,
     mutators: r.mutators.map(m => m.handler),
+    // Error handlers flattened to their names for the list/pipeline view. The
+    // editor reads/writes the full config off `raw` (below) — this is display
+    // only. Rules created before the feature have no `errors` → [].
+    errors: (r.errors ?? []).map(e => e.handler),
     upstream: r.upstream?.url,
     stripPath: r.upstream?.strip_path,
     raw: r,
@@ -137,15 +138,20 @@ export function normalizeAuditEvents(events: any[]): AuditEvent[] {
           category:       e.category || 'system',
           verb:           e.verb || 'unknown',
           target:         e.target || '',
+          targetId:       e.targetId,
+          targetEmail:    e.targetEmail,
           status:         e.result === 'applied' ? 'applied' : e.result === 'ok' ? undefined : e.result,
           service:        e.service,
           ip:             e.ip,
           ua:             e.ua,
           reason:         e.reason,
+          mfa:            typeof e.mfa === 'boolean' ? e.mfa : undefined,
           method:         e.method,
           path:           e.path,
           statusCode:     e.statusCode,
           responseTimeMs: e.responseTimeMs,
+          severity:       e.severity,
+          changes:        e.changes,
         };
       }
       // Old format: { id, event: { type, timestamp, actor: JSON, details: JSON } }
@@ -184,9 +190,10 @@ export function normalizeAuditEvents(events: any[]): AuditEvent[] {
  * transforms→client import cycle.
  */
 export async function fetchAuditEvents(client: {
-  getAuditEvents: (p?: { limit?: number }) => Promise<{ events?: any[] }>;
+  getAuditEvents: (p?: { limit?: number; kind?: string }) => Promise<{ events?: any[] }>;
   getHistory: () => Promise<any[]>;
 }): Promise<AuditEvent[]> {
+  const clean = (arr: any[] | undefined) => (arr || []).filter((e: any) => e && Object.keys(e).length > 0);
   let events: any[] = [];
   // Track whether EITHER source responded. A swallowed total failure used to
   // return [], which is indistinguishable from a genuinely empty log — an
@@ -196,11 +203,36 @@ export async function fetchAuditEvents(client: {
   // valid empty result (no throw). See audit finding #6.
   let anyOk = false;
   let lastErr: unknown;
-  try {
-    const raw = await client.getAuditEvents({ limit: 200 });
-    events = (raw.events || []).filter((e: any) => e && Object.keys(e).length > 0);
+
+  // Two windows in parallel: the mixed newest-200 (feeds Access/Auth/Signals)
+  // AND a dedicated kind=change window. Access telemetry is high-volume and would
+  // otherwise crowd the compliance record (Changes) out of a single shared 200-row
+  // fetch — leaving the Changes tab looking empty even though those events are
+  // still retained in Redis. The server over-fetches when filtering by kind, so
+  // the change window digs past the access noise. Merge + dedupe by stream id.
+  const [mixed, changes] = await Promise.allSettled([
+    client.getAuditEvents({ limit: 200 }),
+    client.getAuditEvents({ kind: 'change', limit: 200 }),
+  ]);
+  if (mixed.status === 'fulfilled') { events = clean(mixed.value.events); anyOk = true; }
+  else lastErr = mixed.reason;
+  if (changes.status === 'fulfilled') {
     anyOk = true;
-  } catch (e) { lastErr = e; /* enriched endpoint may not exist — try legacy */ }
+    const seen = new Set(events.map((e: any) => e.id));
+    for (const e of clean(changes.value.events)) if (e.id && !seen.has(e.id)) events.push(e);
+  } else lastErr = changes.reason;
+
+  // Re-sort the merged set newest-first by stream id (`<ms>-<seq>`); normalize
+  // preserves order and the UI groups/paginates on it.
+  if (events.length > 1) {
+    const idKey = (id: unknown): [number, number] => {
+      const [ms, seq] = String(id ?? '').split('-');
+      return [Number(ms) || 0, Number(seq) || 0];
+    };
+    events.sort((a, b) => { const [am, asq] = idKey(a.id), [bm, bsq] = idKey(b.id); return bm - am || bsq - asq; });
+  }
+
+  // Legacy fallback: only if the enriched endpoint gave us nothing at all.
   if (events.length === 0) {
     try {
       const commits = await client.getHistory();

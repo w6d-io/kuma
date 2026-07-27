@@ -104,7 +104,7 @@ export function GroupDrawer() {
 
   if (!groupDrawer) return null;
   const services = state.services.map(s => s.name);
-  const validName = /^[a-z0-9_]+$/.test(name);
+  const validName = /^[a-z0-9_-]+$/.test(name);
   const isSystem = !!(isEdit && groupDrawer.name && state.groupsMeta?.[groupDrawer.name]?.system);
 
   const toggle = (svc: string, role: string) => {
@@ -160,7 +160,7 @@ export function GroupDrawer() {
       <div className="mb-12">
         <label className="input-label">Group name</label>
         <input className="input mono" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. qa, security_reviewers" disabled={isEdit} />
-        <div className="input-hint">{name && !validName ? <span style={{ color: "var(--err)" }}>Must match ^[a-z0-9_]+$</span> : "Lowercase, alphanumeric and underscores."}</div>
+        <div className="input-hint">{name && !validName ? <span style={{ color: "var(--err)" }}>Only lowercase letters, numbers, underscores and hyphens.</span> : "Lowercase, alphanumeric, underscores and hyphens."}</div>
       </div>
       {/* Empty-mapping warning. With PUT-replace semantics on the backend,
           saving with no roles wipes all of the group's permissions. Surface

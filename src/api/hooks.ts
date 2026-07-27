@@ -1,9 +1,9 @@
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useEffect } from 'react';
 import { api, API_BASE } from './client';
-import type { ImportSource, ImportOptions } from './client';
+import type { ImportSource, ImportOptions, AuditEventFilters } from './client';
 import type { RolesMap, RouteMapsMap, AuditEvent, User } from './types';
-import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents } from './transforms';
+import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents, normalizeAuditEvents } from './transforms';
 import { cachePatch } from './mutations';
 
 // Directory page size. 100 (not the old 1000) keeps each round trip — and the
@@ -294,10 +294,63 @@ export function useAccessRules() {
   });
 }
 
+// Enabled Oathkeeper handler catalog (authenticators/authorizers/mutators/error
+// handlers) + their field descriptors. Drives the Gateway tab's handler pickers
+// and guided config forms. Effectively static within a session (it mirrors the
+// gateway config), so it shares the long config staleTime.
+export function useOathkeeperHandlers() {
+  return useQuery({
+    queryKey: ['oathkeeper-handlers'],
+    queryFn: () => api.getOathkeeperHandlers(),
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
 export function useAudit() {
   return useQuery<AuditEvent[]>({
     queryKey: ['audit'],
     queryFn: () => fetchAuditEvents(api),
+  });
+}
+
+// Filtered audit slice (per-service / per-user trails, risk hero, Signals tab).
+// Keyed UNDER ['audit', …] so a realtime `security-signal` (which invalidates
+// the ['audit'] prefix) refetches these too. Fail-closed: react-query's isError
+// distinguishes a load failure from a genuinely empty slice (empty ≠ error).
+export function useAuditEvents(filters: AuditEventFilters, enabled = true) {
+  // Stable key: a sorted, JSON signature of the filter set.
+  const signature = JSON.stringify(
+    Object.fromEntries(Object.entries(filters).filter(([, v]) => v != null && v !== '').sort()),
+  );
+  return useQuery<AuditEvent[]>({
+    queryKey: ['audit', 'events', signature],
+    queryFn: async () => {
+      const raw = await api.getAuditEvents(filters);
+      return normalizeAuditEvents((raw.events || []).filter(e => e && Object.keys(e).length > 0));
+    },
+    enabled,
+    staleTime: 15_000,
+  });
+}
+
+// Windowed summary (Overview band + analysis). Server-derived from the shared
+// stream (contract A6). Kept under ['audit', …] for the same realtime bust.
+export function useAuditSummary(window = '24h') {
+  return useQuery({
+    queryKey: ['audit', 'summary', window],
+    queryFn: () => api.getAuditSummary(window),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+}
+
+// Access review ("who can do anything"). SWR-cached server-side; on the client a
+// realtime 'change' invalidates ['access-review'] (see REALTIME_KEYS).
+export function useAccessReview() {
+  return useQuery({
+    queryKey: ['access-review'],
+    queryFn: () => api.getAccessReview(),
+    staleTime: 60_000,
   });
 }
 
@@ -348,6 +401,7 @@ const REALTIME_KEYS: readonly (readonly string[])[] = [
   ['stats'], ['users'], ['user-search'], ['groups'], ['groups-map'],
   ['services'], ['all-roles'], ['all-routes'], ['access-rules'],
   ['org-users'], ['my-orgs'], ['org-service-map'], ['org-admin-map'], ['assignable-groups'], ['audit'],
+  ['access-review'],
 ];
 
 // True real-time: subscribe to the server's SSE change stream (GET
@@ -364,10 +418,18 @@ export function useRealtime(enabled: boolean) {
     const onChange = () => {
       for (const key of REALTIME_KEYS) qc.invalidateQueries({ queryKey: key as string[] });
     };
+    // Security-signal channel ([P2-2]): the wire carries NO detail ({type, at}
+    // only, no PII). On receipt we just refetch the admin-gated audit slices —
+    // the ['audit'] prefix covers the risk hero + Signals tab + full log.
+    const onSecuritySignal = () => {
+      qc.invalidateQueries({ queryKey: ['audit'] });
+      qc.invalidateQueries({ queryKey: ['access-review'] });
+    };
     const connect = () => {
       es?.close();
       es = new EventSource(`${API_BASE}/admin/events`, { withCredentials: true });
       es.addEventListener('change', onChange);
+      es.addEventListener('security-signal', onSecuritySignal);
       // A 200 stream that drops auto-reconnects natively; a failed handshake
       // (e.g. server down at load) does NOT, so we re-arm on focus below.
       es.onerror = () => {};
@@ -382,6 +444,7 @@ export function useRealtime(enabled: boolean) {
     return () => {
       document.removeEventListener('visibilitychange', onVis);
       es?.removeEventListener('change', onChange);
+      es?.removeEventListener('security-signal', onSecuritySignal);
       es?.close();
     };
   }, [enabled, qc]);
