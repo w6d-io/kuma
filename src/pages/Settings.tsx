@@ -12,8 +12,20 @@ import { ExportBundleModal } from '../components/ExportBundleModal';
 interface PendingBundle {
   bundle: unknown;
   fileName: string;
-  counts: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number };
+  counts: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number; orgServiceMap: number };
 }
+
+// Section picker for import — mirrors ExportBundleModal. Keeping ALL selected is
+// a full 1:1 restore (prunes anything not in the file); deselecting switches to
+// a selective override/add that removes nothing outside the chosen sections.
+const IMPORT_SECTIONS: { id: keyof PendingBundle['counts']; label: string }[] = [
+  { id: 'services', label: 'Services' },
+  { id: 'groups', label: 'Groups' },
+  { id: 'roles', label: 'Roles' },
+  { id: 'routeMaps', label: 'Route maps' },
+  { id: 'oathkeeperRules', label: 'Oathkeeper rules' },
+  { id: 'orgServiceMap', label: 'Org → service map' },
+];
 
 export function SettingsPage() {
   const { state, pushToast, refetch } = useApp();
@@ -27,6 +39,7 @@ export function SettingsPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<BundleImportResult | null>(null);
   const [pending, setPending] = useState<PendingBundle | null>(null);
+  const [importSections, setImportSections] = useState<string[]>([]);
 
   // ─── Org → Service bundle map (cached Query hook, PERF-4; optimistic PUT) ───
   const { data: fetchedMappings, isLoading: mapLoading } = useOrgServiceMap();
@@ -98,30 +111,42 @@ export function SettingsPage() {
         return;
       }
       const rbac = bundle.rbac;
-      setPending({
-        bundle,
-        fileName,
-        counts: {
-          services:        Array.isArray(rbac.services) ? rbac.services.length : Object.keys(rbac.services ?? {}).length,
-          groups:          Object.keys(rbac.groups ?? {}).length,
-          roles:           Object.keys(rbac.roles ?? {}).length,
-          routeMaps:       Object.keys(rbac.routeMaps ?? {}).length,
-          oathkeeperRules: Array.isArray(rbac.oathkeeperRules) ? rbac.oathkeeperRules.length : 0,
-        },
-      });
+      const counts = {
+        services:        Array.isArray(rbac.services) ? rbac.services.length : Object.keys(rbac.services ?? {}).length,
+        groups:          Object.keys(rbac.groups ?? {}).length,
+        roles:           Object.keys(rbac.roles ?? {}).length,
+        routeMaps:       Object.keys(rbac.routeMaps ?? {}).length,
+        oathkeeperRules: Array.isArray(rbac.oathkeeperRules) ? rbac.oathkeeperRules.length : 0,
+        orgServiceMap:   Object.keys(rbac.orgServiceMap ?? {}).length,
+      };
+      setPending({ bundle, fileName, counts });
+      // Default to a full restore: every section available in the file is selected.
+      setImportSections(IMPORT_SECTIONS.filter(s => s.id !== 'orgServiceMap' || counts.orgServiceMap > 0).map(s => s.id));
     } catch (err: any) {
       pushToast(err.message || 'Could not read bundle file', { err: true, sub: 'Not valid JSON?' });
     }
   }
 
+  // Sections offered for THIS file — orgServiceMap only when the file carries one.
+  const availableSections = pending
+    ? IMPORT_SECTIONS.filter(s => s.id !== 'orgServiceMap' || pending.counts.orgServiceMap > 0)
+    : [];
+  // Keeping every available section selected = full 1:1 restore (send no sections
+  // param so the backend prunes); any deselection = selective override/add.
+  const isFullRestore = pending != null && importSections.length === availableSections.length;
+
   async function confirmImport() {
-    if (!pending) return;
+    if (!pending || importSections.length === 0) return;
     setImporting(true);
     try {
-      const res = await api.importBundle(pending.bundle);
+      const res = await api.importBundle(pending.bundle, isFullRestore ? undefined : importSections);
       setImportResult(res.imported);
       const r = res.imported.rbac;
-      pushToast('Bundle imported', { sub: `${r.services} services, ${r.groups} groups, ${r.roles} roles` });
+      pushToast(isFullRestore ? 'Bundle restored' : 'Sections imported', {
+        sub: isFullRestore
+          ? `${r.services} services, ${r.groups} groups, ${r.roles} roles`
+          : `${importSections.length} section${importSections.length === 1 ? '' : 's'} applied`,
+      });
       refetch();
     } catch (e: any) {
       pushToast(e.message || 'Import failed', { err: true });
@@ -253,7 +278,7 @@ export function SettingsPage() {
         )}
       </div>
 
-      {/* Confirm before a full-snapshot overwrite (UX-8). */}
+      {/* Confirm before import (UX-8) — pick which sections to apply. */}
       <Modal
         open={!!pending}
         onClose={() => { if (!importing) setPending(null); }}
@@ -262,23 +287,55 @@ export function SettingsPage() {
         footer={
           <>
             <button className="btn" onClick={() => setPending(null)} disabled={importing}>Cancel</button>
-            <button className="btn primary" onClick={confirmImport} disabled={importing}>
-              {importing ? 'Importing…' : 'Overwrite RBAC config'}
+            <button className="btn primary" onClick={confirmImport} disabled={importing || importSections.length === 0}>
+              {importing
+                ? 'Importing…'
+                : isFullRestore
+                  ? 'Restore full config'
+                  : `Import ${importSections.length} section${importSections.length === 1 ? '' : 's'}`}
             </button>
           </>
         }
       >
         {pending && (
           <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div className="panel" style={{ padding: 10, borderColor: 'var(--warn, #d97706)', color: 'var(--warn, #d97706)' }}>
-              <div style={{ fontWeight: 600, marginBottom: 2 }}>This replaces your RBAC configuration</div>
-              <div className="small">Services, groups, roles, route maps and Oathkeeper rules will be overwritten from <span className="mono">{pending.fileName}</span>. This cannot be undone.</div>
+            <div
+              className="panel"
+              style={{ padding: 10, borderColor: isFullRestore ? 'var(--warn, #d97706)' : 'var(--line)', color: isFullRestore ? 'var(--warn, #d97706)' : 'var(--ink-2)' }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                {isFullRestore ? 'This replaces your entire RBAC configuration' : 'Selective import — nothing is removed'}
+              </div>
+              <div className="small">
+                {isFullRestore
+                  ? <>Every section is applied from <span className="mono">{pending.fileName}</span> and anything not in the file (extra services, groups, rules) is removed. This cannot be undone.</>
+                  : <>Only the checked sections are overwritten or added from <span className="mono">{pending.fileName}</span>. Unchecked sections, and anything not in the file, are left untouched.</>}
+              </div>
             </div>
             <div>
-              <div className="small muted" style={{ marginBottom: 4 }}>Bundle contents</div>
-              <div className="mono" style={{ fontSize: 12 }}>
-                {pending.counts.services} services · {pending.counts.groups} groups · {pending.counts.roles} role sets · {pending.counts.routeMaps} route maps · {pending.counts.oathkeeperRules} Oathkeeper rules
-              </div>
+              <div className="small muted" style={{ marginBottom: 4 }}>Choose what to import</div>
+              <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  disabled={importing}
+                  checked={importSections.length === availableSections.length}
+                  ref={(el) => { if (el) el.indeterminate = importSections.length > 0 && importSections.length < availableSections.length; }}
+                  onChange={(e) => setImportSections(e.target.checked ? availableSections.map(s => s.id) : [])}
+                />
+                Select all (full restore)
+              </label>
+              {availableSections.map((s) => (
+                <label key={s.id} className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+                  <input
+                    type="checkbox"
+                    disabled={importing}
+                    checked={importSections.includes(s.id)}
+                    onChange={(e) => setImportSections((cur) => (e.target.checked ? [...cur, s.id] : cur.filter((x) => x !== s.id)))}
+                  />
+                  <span style={{ flex: 1 }}>{s.label}</span>
+                  <span className="mono muted" style={{ fontSize: 11 }}>{pending.counts[s.id]}</span>
+                </label>
+              ))}
             </div>
           </div>
         )}
