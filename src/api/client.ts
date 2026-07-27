@@ -1,6 +1,8 @@
 // API_BASE injected at container start via envsubst (see Dockerfile).
 // Falls back to relative /api when Oathkeeper proxies /api on the same domain.
 // Detect un-substituted envsubst placeholder (e.g. "${API_BASE}") and treat as empty.
+import type { AuditSummary, AccessReview } from './types';
+
 const _rawBase: string = (window as any).__API_BASE__ ?? '';
 const BASE = (_rawBase.startsWith('${') ? '' : _rawBase).replace(/\/$/, '') || '/api';
 
@@ -188,19 +190,76 @@ export const api = {
   deleteAccessRule: (id: string) =>
     request<void>(`/admin/rbac/access-rules/${id}`, { method: 'DELETE' }),
 
+  // ─── Oathkeeper handler catalog (enabled handlers + field descriptors) ───
+  // Returns ONLY the handlers actually registered/enabled in the Oathkeeper
+  // config (single source of truth), each with a static field descriptor that
+  // drives the guided config form in the Gateway tab. Fail-closed: the UI must
+  // only ever offer handlers this endpoint returns.
+  getOathkeeperHandlers: () =>
+    request<OathkeeperHandlerCatalog>(`/admin/rbac/oathkeeper/handlers`),
+
   // ─── History (git commits) ───
   getHistory: () =>
     request<{ commits: JinbeCommit[] }>(`/admin/rbac/history`).then(r => r.commits),
 
   // ─── Audit stream ───
-  getAuditEvents: (params?: { limit?: number; category?: string; since?: string }) => {
+  // Additive, backward-compatible filters (contract A6). `risk: 'high'` is a
+  // SERVER-authoritative gate over emit-time severity ([P2-3]) — it spans the
+  // whole retained history, not the 200-row window the client sees.
+  getAuditEvents: (params?: AuditEventFilters) => {
     const qs = new URLSearchParams()
     if (params?.limit)    qs.set('limit',    String(params.limit))
     if (params?.category) qs.set('category', params.category)
     if (params?.since)    qs.set('since',    params.since)
+    if (params?.actor)    qs.set('actor',    params.actor)
+    if (params?.service)  qs.set('service',  params.service)
+    if (params?.target)   qs.set('target',   params.target)
+    if (params?.result)   qs.set('result',   params.result)
+    if (params?.verb)     qs.set('verb',     params.verb)
+    if (params?.kind)     qs.set('kind',     params.kind)
+    if (params?.from)     qs.set('from',     params.from)
+    if (params?.to)       qs.set('to',       params.to)
+    if (params?.q)        qs.set('q',        params.q)
+    if (params?.cursor)   qs.set('cursor',   params.cursor)
+    if (params?.risk)     qs.set('risk',     params.risk)
     const q = qs.toString()
-    return request<{ events: AuditStreamEvent[]; total: number }>(`/admin/audit/events${q ? `?${q}` : ''}`)
+    return request<{ events: AuditStreamEvent[]; total: number; nextCursor?: string }>(`/admin/audit/events${q ? `?${q}` : ''}`)
   },
+
+  // Windowed, server-derived stats (contract A6, scanned from the shared stream,
+  // NOT per-replica Prometheus). `window` e.g. "24h" | "7d".
+  getAuditSummary: (window?: string) => {
+    const qs = window ? `?window=${encodeURIComponent(window)}` : ''
+    return request<AuditSummary>(`/admin/audit/summary${qs}`)
+  },
+
+  // Server-side streamed export of a filtered range (also self-audits the export).
+  // Falls back-compatibly to the client-side CSV in Audit.tsx if this 404s.
+  exportAudit: async (params?: AuditEventFilters & { format?: 'csv' | 'ndjson' }): Promise<void> => {
+    const qs = new URLSearchParams()
+    const p = params || {}
+    for (const k of ['category','since','actor','service','target','result','verb','kind','from','to','q','risk','format'] as const) {
+      const v = (p as Record<string, unknown>)[k]
+      if (v) qs.set(k, String(v))
+    }
+    const q = qs.toString()
+    const res = await fetch(`${BASE}/admin/audit/export${q ? `?${q}` : ''}`, { credentials: 'include' })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw Object.assign(new Error(body.message || `HTTP ${res.status}`), { status: res.status })
+    }
+    const blob = await res.blob()
+    const ext = (p.format || 'csv')
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `audit-export-${new Date().toISOString().slice(0, 10)}.${ext}`
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+
+  // ─── Access review (Part B — "who can do anything") ───
+  getAccessReview: () => request<AccessReview>('/admin/access-review'),
 
   // ─── Bundle export / import / S3 backups ───
   exportBundle: async (sections?: string[]): Promise<void> => {
@@ -221,11 +280,15 @@ export const api = {
     URL.revokeObjectURL(url);
   },
 
-  importBundle: (bundle: unknown) =>
-    request<{ success: boolean; imported: BundleImportResult }>('/admin/rbac/bundle/import', {
+  // `sections` (optional) applies only the chosen parts of the uploaded (full)
+  // snapshot — override/add, no prune. Omitted → full 1:1 restore.
+  importBundle: (bundle: unknown, sections?: string[]) => {
+    const q = sections && sections.length ? `?sections=${sections.join(',')}` : '';
+    return request<{ success: boolean; imported: BundleImportResult }>(`/admin/rbac/bundle/import${q}`, {
       method: 'POST',
       body: JSON.stringify(bundle),
-    }),
+    });
+  },
 
   // S3 backup snapshots (only meaningful when the chart enabled backup).
   listBackups: () =>
@@ -455,6 +518,45 @@ export interface JinbeAccessRule {
   authenticators: { handler: string; config?: unknown }[];
   authorizer: { handler: string; config?: unknown };
   mutators: { handler: string; config?: unknown }[];
+  /**
+   * Error handlers (what a request sees when authn/authz fails — e.g. redirect
+   * to login vs a JSON 401). Optional for back-compat: rules created before the
+   * feature have no `errors` and stay valid.
+   */
+  errors?: { handler: string; config?: unknown }[];
+}
+
+// ─── Oathkeeper handler catalog ───
+// A single field descriptor drives one guided input in the per-stage editor.
+// `type` selects the control; the values are otherwise data-driven (the client
+// renders whatever fields the endpoint returns — no hardcoded field lists).
+export interface FieldDescriptor {
+  key: string;
+  label: string;
+  type: 'string' | 'url' | 'bool' | 'textarea' | 'kv' | 'list' | 'json';
+  required?: boolean;
+  placeholder?: string;
+  help?: string;
+}
+
+// One enabled Oathkeeper handler + its config shape. `hasFreeformConfig` means
+// the handler accepts arbitrary extra config beyond `fields` (surfaced via the
+// raw-JSON escape hatch).
+export interface HandlerDescriptor {
+  handler: string;
+  label: string;
+  description: string;
+  hasFreeformConfig: boolean;
+  fields: FieldDescriptor[];
+}
+
+// The enabled handlers, grouped by Oathkeeper stage. Each list contains ONLY
+// handlers registered in the gateway config (fail-closed source of truth).
+export interface OathkeeperHandlerCatalog {
+  authenticators: HandlerDescriptor[];
+  authorizers: HandlerDescriptor[];
+  mutators: HandlerDescriptor[];
+  errorHandlers: HandlerDescriptor[];
 }
 
 export interface JinbeCommit {
@@ -497,6 +599,25 @@ export interface BackupList {
   backups: BackupSnapshot[];
 }
 
+// Filters accepted by GET /admin/audit/events (all additive/optional).
+export interface AuditEventFilters {
+  limit?: number;
+  category?: string;
+  since?: string;
+  actor?: string;
+  service?: string;
+  target?: string;
+  result?: string;
+  verb?: string;
+  kind?: string;
+  from?: string;
+  to?: string;
+  q?: string;
+  cursor?: string;
+  /** 'high' → only emit-time high-severity events (server-authoritative). */
+  risk?: string;
+}
+
 export interface AuditStreamEvent {
   id:             string;
   ts:             string;
@@ -506,6 +627,8 @@ export interface AuditStreamEvent {
   category:       string;
   verb:           string;
   target:         string;
+  targetId?:      string;
+  targetEmail?:   string;
   result:         string;
   who:            string;
   actorName?:     string;
@@ -517,4 +640,7 @@ export interface AuditStreamEvent {
   path?:          string;
   statusCode?:    number;
   responseTimeMs?: number;
+  mfa?:           boolean;
+  severity?:      string;
+  changes?:       import('./types').AuditChanges;
 }

@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
-import { Chip, Drawer, AccessLevel } from '../components/ui/Primitives';
+import { ServiceFavicon } from '../components/ServiceFavicon';
+import { Chip, Avatar, Drawer, AccessLevel, EmptyHint } from '../components/ui/Primitives';
+import { serviceGatewayPosture } from '../components/HandlerStageEditor';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
-import { useStats } from '../api/hooks';
+import { useStats, useAuditEvents } from '../api/hooks';
+import { RiskBadge, riskOf } from './Audit';
 import { RolesPage } from './Roles';
 import { RoutesPage } from './Routes';
 import { RulesPage } from './Rules';
@@ -33,7 +36,7 @@ function svcSummary(state: ReturnType<typeof useApp>['state'], name: string, per
 // service↔role↔route↔gateway relationship is a single drill-down instead of
 // four scattered top-level tabs sharing a hidden active-service.
 export function ServicesPage() {
-  const { state, setServiceDrawer, activeService, setActiveService, isLoading, apiError } = useApp();
+  const { state, setServiceDrawer, activeService, setActiveService, isLoading, apiError, page } = useApp();
   const { data: stats } = useStats();
   const names = state.services.map(s => s.name);
   // Gateway rules whose (re-associated) service isn't in the registry — infra /
@@ -45,6 +48,15 @@ export function ServicesPage() {
   const service = state.services.find(s => s.name === sel);
   const [tab, setTab] = useState<SvcTab>('overview');
   const [q, setQ] = useState("");
+
+  // The `roles`/`routes`/`rules` page aliases render this workspace; honor them
+  // as sub-tab deep-links (e.g. the gateway editor's "Manage roles" / "See
+  // routes"). Only fires on a page change, so manual sub-tab clicks stick.
+  useEffect(() => {
+    if (page === 'roles') setTab('roles');
+    else if (page === 'routes') setTab('routes');
+    else if (page === 'rules') setTab('gateway');
+  }, [page]);
 
   const isGlobal = service?.name === 'global';
   const effectiveTab: SvcTab = isGlobal && (tab === 'routes' || tab === 'gateway') ? 'overview' : tab;
@@ -85,9 +97,13 @@ export function ServicesPage() {
             const renderRow = (s: typeof filtered[number]) => {
               const sm = svcSummary(state, s.name, stats?.perService);
               const on = s.name === sel;
+              // Posture at a glance — aggregated from the service's gateway rules
+              // (skipped for the virtual `global` service, which has no gateway).
+              const svcRules = state.accessRules.filter(r => r.service === s.name);
+              const posture = s.name === 'global' ? null : serviceGatewayPosture(svcRules.map(r => ({ authenticators: r.authenticators, authorizer: r.authorizer })));
               return (
                 <button key={s.name} onClick={() => setActiveService(s.name)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderBottom: '1px solid var(--line)', background: on ? 'var(--panel-2)' : 'transparent', color: 'var(--ink)', cursor: 'pointer', display: 'flex', gap: 9, alignItems: 'center' }}>
-                  <span style={{ color: 'var(--ink-3)', flexShrink: 0, display: 'grid', placeItems: 'center', width: 15, height: 15 }}>{s.name === 'global' ? I.globe : I.box}</span>
+                  <span style={{ color: 'var(--ink-3)', flexShrink: 0, display: 'grid', placeItems: 'center', width: 15, height: 15 }}>{s.name === 'global' ? I.globe : s.system ? I.box : <ServiceFavicon name={s.name} size={15} />}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <span className="mono" style={{ fontWeight: on ? 600 : 500, fontSize: 12.5 }}>{s.name}</span>
                     <div className="small muted mt-4">
@@ -95,6 +111,7 @@ export function ServicesPage() {
                       {sm.openRoutes > 0 && <> · <span style={{ color: 'var(--warn)' }} title={`${sm.openRoutes} route${sm.openRoutes !== 1 ? 's' : ''} reachable with no permission (public)`}>{sm.openRoutes} public</span></>}
                     </div>
                   </div>
+                  {posture && <Chip tone={posture.tone} mono={false} title={`Gateway protection across this service's ${svcRules.length} rule${svcRules.length !== 1 ? 's' : ''}`}>{posture.label}</Chip>}
                 </button>
               );
             };
@@ -137,6 +154,7 @@ export function ServicesPage() {
               <div className="panel-head" style={{ marginBottom: 12 }}>
                 <div style={{ minWidth: 0 }}>
                   <h3 className="row" style={{ gap: 8 }}>
+                    {!isGlobal && !service.system && <ServiceFavicon name={service.name} size={18} />}
                     <span className="mono">{service.name}</span>
                     {isGlobal && <Chip tone="info">virtual</Chip>}
                     {service.system && <Chip tone="info" title="Bootstrap-protected — cannot be deleted">🔒 system</Chip>}
@@ -157,7 +175,10 @@ export function ServicesPage() {
                 })}
               </div>
 
-              {effectiveTab === 'overview' && <ServiceOverview name={service.name} onEdit={() => setServiceDrawer({ mode: 'edit', serviceName: service.name })} />}
+              {effectiveTab === 'overview' && <>
+                <ServiceOverview name={service.name} onEdit={() => setServiceDrawer({ mode: 'edit', serviceName: service.name })} />
+                {!isGlobal && <ServiceActivity name={service.name} />}
+              </>}
               {effectiveTab === 'health' && <ServiceHealth name={service.name} />}
               {effectiveTab === 'roles' && <RolesPage svc={service.name} />}
               {effectiveTab === 'routes' && !isGlobal && <RoutesPage svc={service.name} />}
@@ -191,6 +212,11 @@ function ServiceOverview({ name, onEdit }: { name: string; onEdit: () => void })
             ? <><span style={{ color: 'var(--warn)' }}>⚠ {sm.openRoutes} public route{sm.openRoutes !== 1 ? 's' : ''}</span> — reachable with no permission.</>
             : sm.routes > 0 ? 'Every route requires a permission.' : 'No routes defined yet.'}</div>
           <div className="small muted">Reached via <b>{sm.groups}</b> group{sm.groups !== 1 ? 's' : ''} → <b>{sm.users}</b> user{sm.users !== 1 ? 's' : ''}.</div>
+          {(() => {
+            const rules = state.accessRules.filter(r => r.service === name);
+            const main = rules.find(r => r.id === name) ?? rules[0];
+            return main?.match?.url ? <div className="small muted">Public path: <a className="mono" href={main.match.url.replace(/<[^>]*>/g, '')} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{main.match.url}</a></div> : null;
+          })()}
           {name !== 'global' && !state.services.find(s => s.name === name)?.system && (
             <div className="row" style={{ gap: 8, marginTop: 4 }}>
               <button className="btn ghost sm" onClick={onEdit}><span style={{ width: 13, height: 13, display: 'grid', placeItems: 'center' }}>{I.edit}</span> Edit service</button>
@@ -247,6 +273,94 @@ function ServiceHealth({ name }: { name: string }) {
   );
 }
 
+// Per-service Activity trail (Part D). Sources the service's own audit fan-out
+// key via GET /audit/events?service=<name>: posture-now + last-change sentence,
+// change history, who-touched-it, and access denials at the service.
+function ServiceActivity({ name }: { name: string }) {
+  const { state } = useApp();
+  const q = useAuditEvents({ service: name, limit: 100 });
+  const events = q.data ?? [];
+
+  const svcRules = state.accessRules.filter(r => r.service === name);
+  const posture = serviceGatewayPosture(svcRules.map(r => ({ authenticators: r.authenticators, authorizer: r.authorizer })));
+
+  const changes = events.filter(e => (e.kind || 'change') === 'change' || ['create', 'update', 'delete', 'add', 'revoke'].includes(e.verb));
+  const denials = events.filter(e => e.status === 'failed' || e.verb === 'fail' || e.verb === 'deny');
+  const lastChange = changes[0];
+  const whoTouched = Array.from(
+    events.filter(e => e.who && e.who !== 'system' && e.who !== 'anon')
+      .reduce<Map<string, number>>((m, e) => m.set(e.who, (m.get(e.who) || 0) + 1), new Map())
+      .entries(),
+  ).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+  return (
+    <>
+      {/* Posture-now + last-change sentence */}
+      <div className="panel mb-12">
+        <div className="panel-head">
+          <div><h3>Posture now</h3><div className="sub">Protection and the most recent change</div></div>
+          {posture && <Chip tone={posture.tone} mono={false}>{posture.label}</Chip>}
+        </div>
+        <div className="panel-body col" style={{ gap: 6 }}>
+          <div className="small">
+            {lastChange
+              ? <>Last changed <b>{lastChange.when}</b> by <span className="mono">{lastChange.who || 'system'}</span> — {lastChange.changes?.summary || `${lastChange.verb} ${lastChange.target}`}.</>
+              : q.isLoading ? 'Loading…' : 'No configuration changes recorded in the retained window.'}
+          </div>
+          {denials.length > 0 && <div className="small" style={{ color: 'var(--warn)' }}>⚠ {denials.length} access denial{denials.length === 1 ? '' : 's'} at this service in the window.</div>}
+        </div>
+      </div>
+
+      {/* Who touched it */}
+      {whoTouched.length > 0 && (
+        <div className="panel mb-12">
+          <div className="panel-head"><div><h3>Who touched it</h3><div className="sub">Actors active on this service</div></div></div>
+          <div className="panel-body" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {whoTouched.map(([who, n]) => (
+              <span key={who} className="row" style={{ gap: 6, alignItems: 'center', padding: '4px 8px', border: '1px solid var(--line)', borderRadius: 999 }}>
+                <Avatar email={who} size={18} />
+                <span className="small mono">{who.split('@')[0]}</span>
+                <Chip>{n}</Chip>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Change history */}
+      <div className="panel">
+        <div className="panel-head"><div><h3>Change history</h3><div className="sub">Configuration changes & denials at this service</div></div><Chip>{events.length}</Chip></div>
+        <div style={{ padding: 0 }}>
+          {q.isError ? (
+            <div style={{ padding: 20 }}>
+              <span className="small" style={{ color: 'var(--danger, #c0392b)' }}>Couldn&apos;t load this service&apos;s activity — load error, not "no activity". Reload to retry.</span>
+            </div>
+          ) : events.length === 0 ? (
+            <div style={{ padding: 18 }}><EmptyHint>{q.isLoading ? 'Loading…' : 'No activity recorded for this service.'}</EmptyHint></div>
+          ) : events.map(e => {
+            const isFail = e.status === 'failed' || e.verb === 'fail' || e.verb === 'deny';
+            const risk = riskOf(e);
+            return (
+              <div key={e.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--line)', borderLeft: risk.level !== 'none' ? `2px solid var(--${risk.tone})` : '2px solid transparent' }}>
+                <span className="small muted mono nowrap" style={{ width: 66 }}>{e.when}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <Chip tone={isFail ? 'err' : ''}>{e.verb}</Chip>
+                    <span className="small mono" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.changes?.summary || e.target || e.path}</span>
+                    <RiskBadge e={e} />
+                  </div>
+                  <div className="small muted mono mt-4">{e.who || 'system'}</div>
+                </div>
+                {isFail && <Chip tone="err">{e.verb === 'deny' ? 'denied' : 'failed'}</Chip>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
 export function ServiceDrawer() {
   const { serviceDrawer, setServiceDrawer, state, apiCreateService, apiUpdateService, apiDeleteService, setPage } = useApp();
   const applyChange = useApplyChange();
@@ -289,7 +403,7 @@ export function ServiceDrawer() {
 
   if (!serviceDrawer) return null;
 
-  const validName = /^[a-z0-9_]+$/.test(name) && !state.services.some(s => s.name === name);
+  const validName = /^[a-z0-9_-]+$/.test(name) && !state.services.some(s => s.name === name);
   const validUrl = /^https?:\/\//.test(upstream);
 
   const toggleMethod = (m: string) =>
@@ -359,23 +473,24 @@ export function ServiceDrawer() {
   const sharedFields = (
     <>
       <div className="mb-12">
-        <label className="input-label">Upstream URL *</label>
+        <label className="input-label">Where requests go *</label>
         <input className="input mono" value={upstream} onChange={e => setUpstream(e.target.value)} placeholder="http://service.namespace:8080" />
-        {upstream && !validUrl && <div className="input-hint" style={{ color: "var(--err)" }}>Must start with http:// or https://</div>}
+        <div className="input-hint">{upstream && !validUrl ? <span style={{ color: "var(--err)" }}>Must start with http:// or https://</span> : "The internal address the gateway forwards matching requests to."}</div>
       </div>
       <div className="mb-12">
-        <label className="input-label">Match URL</label>
+        <label className="input-label">Public path <span className="muted">(optional)</span></label>
         <input className="input mono" value={matchUrl} onChange={e => setMatchUrl(e.target.value)} placeholder="<https?://api.example.io/svc/<**>>" />
-        <div className="input-hint">Which request URLs this service handles (regular expression).</div>
+        <div className="input-hint">Which public request URLs reach this service (regular expression). Leave empty to derive it from the address above.</div>
       </div>
       <div className="mb-12">
-        <label className="input-label">Match methods</label>
+        <label className="input-label">Methods</label>
         {methodPicker}
+        <div className="input-hint">HTTP methods this service accepts.</div>
       </div>
       <div className="mb-12">
         <label className="input-label">Strip path <span className="muted">(optional)</span></label>
-        <input className="input mono" value={stripPath} onChange={e => setStripPath(e.target.value)} placeholder="/api/v1 — leave empty to remove" />
-        <div className="input-hint">Path prefix stripped before forwarding — leave empty to remove.</div>
+        <input className="input mono" value={stripPath} onChange={e => setStripPath(e.target.value)} placeholder="/api/v1 — leave empty to keep the full path" />
+        <div className="input-hint">Path prefix removed before forwarding to the service — leave empty to keep the full path.</div>
       </div>
     </>
   );
@@ -454,14 +569,19 @@ export function ServiceDrawer() {
       }
     >
       <div className="mb-12">
-        <label className="input-label">Service name *</label>
+        <label className="input-label">Service ID *</label>
         <input className="input mono" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. reporting" />
-        <div className="input-hint">{name && !validName ? <span style={{ color: "var(--err)" }}>Invalid or already exists</span> : "Lowercase, alphanumeric and underscores."}</div>
+        <div className="input-hint">{name && !validName ? <span style={{ color: "var(--err)" }}>Invalid or already exists</span> : "A short id used everywhere this service is referenced — lowercase letters, numbers, underscores and hyphens."}</div>
       </div>
       {sharedFields}
       <div className="mb-12">
         <label className="input-label">Description</label>
         <input className="input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Short description" />
+      </div>
+      {/* State the security outcome so a non-technical creator knows what they get. */}
+      <div className="panel" style={{ padding: "10px 12px", display: "flex", gap: 8, alignItems: "center" }}>
+        <Chip tone="ok" mono={false}>Protected</Chip>
+        <span className="small muted">Created <b>Protected</b> — only signed-in users with the right permission can reach it. Change this any time in the service's Gateway tab.</span>
       </div>
     </Drawer>
   );

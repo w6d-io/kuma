@@ -47,8 +47,9 @@ export interface AccessRule {
   };
   authenticators: string[];
   authorizer: string;
-  opaUrl?: string;
   mutators: string[];
+  /** Error-handler names (flattened for the list/pipeline view; config on `raw`). */
+  errors?: string[];
   upstream?: string;
   stripPath?: string;
   // The original jinbe rule, kept so an edit can overlay changed fields onto it
@@ -56,6 +57,26 @@ export interface AccessRule {
   // shape alone would drop authenticator/mutator/upstream config). Cast to
   // JinbeAccessRule at the edit site.
   raw?: unknown;
+}
+
+/**
+ * Compact before→after diff envelope (Part A3). Emitted server-side from the
+ * pre/post image of a write. `flags` are the AUTHORITATIVE risk markers ([P2-3])
+ * — the client `riskOf` refines display only, it never gates `?risk=high`.
+ * `summary` is a plain-language sentence describing the change.
+ */
+export interface AuditChanges {
+  resource?: string;
+  id?: string;
+  /** Items added (e.g. new permissions / group members). */
+  added?: string[];
+  /** Items removed. */
+  removed?: string[];
+  /** Scalar field before→after pairs (metadata diffs are key-level, no values). */
+  fields?: Record<string, { from?: unknown; to?: unknown }>;
+  /** opened_to_public | auth_disabled | grants_super_admin | wildcard_permission | … */
+  flags?: string[];
+  summary?: string;
 }
 
 export interface AuditEvent {
@@ -71,6 +92,10 @@ export interface AuditEvent {
   category: string;
   verb: string;
   target: string;
+  /** Structured target id (uuid) + email, so self-grant (actor==target) and the
+   *  per-user "done-to" trail can match reliably (contract P1-4). */
+  targetId?: string;
+  targetEmail?: string;
   status?: string;
   service?: string;
   ip?: string;
@@ -81,6 +106,81 @@ export interface AuditEvent {
   path?: string;
   statusCode?: number;
   responseTimeMs?: number;
+  /** Server-authoritative severity ('critical' | 'warn' | 'info' | 'none' …). */
+  severity?: string;
+  /** Before→after diff envelope for change events. */
+  changes?: AuditChanges;
+}
+
+// ─── Audit summary (Part C / A6 GET /audit/summary) ───
+export interface AuditSeriesPoint { t: string; total: number; failed?: number }
+export interface AuditTopItem { key: string; count: number }
+export interface AuditSummary {
+  /** Echo of the requested window (e.g. "24h", "7d") for honest labelling. */
+  window?: string;
+  total: number;
+  prevTotal?: number;
+  byKind?: Record<string, number>;
+  prevByKind?: Record<string, number>;
+  byCategory?: Record<string, { total: number; failed: number }>;
+  byResult?: Record<string, number>;
+  /** Fraction (0..1) OR percent — the UI normalizes defensively. */
+  failureRate?: number;
+  activeActors?: number;
+  prevActiveActors?: number;
+  series?: AuditSeriesPoint[];
+  topDenied?: AuditTopItem[];
+  topActors?: AuditTopItem[];
+  computedAt?: string;
+}
+
+// ─── Access review (Part B GET /admin/access-review) ───
+export interface AccessReviewGrantPath {
+  group: string;
+  service?: string;
+  role?: string;
+  /** Plain "group X → svc:role" provenance line. */
+  summary?: string;
+}
+export interface AccessReviewIdentity {
+  id: string;
+  email: string;
+  name?: string;
+  /** 0 = global super-admin, 1 = service wildcard, 2 = org-admin, 3 = broad reach. */
+  tier: number;
+  tierLabel?: string;
+  /** Distinct service count the identity can reach. */
+  reach?: number;
+  services?: string[];
+  groups: string[];
+  /** Catalog flags: global-super-admin, wildcard, sprawl, self-granted, dormant,
+   *  no-mfa, org-admin-broad-reach, inactive-retaining-power, orphaned-group,
+   *  unaccounted-power, granted-but-unused. */
+  flags: string[];
+  mfa?: boolean;
+  active?: boolean;
+  lastActive?: string | null;
+  lastPrivilegedAction?: string | null;
+  grantedBy?: string | null;
+  grantedAt?: string | null;
+  selfGranted?: boolean;
+  powerScore?: number;
+  paths?: AccessReviewGrantPath[];
+}
+export interface AccessReviewSummary {
+  totalPrivileged: number;
+  /** T0 + T1 — "can do anything". */
+  canDoAnything: number;
+  selfGranted: number;
+  dormant: number;
+  noMfa?: number;
+  computedAt?: string;
+}
+export interface AccessReview {
+  summary: AccessReviewSummary;
+  identities: AccessReviewIdentity[];
+  /** Bounded-retention disclosure (Redis-only store). */
+  limits?: { bounded?: boolean; note?: string };
 }
 
 export type GroupMapping = Record<string, string[]>;
@@ -116,7 +216,7 @@ export interface AppState {
   audit: AuditEvent[];
 }
 
-export type PageId = 'dashboard' | 'simulator' | 'users' | 'groups' | 'services' | 'roles' | 'routes' | 'rules' | 'audit' | 'settings' | 'orgadmin' | 'organizations' | 'backup';
+export type PageId = 'dashboard' | 'simulator' | 'users' | 'groups' | 'services' | 'roles' | 'routes' | 'rules' | 'audit' | 'accessreview' | 'settings' | 'orgadmin' | 'organizations' | 'backup';
 
 export interface TweakDefaults {
   theme: string;
