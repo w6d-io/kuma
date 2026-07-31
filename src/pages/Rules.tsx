@@ -9,7 +9,7 @@ import {
   toDraftHandler, newDraftHandler, draftHandlerToConfig, draftHandlersValid, isRealAuthn,
 } from '../components/HandlerStageEditor';
 import type { DraftHandler, HandlerStage, PresetDef } from '../components/HandlerStageEditor';
-import type { JinbeAccessRule, HandlerDescriptor, OathkeeperHandlerCatalog } from '../api/client';
+import type { JinbeAccessRule, HandlerDescriptor, OathkeeperHandlerCatalog, FieldDescriptor } from '../api/client';
 import type { AccessRule, RouteEntry } from '../api/types';
 
 const ALL_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'];
@@ -439,6 +439,19 @@ export function RulesPage({ svc, unassigned = false }: { svc?: string; unassigne
   // set (P0-3 — makes the empty-authorizer fail-open fallback unreachable).
   const canSave = !!draft && !!catalog && draft.authz.length === 1
     && draft.methods.length > 0 && validUpstream && handlersValid && !headerDup && notEnabled.length === 0;
+  // Surface WHY Save is disabled. A disabled <button> fires no onClick — no request,
+  // no confirm dialog — and the old title only covered 3 of the gates, so a gate like
+  // an empty/invalid upstream left the operator with a silent, unexplained dead button.
+  const saveDisabledReason =
+    !draft ? ''
+    : !catalog ? 'Gateway configuration is still loading — retry shortly.'
+    : draft.methods.length === 0 ? 'Select at least one HTTP method (step "Which requests").'
+    : !validUpstream ? 'Set a valid upstream URL starting with http:// or https:// (step "Where requests go").'
+    : draft.authz.length !== 1 ? 'Pick exactly one permission outcome (step "Permission").'
+    : notEnabled.length ? `These handlers aren't enabled on the gateway: ${notEnabled.join(', ')}.`
+    : headerDup ? 'Two headers share a name (case-insensitive) — fix under Information sent → Advanced.'
+    : !handlersValid ? 'Fix invalid JSON in a handler config first.'
+    : '';
 
   const draftAuthz = draft?.authz[0]?.handler ?? '';
   const draftNoAuthn = isNoAuth(draft?.authn.map(h => h.handler) ?? []);
@@ -671,11 +684,16 @@ export function RulesPage({ svc, unassigned = false }: { svc?: string; unassigne
                     <>
                       <button className="btn sm" onClick={cancelEdit}>Cancel</button>
                       <button className="btn primary sm" onClick={onSaveClick} disabled={!canSave}
-                        title={notEnabled.length ? `Not enabled on the gateway: ${notEnabled.join(', ')}` : headerDup ? 'Two headers share a name (case-insensitive) — fix under Information sent → Advanced' : !handlersValid ? 'Fix invalid JSON first' : ''}>Save</button>
+                        title={saveDisabledReason}>Save</button>
                     </>
                   )}
                 </div>
               </div>
+              {canEdit && editing && !canSave && saveDisabledReason && (
+                <div className="input-hint" style={{ padding: "6px 16px 0", color: "var(--err)" }}>
+                  Can't save yet — {saveDisabledReason}
+                </div>
+              )}
 
               {/* Layer 1 — protection presets */}
               {canEdit && catalog && (
@@ -911,8 +929,21 @@ function PermissionEditor({ ed }: { ed: EdCtx }) {
     { h: 'allow', label: 'Allow everyone', desc: 'Every request is let through with no permission check.' },
     { h: 'deny', label: 'Block everyone', desc: 'Every request is rejected at the gateway.' },
   ];
-  const platformCfg = (ed.rule.raw as JinbeAccessRule | undefined)?.authorizer;
-  const showPlatform = cur === 'remote_json' && platformCfg?.handler === 'remote_json' && platformCfg.config;
+  // The current authorizer's config, from two sources that must BOTH be honored:
+  //  - `inlineCfg`: config actually present on the saved rule payload. Live rules
+  //    send a bare `{ handler }` with NO inline config, so this is usually
+  //    undefined — gating the whole section on it (the old `showPlatform`) is
+  //    exactly why "platform policy config" rendered empty.
+  //  - `authzDesc.fields`: the parameters this handler declares in the Oathkeeper
+  //    catalog. These exist regardless of whether the rule carries inline values,
+  //    so rendering them makes the extended params visible even for a bare rule.
+  const rawAuthz = (ed.rule.raw as JinbeAccessRule | undefined)?.authorizer;
+  const inlineCfg = rawAuthz?.handler === cur && rawAuthz.config && typeof rawAuthz.config === 'object' && !Array.isArray(rawAuthz.config)
+    ? rawAuthz.config as Record<string, unknown>
+    : undefined;
+  const authzDesc = catalog.authorizers.find(a => a.handler === cur);
+  const catalogFields = authzDesc?.fields ?? [];
+  const hasParams = catalogFields.length > 0 || inlineCfg !== undefined;
   return (
     <div className="col" style={{ gap: 14 }}>
       <div>
@@ -950,22 +981,65 @@ function PermissionEditor({ ed }: { ed: EdCtx }) {
         </div>
       )}
 
-      <AdvancedDisclosure note="platform policy config">
-        {showPlatform ? (
+      <AdvancedDisclosure note="platform policy config" defaultOpen={hasParams}>
+        {hasParams ? (
           <>
             <div className="small muted mb-12">
-              These values are a platform contract, set automatically per service and shown here read-only.
+              {cur === 'remote_json'
+                ? 'These values are a platform contract, set automatically per service and shown here read-only.'
+                : 'Configuration this permission handler accepts, shown here read-only.'}
             </div>
-            <PlatformConfigView config={platformCfg!.config} />
+            {/* Inline values present on the saved rule (well-known platform keys). */}
+            {inlineCfg && <PlatformConfigView config={inlineCfg} />}
+            {/* Catalog-declared parameters — rendered even when the rule payload
+                carries no inline config, so the extended params are always
+                visible. Deduped against the inline keys PlatformConfigView
+                already showed. */}
+            <CatalogParams fields={catalogFields} config={inlineCfg} skip={inlineCfg ? PLATFORM_INLINE_KEYS : []} />
           </>
         ) : (
           <div className="small muted">
-            {cur === 'remote_json'
-              ? 'The policy connection is supplied automatically by the platform when this rule is saved.'
-              : 'Choose "Check permissions" to run the service against the permission policy.'}
+            {cur === 'allow'
+              ? 'This choice has no configurable parameters — every matching request is allowed with no permission check.'
+              : cur === 'deny'
+                ? 'This choice has no configurable parameters — every matching request is blocked at the gateway.'
+                : cur === 'remote_json'
+                  ? 'The policy connection is supplied automatically by the platform when this rule is saved.'
+                  : 'Choose "Check permissions" to run the service against the permission policy.'}
           </div>
         )}
       </AdvancedDisclosure>
+    </div>
+  );
+}
+
+// Keys PlatformConfigView renders explicitly; CatalogParams skips these so a
+// handler whose catalog descriptor also declares them isn't shown twice.
+const PLATFORM_INLINE_KEYS = ['remote', 'forward_response_headers_to_upstream', 'payload'];
+
+// Read-only render of an authorizer's catalog field descriptors. Each field is
+// shown with its value from the saved rule when present, otherwise the field's
+// own help/placeholder as the "supplied by the platform" hint — so the operator
+// can see WHAT parameters exist even for a rule that carries a bare
+// `{ handler }` (the live shape). Read-only: the policy connection is a platform
+// contract the console never authors.
+function CatalogParams({ fields, config, skip = [] }: { fields: FieldDescriptor[]; config?: Record<string, unknown>; skip?: string[] }) {
+  const shown = fields.filter(f => !skip.includes(f.key));
+  if (shown.length === 0) return null;
+  return (
+    <div className="col" style={{ gap: 10, marginTop: config ? 10 : 0 }}>
+      {shown.map(f => {
+        const v = config?.[f.key];
+        const has = v !== undefined && v !== null && v !== '';
+        return (
+          <div key={f.key}>
+            <label className="input-label">{f.label} <Chip tone="info" mono={false}>platform</Chip></label>
+            {has
+              ? <pre className="input mono" style={{ margin: 0, fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{typeof v === 'string' ? v : JSON.stringify(v, null, 2)}</pre>
+              : <div className="small muted">{f.help || f.placeholder || 'Supplied automatically by the platform when this rule is saved.'}</div>}
+          </div>
+        );
+      })}
     </div>
   );
 }
