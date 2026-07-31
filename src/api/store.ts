@@ -20,7 +20,7 @@ import {
   useAccessRules,
   useAudit,
 } from './hooks';
-import type { AppState, GroupsMap, GroupsMetaMap, RolesMap, Service } from './types';
+import type { AccessRule, AppState, GroupsMap, GroupsMetaMap, RolesMap, Service } from './types';
 
 const EMPTY_META = { jinbeApi: '/api', opalServer: '', kratosAdmin: '', lastSync: '' };
 
@@ -85,8 +85,19 @@ export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreRes
     // (stairwage-dsn) while the matching service names use "_" (stairwage_dsn).
     const norm = (s: string) => s.replace(/[-_]/g, '.');
     const svcNamesForAssoc = servicesRaw.map(s => s.name);
-    const assocService = (id: string): string | null => {
-      const nid = norm(id);
+    const registeredSet = new Set(svcNamesForAssoc);
+    const assocService = (r: AccessRule): string | null => {
+      // 1. An explicit service on the raw jinbe payload wins when it names a
+      //    registered service — the transform may already have surfaced it into
+      //    r.service. Respect any value that is itself a registered service so a
+      //    correct association is never overwritten by the weaker id heuristic.
+      const rawSvc = (r.raw as { service?: unknown } | undefined)?.service;
+      if (typeof rawSvc === 'string' && registeredSet.has(rawSvc)) return rawSvc;
+      if (registeredSet.has(r.service)) return r.service;
+      // 2. Longest normalized-prefix match on the rule id (exact, or
+      //    "<name>.<variant>"). Treats "-" and "_" as the same separator so a
+      //    "stairwage-dsn" rule id matches a "stairwage_dsn" service.
+      const nid = norm(r.id);
       let best: string | null = null;
       for (const n of svcNamesForAssoc) {
         const nn = norm(n);
@@ -95,7 +106,7 @@ export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreRes
       return best;
     };
     const rules = (rulesQ.data ?? []).map(r => {
-      const assoc = assocService(r.id);
+      const assoc = assocService(r);
       return assoc && assoc !== r.service ? { ...r, service: assoc } : r;
     });
     const rolesMap: RolesMap = rolesQ.data ?? {};

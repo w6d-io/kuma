@@ -99,9 +99,18 @@ export function jinbeGroupsToMap(groups: JinbeGroup[]): GroupsMap {
 
 /** Oathkeeper access rule (jinbe shape) → Kuma AccessRule. */
 export function jinbeRuleToUi(r: JinbeAccessRule): AccessRule {
+  // Prefer an explicit service field when the jinbe payload carries one — it's
+  // authoritative. The id-prefix split is only a fallback for rules that don't
+  // (and the composite store re-associates it against the registered service
+  // names, so a wrong prefix is corrected there). Splitting on '-' alone
+  // invents phantom services (e.g. "reports" from a "reports-main" rule that
+  // actually belongs to service "reporting"), which strands the rule and leaves
+  // the service's edit drawer with empty fields.
+  const explicit = (r as { service?: unknown }).service;
+  const service = typeof explicit === 'string' && explicit ? explicit : r.id.split('-')[0];
   return {
     id: r.id,
-    service: r.id.split('-')[0],
+    service,
     match: { url: r.match.url, methods: r.match.methods },
     authenticators: r.authenticators.map(a => a.handler),
     authorizer: r.authorizer.handler,

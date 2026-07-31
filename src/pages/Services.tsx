@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
 import { ServiceFavicon } from '../components/ServiceFavicon';
 import { Chip, Avatar, Drawer, AccessLevel, EmptyHint } from '../components/ui/Primitives';
-import { serviceGatewayPosture } from '../components/HandlerStageEditor';
+import { serviceGatewayPosture, rulePosture } from '../components/HandlerStageEditor';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
 import { useStats, useAuditEvents } from '../api/hooks';
@@ -24,11 +24,10 @@ function svcSummary(state: ReturnType<typeof useApp>['state'], name: string, per
   const routes = state.routeMaps[name] || [];
   const openRoutes = routes.filter(r => !r.permission).length;
   const rules = state.accessRules.filter(r => r.service === name);
-  const protectedRules = rules.filter(r => r.authorizer === 'remote_json').length;
   const groups = Object.entries(state.groups).filter(([, m]) => m[name]).length;
   // Per-service member count comes from the cached stats endpoint — no directory walk.
   const users = perService?.[name] ?? 0;
-  return { roles, routes: routes.length, openRoutes, rules: rules.length, protectedRules, groups, users };
+  return { roles, routes: routes.length, openRoutes, rules: rules.length, groups, users };
 }
 
 // The Services workspace: one entry per service (no more repeated rows), each
@@ -361,6 +360,59 @@ function ServiceActivity({ name }: { name: string }) {
   );
 }
 
+// One handler array (authenticators / authorizer / mutators) as a labelled row
+// of chips. Empty (or all-dropped) → an em dash. Reflects the payload verbatim,
+// so a live rule's real handlers (e.g. `oauth2_introspection` + `allow` +
+// `header`) show as-is — nothing is assumed to be `remote_json`.
+function HandlerArrayChips({ label, items }: { label: string; items: string[] }) {
+  const shown = items.filter(Boolean);
+  return (
+    <span className="small" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span className="muted">{label}:</span>
+      {shown.length === 0 ? <span className="muted">—</span> : shown.map(h => <Chip key={h}>{h}</Chip>)}
+    </span>
+  );
+}
+
+// Read-only summary of every gateway rule a service owns, with the handler
+// arrays (sign-in / permission / info-sent) surfaced as chips. The edit drawer
+// only edits the primary rule's match/upstream/strip; previously the other
+// rules and ALL the handler arrays were invisible from the service view. Full
+// editing lives in the service's Gateway tab (RulesPage), which owns the same
+// rules-list rail — this reuses its posture-chip pattern rather than duplicating
+// an editor.
+function ServiceRulesList({ svcName }: { svcName: string }) {
+  const { state } = useApp();
+  const rules = state.accessRules.filter(r => r.service === svcName);
+  if (rules.length === 0) return null;
+  return (
+    <div className="mb-12">
+      <label className="input-label">Gateway rules <span className="muted">({rules.length})</span></label>
+      <div className="panel" style={{ padding: 0 }}>
+        {rules.map((r, i) => {
+          const p = rulePosture(r.authenticators, r.authorizer);
+          return (
+            <div key={r.id} style={{ padding: '10px 12px', borderBottom: i < rules.length - 1 ? '1px solid var(--line)' : 'none' }}>
+              <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span className="mono small" style={{ fontWeight: 600 }}>{r.id}</span>
+                <Chip tone={p.tone} mono={false} title={p.sentence}>{p.label}</Chip>
+              </div>
+              <div className="small muted mono mt-4" style={{ wordBreak: 'break-all' }}>{r.match.methods.join(', ') || 'no methods'} · {r.match.url}</div>
+              <div className="row mt-4" style={{ gap: 12, flexWrap: 'wrap', rowGap: 4 }}>
+                <HandlerArrayChips label="Sign-in" items={r.authenticators} />
+                <HandlerArrayChips label="Permission" items={r.authorizer ? [r.authorizer] : []} />
+                <HandlerArrayChips label="Info sent" items={r.mutators} />
+              </div>
+              {r.upstream && <div className="small muted mono mt-4" style={{ wordBreak: 'break-all' }}>&rarr; {r.upstream}{r.stripPath ? ` (strip ${r.stripPath})` : ''}</div>}
+            </div>
+          );
+        })}
+      </div>
+      <div className="input-hint">Read-only summary of the real gateway rules. Use the service&apos;s Gateway tab to change protection, handlers or routing.</div>
+    </div>
+  );
+}
+
 export function ServiceDrawer() {
   const { serviceDrawer, setServiceDrawer, state, apiCreateService, apiUpdateService, apiDeleteService, setPage } = useApp();
   const applyChange = useApplyChange();
@@ -382,12 +434,20 @@ export function ServiceDrawer() {
   // edit danger
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Pristine while the operator hasn't touched a field. The late-arrival re-seed
+  // below is gated on this so it can populate empty fields but never clobber an
+  // edit already in progress. Reset to true on every open (primary seed effect).
+  const pristineRef = useRef(true);
+  const markDirty = () => { pristineRef.current = false; };
+
   // Seed form when the drawer opens (keyed on mode+serviceName). editSvc/editRule
   // derive from the live cache and would re-seed on optimistic edits, wiping the
-  // operator's changes — intentionally excluded.
+  // operator's changes — intentionally excluded here; the keyed effect below
+  // handles the one case they must drive (a rule that associates AFTER open).
   useEffect(() => {
     if (!serviceDrawer) return;
     setConfirmDelete(false);
+    pristineRef.current = true;
     if (serviceDrawer.mode === "create") {
       setName(""); setUpstream(""); setDescription(""); setMatchUrl(""); setStripPath("");
       setMatchMethods(["GET", "POST", "PUT", "PATCH", "DELETE"]);
@@ -401,13 +461,35 @@ export function ServiceDrawer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceDrawer?.mode, serviceDrawer?.serviceName]);
 
+  // Late-arrival re-seed (root fix for "fields show empty by default" and the
+  // Strip-path "empty" symptom). editRule is derived from the access-rules query
+  // + service association; when the drawer opens BEFORE that resolves, the seed
+  // above runs with editRule === null and match/methods/strip/upstream seed
+  // empty and never repopulate (the primary effect excludes editRule from its
+  // deps). Re-seed once the rule associates — keyed on editRule?.id so it fires
+  // exactly when the id goes undefined→present, NOT on later optimistic content
+  // edits (the id is stable across those). Gated on `pristine` so it can't wipe
+  // changes the operator already started making.
+  useEffect(() => {
+    if (!isEdit || !editSvc || !editRule) return;
+    if (!pristineRef.current) return;
+    setUpstream(editSvc.upstreamUrl || "");
+    setDescription(editSvc.description || "");
+    setMatchUrl(editRule.match.url || "");
+    setMatchMethods(editRule.match.methods || ["GET", "POST", "PUT", "PATCH", "DELETE"]);
+    setStripPath(editRule.stripPath || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editRule?.id]);
+
   if (!serviceDrawer) return null;
 
   const validName = /^[a-z0-9_-]+$/.test(name) && !state.services.some(s => s.name === name);
   const validUrl = /^https?:\/\//.test(upstream);
 
-  const toggleMethod = (m: string) =>
+  const toggleMethod = (m: string) => {
+    markDirty();
     setMatchMethods(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
+  };
 
   // Derive a sane match URL from the real upstream host rather than a bogus
   // example.io default that silently matches nothing (a "registered but
@@ -474,12 +556,12 @@ export function ServiceDrawer() {
     <>
       <div className="mb-12">
         <label className="input-label">Where requests go *</label>
-        <input className="input mono" value={upstream} onChange={e => setUpstream(e.target.value)} placeholder="http://service.namespace:8080" />
+        <input className="input mono" value={upstream} onChange={e => { markDirty(); setUpstream(e.target.value); }} placeholder="http://service.namespace:8080" />
         <div className="input-hint">{upstream && !validUrl ? <span style={{ color: "var(--err)" }}>Must start with http:// or https://</span> : "The internal address the gateway forwards matching requests to."}</div>
       </div>
       <div className="mb-12">
         <label className="input-label">Public path <span className="muted">(optional)</span></label>
-        <input className="input mono" value={matchUrl} onChange={e => setMatchUrl(e.target.value)} placeholder="<https?://api.example.io/svc/<**>>" />
+        <input className="input mono" value={matchUrl} onChange={e => { markDirty(); setMatchUrl(e.target.value); }} placeholder="<https?://api.example.io/svc/<**>>" />
         <div className="input-hint">Which public request URLs reach this service (regular expression). Leave empty to derive it from the address above.</div>
       </div>
       <div className="mb-12">
@@ -489,7 +571,7 @@ export function ServiceDrawer() {
       </div>
       <div className="mb-12">
         <label className="input-label">Strip path <span className="muted">(optional)</span></label>
-        <input className="input mono" value={stripPath} onChange={e => setStripPath(e.target.value)} placeholder="/api/v1 — leave empty to keep the full path" />
+        <input className="input mono" value={stripPath} onChange={e => { markDirty(); setStripPath(e.target.value); }} placeholder="/api/v1 — leave empty to keep the full path" />
         <div className="input-hint">Path prefix removed before forwarding to the service — leave empty to keep the full path.</div>
       </div>
     </>
@@ -515,8 +597,10 @@ export function ServiceDrawer() {
         {sharedFields}
         <div className="mb-12">
           <label className="input-label">Description</label>
-          <input className="input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Short description" />
+          <input className="input" value={description} onChange={e => { markDirty(); setDescription(e.target.value); }} placeholder="Short description" />
         </div>
+
+        {editSvc && <ServiceRulesList svcName={editSvc.name} />}
 
         {/* Danger zone — hidden entirely for system services. The backend
             also enforces this (rbac.service.ts SystemResourceImmutable),
