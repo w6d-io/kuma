@@ -216,7 +216,13 @@ export interface AppState {
   audit: AuditEvent[];
 }
 
-export type PageId = 'dashboard' | 'simulator' | 'users' | 'groups' | 'services' | 'roles' | 'routes' | 'rules' | 'audit' | 'accessreview' | 'settings' | 'orgadmin' | 'organizations' | 'backup';
+// SINGLE source of truth for page ids: the type is DERIVED from this runtime
+// array so hash-routing validation (AppContext pageFromHash) can never drift
+// from the type again. (It did once: 'recertification' was added to the type
+// but not to pageFromHash's hand-copied list — first click on the nav entry
+// bounced back to the dashboard.)
+export const PAGE_IDS = ['dashboard', 'simulator', 'users', 'groups', 'services', 'roles', 'routes', 'rules', 'audit', 'accessreview', 'recertification', 'settings', 'orgadmin', 'organizations', 'backup'] as const;
+export type PageId = (typeof PAGE_IDS)[number];
 
 export interface TweakDefaults {
   theme: string;
