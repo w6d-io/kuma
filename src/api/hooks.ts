@@ -1,7 +1,7 @@
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useEffect } from 'react';
 import { api, API_BASE } from './client';
-import type { ImportSource, ImportOptions, AuditEventFilters } from './client';
+import type { ImportSource, ImportOptions, AuditEventFilters, AuthConfigState, AuthMethodName } from './client';
 import type { RolesMap, RouteMapsMap, AuditEvent, User } from './types';
 import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents, normalizeAuditEvents } from './transforms';
 import { cachePatch } from './mutations';
@@ -190,6 +190,67 @@ export function useDeleteOrgServiceMapping() {
   });
 }
 
+// Kratos auth-method toggles (hot-reload via jinbe patching kratos.yml).
+// 501 = deployment has no KRATOS_CONFIG_PATH — surfaced as `unavailable`, not
+// an error, so the Settings panel can hide itself instead of red-toasting.
+export function useAuthMethods() {
+  return useQuery({
+    queryKey: ['auth-methods'],
+    queryFn: () => api.getAuthMethods(),
+    staleTime: CONFIG_STALE_TIME,
+    retry: (count, err: any) => err?.status !== 501 && count < 2,
+  });
+}
+
+export function useSetAuthMethods() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: Parameters<typeof api.setAuthMethods>[0]) => api.setAuthMethods(patch),
+    onMutate: async (patch) => {
+      await qc.cancelQueries({ queryKey: ['auth-methods'] });
+      const snapshot = qc.getQueryData<AuthConfigState>(['auth-methods']);
+      qc.setQueryData<AuthConfigState>(['auth-methods'], (s) => {
+        if (!s) return s;
+        const { registration, ...methodPatch } = patch;
+        const methods = { ...s.methods };
+        for (const [name, p] of Object.entries(methodPatch)) {
+          const cur = methods[name as AuthMethodName];
+          if (cur) methods[name as AuthMethodName] = {
+            ...cur,
+            ...(typeof p?.enabled === 'boolean' ? { enabled: p.enabled } : {}),
+            ...(typeof p?.passwordlessEnabled === 'boolean' ? { passwordlessEnabled: p.passwordlessEnabled } : {}),
+          };
+        }
+        return {
+          methods,
+          registration: typeof registration?.enabled === 'boolean' ? { enabled: registration.enabled } : s.registration,
+        };
+      });
+      return { snapshot };
+    },
+    onError: (_e, _v, ctx) => qc.setQueryData(['auth-methods'], ctx?.snapshot),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['auth-methods'] }),
+  });
+}
+
+// Import history (pre-import snapshots, cap 10) + one-click rollback.
+export function useImportHistory() {
+  return useQuery({
+    queryKey: ['import-history'],
+    queryFn: () => api.getImportHistory(),
+    staleTime: 10_000,
+  });
+}
+
+export function useRollbackImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.rollbackImport(id),
+    // A rollback rewrites the whole RBAC config — invalidate broadly.
+    onSettled: () => qc.invalidateQueries(),
+  });
+}
+
 // Org → admin roster (per-org admin list). Symmetric with the service-bundle map.
 export function useOrgAdminMap() {
   return useQuery({
@@ -359,6 +420,11 @@ export function useSession() {
     queryKey: ['session'],
     queryFn: () => api.session(),
     retry: false,
+    // Revalidate so a session revoked/expired MID-visit is detected (jinbe's
+    // /whoami answers 200 with authenticated:false + error), instead of the
+    // console silently erroring on the next admin call.
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -567,6 +633,89 @@ export function useCreateOrgUser(orgId: string) {
       api.createOrgUser(orgId, payload),
     // Server assigns the identity id → invalidate-only (no fabricated row).
     onSettled: () => qc.invalidateQueries({ queryKey: ['org-users', orgId] }),
+  });
+}
+
+// ─── Access recertification campaigns ────────────────────────────────────────
+// List + detail share the ['recert', …] prefix so mutations can invalidate
+// broadly; the decision mutation uses the standard optimistic triad (snapshot →
+// patch → rollback on error → invalidate on settle) against the detail cache.
+
+type RecertDetailCache = { campaign: import('./client').RecertCampaign; items: import('./client').RecertItem[] };
+
+export function useRecertCampaigns() {
+  return useQuery({
+    queryKey: ['recert', 'campaigns'],
+    queryFn: () => api.listRecertCampaigns(),
+    staleTime: 15_000,
+  });
+}
+
+export function useRecertCampaign(id: string | null) {
+  return useQuery({
+    queryKey: ['recert', 'campaign', id],
+    queryFn: () => api.getRecertCampaign(id as string),
+    enabled: !!id,
+    staleTime: 15_000,
+  });
+}
+
+export function useCreateRecertCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof api.createRecertCampaign>[0]) => api.createRecertCampaign(payload),
+    // Server assigns the id → invalidate-only (no fabricated row).
+    onSettled: () => qc.invalidateQueries({ queryKey: ['recert'] }),
+  });
+}
+
+export function useActivateRecertCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.activateRecertCampaign(id),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['recert'] }),
+  });
+}
+
+export function useCloseRecertCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.closeRecertCampaign(id),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['recert'] }),
+  });
+}
+
+export function useDeleteRecertCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteRecertCampaign(id),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['recert'] }),
+  });
+}
+
+export function useDecideRecertItem(campaignId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, decision, comment }: { itemId: string; decision: 'approved' | 'revoked'; comment?: string }) =>
+      api.decideRecertItem(campaignId, itemId, decision, comment),
+    onMutate: async ({ itemId, decision, comment }) => {
+      const key = ['recert', 'campaign', campaignId];
+      await qc.cancelQueries({ queryKey: key });
+      const snapshot = qc.getQueryData<RecertDetailCache>(key);
+      qc.setQueryData<RecertDetailCache>(key, (prev) =>
+        prev === undefined ? prev : {
+          ...prev,
+          items: prev.items.map((i) =>
+            i.id === itemId
+              ? { ...i, decision, comment, decidedAt: new Date().toISOString(), ...(decision === 'revoked' ? { outcome: 'revoke-applied' as const } : {}) }
+              : i,
+          ),
+        },
+      );
+      return { snapshot };
+    },
+    onError: (_e, _v, ctx) => qc.setQueryData(['recert', 'campaign', campaignId], ctx?.snapshot),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['recert'] }),
   });
 }
 
