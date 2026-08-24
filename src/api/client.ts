@@ -12,7 +12,10 @@ export const API_BASE = BASE;
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...opts?.headers },
+    // Only claim a JSON body when there IS one — Fastify 400s a body-less
+    // POST carrying Content-Type: application/json (bit the rollback and
+    // backup-now endpoints).
+    headers: { ...(opts?.body != null ? { 'Content-Type': 'application/json' } : {}), ...opts?.headers },
     ...opts,
   });
   if (!res.ok) {
@@ -126,13 +129,13 @@ export const api = {
   getServices: () =>
     request<{ services: JinbeService[] }>(`/admin/rbac/services`).then(r => r.services),
 
-  createService: (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string }) =>
+  createService: (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string; signIn?: SignInMethod[] }) =>
     request<{ commitId: string }>(`/admin/rbac/services`, {
       method: 'POST',
       body: JSON.stringify(svc),
     }),
 
-  updateService: (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null }) =>
+  updateService: (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null; signIn?: SignInMethod[] }) =>
     request<{ commitId: string }>(`/admin/rbac/services/${name}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
@@ -261,6 +264,60 @@ export const api = {
   // ─── Access review (Part B — "who can do anything") ───
   getAccessReview: () => request<AccessReview>('/admin/access-review'),
 
+  // ─── Access recertification campaigns (phase 1: explicit reviewers, one-shot) ───
+  listRecertCampaigns: () =>
+    request<{ campaigns: RecertCampaignSummary[] }>('/admin/recert/campaigns').then(r => r.campaigns),
+
+  createRecertCampaign: (payload: {
+    name: string;
+    scope?: { groups?: string[] };
+    reviewers: string[];
+    deadline: string;
+    onExpiry: RecertOnExpiry;
+  }) =>
+    request<RecertCampaign>('/admin/recert/campaigns', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getRecertCampaign: (id: string) =>
+    request<{ campaign: RecertCampaign; items: RecertItem[] }>(`/admin/recert/campaigns/${encodeURIComponent(id)}`),
+
+  activateRecertCampaign: (id: string) =>
+    request<{ campaign: RecertCampaign; itemCount: number }>(`/admin/recert/campaigns/${encodeURIComponent(id)}/activate`, { method: 'POST' }),
+
+  closeRecertCampaign: (id: string) =>
+    request<{ campaign: RecertCampaign }>(`/admin/recert/campaigns/${encodeURIComponent(id)}/close`, { method: 'POST' }),
+
+  deleteRecertCampaign: (id: string) =>
+    request<void>(`/admin/recert/campaigns/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  decideRecertItem: (campaignId: string, itemId: string, decision: 'approved' | 'revoked', comment?: string) =>
+    request<{ item: RecertItem }>(`/admin/recert/items/${encodeURIComponent(campaignId)}/${encodeURIComponent(itemId)}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ decision, ...(comment ? { comment } : {}) }),
+    }),
+
+  getRecertInbox: () =>
+    request<{ items: RecertInboxItem[] }>('/admin/recert/inbox').then(r => r.items),
+
+  // Frozen completion report — downloaded as a JSON file (audit evidence).
+  downloadRecertReport: async (id: string): Promise<void> => {
+    const res = await fetch(`${BASE}/admin/recert/campaigns/${encodeURIComponent(id)}/report`, { credentials: 'include' });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw Object.assign(new Error(body.message || `HTTP ${res.status}`), { status: res.status });
+    }
+    const report = await res.json();
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `recert-report-${id}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
   // ─── Bundle export / import / S3 backups ───
   exportBundle: async (sections?: string[]): Promise<void> => {
     const q = sections && sections.length ? `?sections=${sections.join(',')}` : '';
@@ -289,6 +346,13 @@ export const api = {
       body: JSON.stringify(bundle),
     });
   },
+
+  // Import history — automatic pre-import/restore/rollback snapshots kept in
+  // Redis (cap 10). Rollback re-applies a snapshot as a full restore.
+  getImportHistory: () =>
+    request<{ history: ImportHistoryEntry[] }>('/admin/rbac/bundle/history').then(r => r.history),
+  rollbackImport: (id: string) =>
+    request<{ success: boolean }>(`/admin/rbac/bundle/history/${encodeURIComponent(id)}/rollback`, { method: 'POST' }),
 
   // S3 backup snapshots (only meaningful when the chart enabled backup).
   listBackups: () =>
@@ -330,6 +394,31 @@ export const api = {
     request<{ success: boolean; message: string }>('/admin/rbac/org-admin-map', {
       method: 'PUT',
       body: JSON.stringify({ organizationId, admins }),
+    }),
+
+  // ─── Kratos auth-method toggles (hot-reload; kratos.yml via jinbe) ───
+  // GET: state per method. PUT: partial patch — only the methods present in
+  // the body are touched. webauthn/passkey/oidc can only be enabled once
+  // their config block exists in kratos.yml (jinbe rejects otherwise).
+  getAuthMethods: () =>
+    request<AuthConfigState>('/admin/auth/methods'),
+
+  setAuthMethods: (patch: AuthConfigPatch) =>
+    request<AuthConfigState>('/admin/auth/methods', {
+      method: 'PUT',
+      body: JSON.stringify(patch),
+    }),
+
+  // ─── Impact preview — who gains/loses access if this change is applied ───
+  previewImpact: (proposed: {
+    groups?: Record<string, Record<string, string[]>>;
+    roles?: Record<string, Record<string, string[]>>;
+    routeMaps?: Record<string, unknown>;
+    groupMembership?: Record<string, string[]>;
+  }) =>
+    request<ImpactPreviewResult>('/admin/rbac/impact-preview', {
+      method: 'POST',
+      body: JSON.stringify(proposed),
     }),
 
   // ─── Permission simulator (live OPA query) ───
@@ -377,6 +466,58 @@ export const api = {
 };
 
 // ─── Types matching jinbe API responses ───
+
+// Impact preview: every access decision the proposed change flips, evaluated
+// by the live OPA policy over sampled real traffic + the declared routes.
+export interface ImpactFlip { email: string; action: string; object: string; before: boolean; after: boolean }
+export interface ImpactPreviewResult {
+  losses: ImpactFlip[];
+  gains: ImpactFlip[];
+  unchanged: number;
+  sample: { audit: number; synthetic: number; total: number };
+  /** false = OPA unreachable — preview unavailable, NOT "no impact". */
+  evaluated: boolean;
+}
+
+// Automatic snapshot taken before every bundle import/restore/rollback.
+export interface ImportHistoryEntry {
+  id: string;
+  takenAt: string;
+  actor: string | null;
+  reason: 'pre-import' | 'pre-restore' | 'pre-rollback';
+  counts: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number; orgServiceMap: number };
+}
+
+// Gateway sign-in methods per service — ordered fallback cookie → bearer →
+// introspection; [] = public. Maps to the service rule's Oathkeeper
+// authenticator chain in jinbe.
+export type SignInMethod = 'cookie' | 'bearer' | 'introspection';
+
+// Kratos self-service auth methods managed via /admin/auth/methods.
+export type AuthMethodName =
+  | 'password' | 'code' | 'totp' | 'lookup_secret' | 'link' | 'profile'
+  | 'webauthn' | 'passkey' | 'oidc';
+
+export interface AuthMethodState {
+  enabled: boolean;
+  /** Method has a config block in kratos.yml — required before enabling webauthn/passkey/oidc. */
+  configured: boolean;
+  /** Only on `code`: allow one-time-code as a first-factor (passwordless) login. */
+  passwordlessEnabled?: boolean;
+}
+
+export type AuthMethodsMap = Record<AuthMethodName, AuthMethodState>;
+
+// Full auth-config state: per-method toggles + the self-registration switch.
+// registration.enabled=false → accounts are created only by admins (Users →
+// create + invite); the public registration flow answers "disabled".
+export interface AuthConfigState {
+  methods: AuthMethodsMap;
+  registration: { enabled: boolean };
+}
+export type AuthConfigPatch = Partial<Record<AuthMethodName, { enabled?: boolean; passwordlessEnabled?: boolean }>> & {
+  registration?: { enabled: boolean };
+};
 
 export interface DirectoryStats {
   total: number;
@@ -557,6 +698,51 @@ export interface OathkeeperHandlerCatalog {
   authorizers: HandlerDescriptor[];
   mutators: HandlerDescriptor[];
   errorHandlers: HandlerDescriptor[];
+}
+
+// ─── Access recertification (jinbe /admin/recert) ───
+export type RecertOnExpiry = 'revoke' | 'flag';
+export type RecertStatus = 'draft' | 'active' | 'closing' | 'completed' | 'archived';
+export type RecertDecision = 'pending' | 'approved' | 'revoked';
+export type RecertOutcome = 'kept' | 'auto-revoked' | 'flagged' | 'revoke-applied';
+
+export interface RecertCampaign {
+  id: string;
+  name: string;
+  scope: { groups?: string[] };
+  reviewerPolicy: 'explicit';
+  reviewers: string[];
+  schedule: { kind: 'one-shot' };
+  deadline: string;
+  onExpiry: RecertOnExpiry;
+  status: RecertStatus;
+  createdBy: string | null;
+  createdAt: string;
+  closedAt?: string;
+}
+
+export interface RecertCampaignSummary extends RecertCampaign {
+  itemCount: number;
+  decidedCount: number;
+}
+
+export interface RecertItem {
+  id: string;
+  campaignId: string;
+  subject: string;
+  entitlement: { kind: 'group-membership'; group: string };
+  reviewer: string;
+  decision: RecertDecision;
+  decidedBy?: string;
+  decidedAt?: string;
+  comment?: string;
+  outcome?: RecertOutcome;
+  context: { tier: number | null; flags: string[]; lastActive: string | null };
+}
+
+export interface RecertInboxItem extends RecertItem {
+  campaignName: string;
+  deadline: string;
 }
 
 export interface JinbeCommit {
