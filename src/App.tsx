@@ -14,6 +14,7 @@ import { OrganizationsPage } from './pages/Organizations';
 import { GrantAccess } from './pages/GrantAccess';
 import { AuditPage } from './pages/Audit';
 import { AccessReviewPage } from './pages/AccessReview';
+import { RecertificationPage } from './pages/Recertification';
 import { SettingsPage } from './pages/Settings';
 import { BackupPage } from './pages/Backup';
 import type { PageId } from './api/types';
@@ -36,6 +37,7 @@ const NAV: NavItem[] = [
   { id: "organizations", name: "Organizations", ico: I.globe, section: "Policy", perms: ["admin:read"] },
   { id: "audit",     name: "Audit log", ico: I.audit,   section: "Changes",  perms: ["admin:read"] },
   { id: "accessreview", name: "Access review", ico: I.shield, section: "Changes", perms: ["admin:read"] },
+  { id: "recertification", name: "Recertification", ico: I.check, section: "Changes", perms: ["admin:read"] },
   // Backup tab only appears when the chart enabled backup (see filter below).
   { id: "backup",    name: "Backup",    ico: I.box,     section: "Changes",  perms: ["admin:read"] },
   { id: "settings",  name: "Settings",  ico: I.cog,     section: "Changes",  perms: [] },
@@ -50,6 +52,26 @@ const NAV: NavItem[] = [
 const DEV = import.meta.env.DEV;
 function simulatingForbidden(tweaks: { simulateForbidden?: boolean } | undefined): boolean {
   return DEV && !!tweaks?.simulateForbidden;
+}
+
+/**
+ * Full-page redirect to the auth-domain login. refresh=true forces Kratos to
+ * re-authenticate and mint a NEW session — used when a cookie is present but
+ * rejected (expired/revoked/corrupt), where a plain /login could see a
+ * "still valid" session and bounce straight back, looping.
+ */
+function redirectToLogin(metaAuthDomain: string | undefined, opts?: { refresh?: boolean }) {
+  const authDomain = metaAuthDomain || (window as any).__AUTH_DOMAIN__;
+  if (!authDomain) {
+    // No runtime config and no API metadata — surface the misconfig instead of
+    // silently redirecting somewhere unexpected.
+    console.error('Kuma: AUTH_DOMAIN is not configured. Set the AUTH_DOMAIN env on the container, or have jinbe expose meta.authDomain.');
+    return;
+  }
+  const params = new URLSearchParams();
+  if (opts?.refresh) params.set('refresh', 'true');
+  params.set('return_to', window.location.href);
+  window.location.href = `https://${authDomain}/login?${params.toString()}`;
 }
 
 /** True if user has any of the required permissions or holds the wildcard "*". */
@@ -189,14 +211,11 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
 
   useEffect(() => {
     if ((apiError as any)?.status === 401) {
-      const authDomain = state.meta.authDomain || (window as any).__AUTH_DOMAIN__;
-      if (!authDomain) {
-        // No runtime config and no API metadata — surface the misconfig instead of
-        // silently redirecting somewhere unexpected.
-        console.error('Kuma: AUTH_DOMAIN is not configured. Set the AUTH_DOMAIN env on the container, or have jinbe expose meta.authDomain.');
-        return;
-      }
-      window.location.href = `https://${authDomain}/login?return_to=${encodeURIComponent(window.location.href)}`;
+      // jinbe tags rejected-but-present credentials (expired/revoked cookie)
+      // with code=session_invalid — force re-auth so Kratos regenerates the
+      // session instead of bouncing a "valid-looking" broken cookie forever.
+      const stale = (apiError as any)?.details?.code === 'session_invalid';
+      redirectToLogin(state.meta.authDomain, { refresh: stale });
     }
   }, [apiError, state.meta.authDomain]);
 
@@ -405,10 +424,20 @@ function ForbiddenPage() {
 }
 
 function AppShell() {
-  const { page, setPage, toasts, apiError, tweaks } = useApp();
+  const { page, setPage, toasts, apiError, tweaks, state } = useApp();
   const { data: session, isSuccess: sessionReady } = useSession();
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [tweaksOpen, setTweaksOpen] = useState(false);
+
+  // Act on jinbe's /whoami verdict directly (it answers 200 with
+  // authenticated:false for missing OR broken cookies — it never 401s).
+  // Without this, only ADMIN queries trigger the login redirect, so a
+  // non-admin with a dead cookie was stranded on a 403 page. session.error
+  // set = a cookie WAS presented but rejected → refresh=true regenerates it.
+  useEffect(() => {
+    if (!sessionReady || !session || session.authenticated) return;
+    redirectToLogin(state.meta.authDomain, { refresh: !!session.error });
+  }, [sessionReady, session, state.meta.authDomain]);
 
   // Real-time: subscribe to the server change stream (admins only) so the whole
   // console reflects changes sub-second without polling.
@@ -459,6 +488,7 @@ function AppShell() {
             {page === "organizations" && <OrganizationsPage />}
             {page === "audit" && <AuditPage />}
             {page === "accessreview" && <AccessReviewPage />}
+            {page === "recertification" && <RecertificationPage />}
             {page === "backup" && <BackupPage />}
             {page === "settings" && <SettingsPage />}
             {page === "orgadmin" && <OrgAdminPage />}

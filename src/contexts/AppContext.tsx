@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AppState, PageId, TweakDefaults } from '../api/types';
+import { PAGE_IDS } from '../api/types';
 import { useStore } from '../api/store';
 import { withOptimism, cachePatch } from '../api/mutations';
 import { api } from '../api/client';
@@ -119,8 +120,8 @@ interface AppContextType {
   apiCreateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
   apiUpdateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
   apiDeleteGroup: (name: string) => Promise<void>;
-  apiCreateService: (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string }) => Promise<void>;
-  apiUpdateService: (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null }) => Promise<void>;
+  apiCreateService: (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string; signIn?: import("../api/client").SignInMethod[] }) => Promise<void>;
+  apiUpdateService: (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null; signIn?: import("../api/client").SignInMethod[] }) => Promise<void>;
   apiDeleteService: (name: string) => Promise<void>;
 }
 
@@ -176,8 +177,9 @@ const DIRECTORY_PAGES: ReadonlySet<PageId> = new Set<PageId>();
 
 const pageFromHash = (): PageId => {
   const hash = window.location.hash.replace(/^#\/?/, '');
-  const valid: PageId[] = ['dashboard','simulator','users','groups','services','roles','routes','rules','audit','accessreview','settings','orgadmin','organizations','backup'];
-  return valid.includes(hash as PageId) ? (hash as PageId) : 'dashboard';
+  // PAGE_IDS is the same array PageId is derived from — a page added to the
+  // type is automatically routable (a hand-copied list here once missed one).
+  return (PAGE_IDS as readonly string[]).includes(hash) ? (hash as PageId) : 'dashboard';
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -394,13 +396,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       () => api.deleteGroup(name));
   }, [qc]);
 
-  const apiCreateService = useCallback(async (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string }) => {
+  const apiCreateService = useCallback(async (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string; signIn?: import("../api/client").SignInMethod[] }) => {
     // Create spawns roles/routes/rules server-side; invalidate-only.
     await withOptimism(qc, [['services'], ['access-rules'], ['all-roles'], ['all-routes']],
       undefined, () => api.createService(svc));
   }, [qc]);
 
-  const apiUpdateService = useCallback(async (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null }) => {
+  const apiUpdateService = useCallback(async (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null; signIn?: import("../api/client").SignInMethod[] }) => {
     await withOptimism(qc, [['services'], ['access-rules']],
       () => { if (payload.upstreamUrl !== undefined) cachePatch.updateService(qc, name, { upstreamUrl: payload.upstreamUrl }); },
       () => api.updateService(name, payload));

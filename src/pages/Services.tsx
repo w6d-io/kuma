@@ -6,13 +6,27 @@ import { Chip, Avatar, Drawer, AccessLevel, EmptyHint } from '../components/ui/P
 import { serviceGatewayPosture, rulePosture } from '../components/HandlerStageEditor';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
-import { useStats, useAuditEvents } from '../api/hooks';
+import { useStats, useAuditEvents, useOathkeeperHandlers } from '../api/hooks';
+import type { SignInMethod } from '../api/client';
 import { RiskBadge, riskOf } from './Audit';
 import { RolesPage } from './Roles';
 import { RoutesPage } from './Routes';
 import { RulesPage } from './Rules';
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+
+// Sign-in methods a service can accept — ordered fallback (the gateway tries
+// each in turn): cookie → bearer → introspection. None checked = public.
+const SIGN_IN_OPTIONS: { id: SignInMethod; handler: string; label: string; hint: string }[] = [
+  { id: 'cookie',        handler: 'cookie_session',       label: 'Browser session (cookie)', hint: 'People signed in through the login page.' },
+  { id: 'bearer',        handler: 'bearer_token',         label: 'API token (Bearer)',       hint: 'Scripts and CLIs holding a session token.' },
+  { id: 'introspection', handler: 'oauth2_introspection', label: 'OAuth2 access token',      hint: 'Third-party apps and M2M keys (introspected).' },
+];
+
+/** Derive the checked sign-in methods from a rule's authenticator handler names. */
+function signInFromAuthenticators(handlers: string[]): SignInMethod[] {
+  return SIGN_IN_OPTIONS.filter(o => handlers.includes(o.handler)).map(o => o.id);
+}
 
 type SvcTab = 'overview' | 'health' | 'roles' | 'routes' | 'gateway';
 const SVC_TABS: SvcTab[] = ['overview', 'health', 'roles', 'routes', 'gateway'];
@@ -430,6 +444,11 @@ export function ServiceDrawer() {
   const [matchUrl, setMatchUrl] = useState("");
   const [matchMethods, setMatchMethods] = useState<string[]>(["GET", "POST", "PUT", "PATCH", "DELETE"]);
   const [stripPath, setStripPath] = useState("");
+  const [signIn, setSignIn] = useState<SignInMethod[]>(['cookie']);
+  // Which authenticators the deployed gateway actually supports — methods
+  // whose handler isn't enabled render locked (jinbe rejects them anyway).
+  const { data: handlerCatalog } = useOathkeeperHandlers();
+  const enabledAuthn = new Set((handlerCatalog?.authenticators ?? []).map(h => h.handler));
 
   // edit danger
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -451,12 +470,14 @@ export function ServiceDrawer() {
     if (serviceDrawer.mode === "create") {
       setName(""); setUpstream(""); setDescription(""); setMatchUrl(""); setStripPath("");
       setMatchMethods(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+      setSignIn(['cookie']);
     } else if (isEdit && editSvc) {
       setUpstream(editSvc.upstreamUrl || "");
       setDescription(editSvc.description || "");
       setMatchUrl(editRule?.match.url || "");
       setMatchMethods(editRule?.match.methods || ["GET", "POST", "PUT", "PATCH", "DELETE"]);
       setStripPath(editRule?.stripPath || "");
+      setSignIn(editRule ? signInFromAuthenticators(editRule.authenticators) : ['cookie']);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceDrawer?.mode, serviceDrawer?.serviceName]);
@@ -478,6 +499,7 @@ export function ServiceDrawer() {
     setMatchUrl(editRule.match.url || "");
     setMatchMethods(editRule.match.methods || ["GET", "POST", "PUT", "PATCH", "DELETE"]);
     setStripPath(editRule.stripPath || "");
+    setSignIn(signInFromAuthenticators(editRule.authenticators));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editRule?.id]);
 
@@ -507,6 +529,7 @@ export function ServiceDrawer() {
       matchUrl: matchUrl || deriveMatch(upstream),
       matchMethods,
       stripPath: stripPath || undefined,
+      signIn,
     }));
     if (ok) setServiceDrawer(null);
   };
@@ -518,6 +541,7 @@ export function ServiceDrawer() {
       matchUrl: matchUrl || undefined,
       matchMethods: matchMethods.length ? matchMethods : undefined,
       stripPath: stripPath || null,
+      signIn,
     };
     const ok = applyChange("update", `service:${editSvc.name} updated`, () => apiUpdateService(editSvc.name, payload));
     if (ok) setServiceDrawer(null);
@@ -552,8 +576,39 @@ export function ServiceDrawer() {
     </div>
   );
 
+  const toggleSignIn = (m: SignInMethod) => {
+    markDirty();
+    setSignIn(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
+  };
+
+  const signInPicker = (
+    <div className="mb-12">
+      <label className="input-label">Sign-in methods</label>
+      {SIGN_IN_OPTIONS.map(o => {
+        const locked = handlerCatalog ? !enabledAuthn.has(o.handler) : false;
+        const on = signIn.includes(o.id);
+        return (
+          <label key={o.id} className="small" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '5px 0', cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? 0.5 : 1 }}>
+            <input type="checkbox" checked={on} disabled={locked} onChange={() => toggleSignIn(o.id)} style={{ marginTop: 2 }} />
+            <span style={{ flex: 1 }}>
+              <span style={{ fontWeight: 500 }}>{o.label}</span>
+              {locked && <span className="muted"> · not enabled on this gateway</span>}
+              <span className="muted" style={{ display: 'block' }}>{o.hint}</span>
+            </span>
+          </label>
+        );
+      })}
+      <div className="input-hint">
+        {signIn.length === 0
+          ? <span style={{ color: 'var(--warn, #d97706)' }}>None selected — the service is PUBLIC: no sign-in, no permission check.</span>
+          : <>Tried in order: cookie → API token → OAuth2. The first matching credential wins; others are fallbacks.</>}
+      </div>
+    </div>
+  );
+
   const sharedFields = (
     <>
+      {signInPicker}
       <div className="mb-12">
         <label className="input-label">Where requests go *</label>
         <input className="input mono" value={upstream} onChange={e => { markDirty(); setUpstream(e.target.value); }} placeholder="http://service.namespace:8080" />
@@ -664,8 +719,17 @@ export function ServiceDrawer() {
       </div>
       {/* State the security outcome so a non-technical creator knows what they get. */}
       <div className="panel" style={{ padding: "10px 12px", display: "flex", gap: 8, alignItems: "center" }}>
-        <Chip tone="ok" mono={false}>Protected</Chip>
-        <span className="small muted">Created <b>Protected</b> — only signed-in users with the right permission can reach it. Change this any time in the service's Gateway tab.</span>
+        {signIn.length === 0 ? (
+          <>
+            <Chip tone="warn" mono={false}>Public</Chip>
+            <span className="small muted">Created <b>Public</b> — anyone can reach it, no sign-in or permission check. Fine-tune in the service's Gateway tab.</span>
+          </>
+        ) : (
+          <>
+            <Chip tone="ok" mono={false}>Protected</Chip>
+            <span className="small muted">Created <b>Protected</b> — callers sign in via {signIn.map(m => SIGN_IN_OPTIONS.find(o => o.id === m)?.label).join(' or ')}, permissions checked by OPA. Fine-tune in the Gateway tab.</span>
+          </>
+        )}
       </div>
     </Drawer>
   );

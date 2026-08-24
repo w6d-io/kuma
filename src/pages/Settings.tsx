@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useOrgServiceMap, useSetOrgServiceBundle, useDeleteOrgServiceMapping } from '../api/hooks';
+import { useOrgServiceMap, useSetOrgServiceBundle, useDeleteOrgServiceMapping, useAuthMethods, useSetAuthMethods, useImportHistory, useRollbackImport } from '../api/hooks';
 import { I } from '../components/ui/Icons';
-import { Chip, Modal, ConfirmDialog, MultiSelectPills } from '../components/ui/Primitives';
+import { Chip, Modal, ConfirmDialog, MultiSelectPills, Switch } from '../components/ui/Primitives';
 import { api } from '../api/client';
-import type { BundleImportResult } from '../api/client';
+import type { BundleImportResult, AuthMethodName } from '../api/client';
 import { ExportBundleModal } from '../components/ExportBundleModal';
 
 // Shape of a bundle we can preview before importing. Counts drive the confirm
@@ -18,6 +18,19 @@ interface PendingBundle {
 // Section picker for import — mirrors ExportBundleModal. Keeping ALL selected is
 // a full 1:1 restore (prunes anything not in the file); deselecting switches to
 // a selective override/add that removes nothing outside the chosen sections.
+// Auth methods surfaced as toggles. Order = display order. Methods needing a
+// config block in kratos.yml (webauthn/passkey/oidc) render locked until
+// configured — jinbe rejects enabling them anyway, this just explains why.
+const AUTH_METHODS: { id: AuthMethodName; label: string; hint: string; needsConfig?: boolean }[] = [
+  { id: 'password',      label: 'Password',           hint: 'Classic email + password sign-in.' },
+  { id: 'code',          label: 'One-time code',      hint: 'Email codes for sign-in, recovery and verification.' },
+  { id: 'passkey',       label: 'Passkeys',           hint: 'WebAuthn discoverable credentials (Face ID, security keys).', needsConfig: true },
+  { id: 'webauthn',      label: 'Security keys (legacy WebAuthn)', hint: 'Second-factor WebAuthn.', needsConfig: true },
+  { id: 'oidc',          label: 'Social sign-in (OIDC)', hint: 'Google, GitHub… requires providers in kratos.yml.', needsConfig: true },
+  { id: 'totp',          label: 'Authenticator app (TOTP)', hint: 'Time-based codes as a second factor.' },
+  { id: 'lookup_secret', label: 'Backup codes',       hint: 'One-time recovery codes.' },
+];
+
 const IMPORT_SECTIONS: { id: keyof PendingBundle['counts']; label: string }[] = [
   { id: 'services', label: 'Services' },
   { id: 'groups', label: 'Groups' },
@@ -36,10 +49,57 @@ export function SettingsPage() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const { data: importHistory } = useImportHistory();
+  const rollbackImport = useRollbackImport();
+  const [confirmRollback, setConfirmRollback] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<BundleImportResult | null>(null);
   const [pending, setPending] = useState<PendingBundle | null>(null);
   const [importSections, setImportSections] = useState<string[]>([]);
+
+  // ─── Kratos auth-method toggles (hot-reload; hidden when jinbe lacks KRATOS_CONFIG_PATH) ───
+  const { data: authConfig, error: authMethodsError } = useAuthMethods();
+  const setAuthMethods = useSetAuthMethods();
+  const authMethods = authConfig?.methods;
+  const registrationEnabled = authConfig?.registration.enabled ?? true;
+  const authMethodsAvailable = !!authConfig && (authMethodsError as any)?.status !== 501;
+
+  // First-factor methods — at least one must stay enabled or everyone is locked out.
+  const firstFactorCount = authMethods
+    ? [authMethods.password.enabled, !!authMethods.code.passwordlessEnabled && authMethods.code.enabled, authMethods.passkey.enabled, authMethods.oidc.enabled].filter(Boolean).length
+    : 0;
+
+  function toggleAuthMethod(id: AuthMethodName, patch: { enabled?: boolean; passwordlessEnabled?: boolean }) {
+    const disablingFirstFactor =
+      (id === 'password' && patch.enabled === false) ||
+      (id === 'passkey' && patch.enabled === false) ||
+      (id === 'oidc' && patch.enabled === false) ||
+      (id === 'code' && (patch.enabled === false || patch.passwordlessEnabled === false) && !!authMethods?.code.passwordlessEnabled);
+    if (disablingFirstFactor && firstFactorCount <= 1) {
+      pushToast('At least one sign-in method must stay enabled', { err: true, sub: 'Enable another first-factor method before disabling this one.' });
+      return;
+    }
+    setAuthMethods.mutate(
+      { [id]: patch },
+      {
+        onSuccess: () => pushToast('Authentication methods updated', { sub: 'Kratos hot-reloads — live on the next login flow.' }),
+        onError: (e: Error) => pushToast(e.message || 'Failed to update auth methods', { err: true }),
+      },
+    );
+  }
+
+  function toggleRegistration(enabled: boolean) {
+    setAuthMethods.mutate(
+      { registration: { enabled } },
+      {
+        onSuccess: () => pushToast(
+          enabled ? 'Self-registration enabled' : 'Self-registration disabled',
+          { sub: enabled ? 'Anyone can create an account on the login page.' : 'Accounts are now created only from Users → create (with invite email).' },
+        ),
+        onError: (e: Error) => pushToast(e.message || 'Failed to update registration', { err: true }),
+      },
+    );
+  }
 
   // ─── Org → Service bundle map (cached Query hook, PERF-4; optimistic PUT) ───
   const { data: fetchedMappings, isLoading: mapLoading } = useOrgServiceMap();
@@ -149,11 +209,24 @@ export function SettingsPage() {
       });
       refetch();
     } catch (e: any) {
-      pushToast(e.message || 'Import failed', { err: true });
+      // Validation rejections carry the failing rules — surface WHICH ones so
+      // the operator can fix the bundle instead of guessing.
+      const failures: { id: string; reason: string }[] | undefined = e?.details?.failures;
+      pushToast(e.message || 'Import failed', {
+        err: true,
+        sub: failures?.length ? failures.slice(0, 3).map(f => `${f.id}: ${f.reason}`).join(' · ') : undefined,
+      });
     } finally {
       setImporting(false);
       setPending(null);
     }
+  }
+
+  function doRollback(id: string) {
+    rollbackImport.mutate(id, {
+      onSuccess: () => { pushToast('Configuration rolled back', { sub: 'A pre-rollback snapshot of the replaced state was kept.' }); refetch(); },
+      onError: (e: Error) => pushToast(e.message || 'Rollback failed', { err: true }),
+    });
   }
 
   const serviceNames = state.services.map(s => s.name).filter(n => n !== 'global');
@@ -179,6 +252,60 @@ export function SettingsPage() {
             </div>
           </div>
           <a className="btn" href={accountUrl}>Open account settings →</a>
+        </div>
+      )}
+
+      {/* ─── Authentication methods (Kratos self-service, hot-reload) ─── */}
+      {authMethodsAvailable && authMethods && (
+        <div className="panel" style={{ marginBottom: 14, padding: 14 }}>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Authentication methods</div>
+          <div className="small muted" style={{ marginBottom: 14 }}>
+            Enable or disable how users sign in. Changes hot-reload into Kratos — live on the next login flow, no restart.
+          </div>
+          {/* Self-registration master switch — off = accounts are admin-created only. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0 12px', borderBottom: '2px solid var(--line)', marginBottom: 6 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 500, fontSize: 13 }}>
+                Self-registration
+                {!registrationEnabled && <Chip tone="warn" mono={false}>admin-only accounts</Chip>}
+              </div>
+              <div className="small muted">
+                {registrationEnabled
+                  ? 'Anyone can create an account from the login page.'
+                  : 'The public sign-up page is disabled — create accounts from Users → create (sends an invite email).'}
+              </div>
+            </div>
+            <Switch on={registrationEnabled} onChange={toggleRegistration} />
+          </div>
+          {AUTH_METHODS.map(m => {
+            const st = authMethods[m.id];
+            const locked = !!m.needsConfig && !st.configured;
+            return (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, fontSize: 13 }}>
+                    {m.label}
+                    {locked && <span className="small muted" style={{ marginLeft: 8 }}>requires config in kratos.yml</span>}
+                  </div>
+                  <div className="small muted">{m.hint}</div>
+                  {m.id === 'code' && st.enabled && (
+                    <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={!!st.passwordlessEnabled}
+                        disabled={setAuthMethods.isPending}
+                        onChange={e => toggleAuthMethod('code', { passwordlessEnabled: e.target.checked })}
+                      />
+                      Allow passwordless sign-in with a code (first factor)
+                    </label>
+                  )}
+                </div>
+                {locked
+                  ? <span className="small muted">off</span>
+                  : <Switch on={st.enabled} onChange={v => toggleAuthMethod(m.id, { enabled: v })} />}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -276,6 +403,44 @@ export function SettingsPage() {
             <div>{importResult.rbac.services} services, {importResult.rbac.groups} groups, {importResult.rbac.roles} roles, {importResult.rbac.routeMaps} route maps, {importResult.rbac.oathkeeperRules} Oathkeeper rules</div>
           </div>
         )}
+
+        {/* ─── Import history — automatic pre-import snapshots, one-click reroll ─── */}
+        {(importHistory?.length ?? 0) > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>Import history</div>
+            <div className="small muted" style={{ marginBottom: 8 }}>
+              A snapshot is taken automatically before every import, restore or rollback. Rolling back re-applies the snapshot as a full restore (and keeps a snapshot of what it replaces).
+            </div>
+            <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--line)', textAlign: 'left' }}>
+                  <th style={{ padding: '6px 8px', fontWeight: 500, color: 'var(--ink-2)' }}>When</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 500, color: 'var(--ink-2)' }}>Taken before</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 500, color: 'var(--ink-2)' }}>By</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 500, color: 'var(--ink-2)' }}>Contents</th>
+                  <th style={{ padding: '6px 8px', width: 90 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {importHistory!.map(h => (
+                  <tr key={h.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                    <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{new Date(h.takenAt).toLocaleString()}</td>
+                    <td style={{ padding: '6px 8px' }}><Chip>{h.reason.replace('pre-', '')}</Chip></td>
+                    <td style={{ padding: '6px 8px' }} className="mono">{h.actor || '—'}</td>
+                    <td style={{ padding: '6px 8px' }} className="small muted">
+                      {h.counts.services} svc · {h.counts.groups} groups · {h.counts.roles} roles · {h.counts.oathkeeperRules} rules
+                    </td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                      <button className="btn ghost sm" disabled={rollbackImport.isPending} onClick={() => setConfirmRollback(h.id)}>
+                        Roll back
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Confirm before import (UX-8) — pick which sections to apply. */}
@@ -340,6 +505,16 @@ export function SettingsPage() {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={!!confirmRollback}
+        title="Roll back RBAC configuration?"
+        danger
+        confirmLabel="Roll back"
+        body={<>The entire RBAC configuration (services, groups, roles, route maps, Oathkeeper rules) is replaced by this snapshot. A snapshot of the current state is kept, so you can roll forward again.</>}
+        onCancel={() => setConfirmRollback(null)}
+        onConfirm={() => { if (confirmRollback) doRollback(confirmRollback); setConfirmRollback(null); }}
+      />
 
       <ConfirmDialog
         open={!!confirmOrg}
