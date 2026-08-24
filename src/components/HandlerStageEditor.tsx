@@ -395,14 +395,20 @@ export function HandlerStageEditor({ stage, catalog, value, onChange }: {
             ))}
           </div>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          // Checkbox rows, not selection pills — same visual language as the
+          // service drawer's sign-in picker. Pills read as static badges;
+          // checkboxes read as choices (that ambiguity was the "messy" part).
+          <div>
             {descriptors.map(d => {
               const on = selected.has(d.handler);
               return (
-                <button key={d.handler} type="button" className="chip" aria-pressed={on} title={d.description} onClick={() => pick(d.handler)}
-                  style={{ cursor: 'pointer', fontFamily: 'var(--font-sans)', fontWeight: 500, background: on ? 'var(--accent)' : 'var(--panel-2)', color: on ? '#fff' : 'var(--ink-2)', borderColor: on ? 'var(--accent)' : 'var(--line)' }}>
-                  {on && <span style={{ fontSize: 10 }}>✓</span>} {d.label}
-                </button>
+                <label key={d.handler} className="small" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '5px 0', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={on} onChange={() => pick(d.handler)} style={{ marginTop: 2 }} />
+                  <span style={{ flex: 1 }}>
+                    <span style={{ fontWeight: 500 }}>{d.label}</span>
+                    <span className="muted" style={{ display: 'block' }}>{d.description}</span>
+                  </span>
+                </label>
               );
             })}
           </div>
