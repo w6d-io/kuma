@@ -1,0 +1,9 @@
+variables:
+  PROJECT_NAME: kuma
+  HELM_RELEASE_NAME: kuma
+  HELM_NS: ory
+
+include:
+  - project: 'library/stages'
+    ref: input-parameters
+    file: '/pipelines/front-nodejs.yaml'
