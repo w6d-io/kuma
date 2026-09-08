@@ -2,6 +2,12 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
+  // Relative asset URLs, so the same build serves from the root or from a sub-path. It is what lets
+  // this app share an origin with the login screens: jinbe validates the ory_kratos_session cookie
+  // and nothing else, and a cookie cannot be scoped to two hosts without being widened to their
+  // whole parent domain. Routing is by hash, which never reaches the server, so nothing else needs
+  // to know where the app is mounted.
+  base: './',
   plugins: [react()],
   server: {
     proxy: {
