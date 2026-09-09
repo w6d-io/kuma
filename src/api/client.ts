@@ -2,6 +2,7 @@
 // Falls back to relative /api when Oathkeeper proxies /api on the same domain.
 // Detect un-substituted envsubst placeholder (e.g. "${API_BASE}") and treat as empty.
 import type { AuditSummary, AccessReview } from './types';
+import { bearerToken } from '../auth/session';
 
 const _rawBase: string = (window as any).__API_BASE__ ?? '';
 const BASE = (_rawBase.startsWith('${') ? '' : _rawBase).replace(/\/$/, '') || '/api';
@@ -10,12 +11,20 @@ const BASE = (_rawBase.startsWith('${') ? '' : _rawBase).replace(/\/$/, '') || '
 export const API_BASE = BASE;
 
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
+  // A token when the deployment signs in against an authority, the session cookie otherwise. Sent
+  // together rather than exclusively: which one the API accepts is its decision, and a console that
+  // guessed would break the moment the API changed its mind.
+  const token = await bearerToken();
   const res = await fetch(`${BASE}${path}`, {
     credentials: 'include',
     // Only claim a JSON body when there IS one — Fastify 400s a body-less
     // POST carrying Content-Type: application/json (bit the rollback and
     // backup-now endpoints).
-    headers: { ...(opts?.body != null ? { 'Content-Type': 'application/json' } : {}), ...opts?.headers },
+    headers: {
+      ...(opts?.body != null ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...opts?.headers,
+    },
     ...opts,
   });
   if (!res.ok) {

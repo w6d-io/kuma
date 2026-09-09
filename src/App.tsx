@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, Fragment } from 'react';
+import { signIn } from './auth/session';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { useSession, useStats, useRealtime, useUserSearch } from './api/hooks';
 import { searchedToUser } from './api/transforms';
@@ -61,6 +62,17 @@ function simulatingForbidden(tweaks: { simulateForbidden?: boolean } | undefined
  * "still valid" session and bounce straight back, looping.
  */
 function redirectToLogin(metaAuthDomain: string | undefined, opts?: { refresh?: boolean }) {
+  // An authority, when the deployment named one: it answers with a token the API can verify on its
+  // own, where the cookie below asks the API to look a session up. Tried first because a deployment
+  // that configured an authority meant it; falls through when none is configured, which is what
+  // every deployment did before this was a choice.
+  void signIn().then((sent) => {
+    if (sent) return;
+    redirectToCookieLogin(metaAuthDomain, opts);
+  });
+}
+
+function redirectToCookieLogin(metaAuthDomain: string | undefined, opts?: { refresh?: boolean }) {
   const authDomain = metaAuthDomain || (window as any).__AUTH_DOMAIN__;
   if (!authDomain) {
     // No runtime config and no API metadata — surface the misconfig instead of
