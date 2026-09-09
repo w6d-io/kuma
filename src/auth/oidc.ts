@@ -11,6 +11,12 @@ import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts';
  * Without an authority configured, none of this runs and the console keeps the session-cookie
  * redirect it had before. Turning it on is a value, not a build.
  */
+/**
+ * Which step a held token belongs to. A token minted to ask a question must not be sent as if it
+ * answered one: they differ in what they assert and in who accepts them.
+ */
+export type Stage = 'directory' | 'api';
+
 export interface OidcSettings {
   readonly authority: string;
   readonly clientId: string;
@@ -60,9 +66,18 @@ export class OidcClient {
     });
   }
 
-  /** Send the browser to the authority. It comes back to the redirect URI with a code. */
-  signIn(returnTo: string): Promise<void> {
-    return this.manager.signinRedirect({ state: { returnTo } });
+  /**
+   * Send the browser to the authority. It comes back to the redirect URI with a code.
+   *
+   * The audience can be overridden for one request: a deployment may need a token that opens a
+   * directory before it can be told what a token for this API should assert. The default stays on
+   * the manager, so a silent renew keeps asking for the same thing as the sign-in it renews.
+   */
+  signIn(returnTo: string, stage: Stage = 'api', audience?: string): Promise<void> {
+    return this.manager.signinRedirect({
+      state: { returnTo, stage },
+      ...(audience ? { extraQueryParams: { audience } } : {}),
+    });
   }
 
   /**
@@ -76,11 +91,11 @@ export class OidcClient {
     return params.has('code') || params.has('error');
   }
 
-  /** Finish the exchange, and say where the sign-in was meant to lead. */
-  async completeCallback(): Promise<string | null> {
+  /** Finish the exchange, and say which step it was and where it was meant to lead. */
+  async completeCallback(): Promise<{ returnTo: string | null; stage: Stage }> {
     const user = await this.manager.signinRedirectCallback();
-    const state = user.state as { returnTo?: string } | undefined;
-    return state?.returnTo ?? null;
+    const state = user.state as { returnTo?: string; stage?: Stage } | undefined;
+    return { returnTo: state?.returnTo ?? null, stage: state?.stage === 'directory' ? 'directory' : 'api' };
   }
 
   /**
