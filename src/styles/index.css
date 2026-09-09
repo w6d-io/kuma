@@ -2036,3 +2036,18 @@ table {
 }
 .enforced-routes tbody tr:last-child td { border-bottom: none; }
 .enforced-routes tbody tr:hover { background: var(--hover); }
+
+/* A row that opens the chain behind its permission. Only rows that HAVE one are clickable — a
+   pointer over a row that does nothing is a promise the screen cannot keep. */
+.enforced-routes tr.expandable { cursor: pointer; }
+.enforced-routes tr.chain-row td { background: var(--hover); padding: 0; }
+.enforced-routes tr.chain-row:hover td { background: var(--hover); }
+
+.chain { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; }
+.chain-step { display: flex; flex-direction: column; gap: 6px; }
+.chain-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* Pointing back to what grants it, because that is the direction the reader is travelling: they
+   start from the route and ask where the right comes from. */
+.chain-arrow { color: var(--muted); }
+.chain-holders { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
+.chain-holders li { line-height: 1.6; }

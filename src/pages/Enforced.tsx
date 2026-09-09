@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useEnforcedConfig } from '../api/hooks';
 import { YamlView, CopyButton } from '../components/YamlView';
 import { Chip, EmptyHint, Method } from '../components/ui/Primitives';
-import type { EnforcedDocument, EnforcedRole } from '../api/client';
+import type { EnforcedDocument, EnforcedGrant, EnforcedRole } from '../api/client';
 
 /**
  * What actually decides, as it reads in the repository.
@@ -25,7 +25,88 @@ import type { EnforcedDocument, EnforcedRole } from '../api/client';
  * carry it. A permission no role carries is the interesting case: the route is unreachable by
  * anybody, and it looks identical to a missing right from the caller's side.
  */
-function RouteTable({ routes, roles }: { routes: NonNullable<EnforcedDocument['routes']>; roles: EnforcedRole[] }) {
+/**
+ * The whole chain behind one route, opened on demand.
+ *
+ * "This route needs `context:read`" answers half the question somebody came with. The half that
+ * matters is how anybody comes to hold it — so the chain is followed to its end: permission, the
+ * roles carrying it, and the people holding those roles, per organisation.
+ *
+ * There is no group in this chain, and its absence is the finding rather than an omission: what the
+ * engine enforces binds a PERSON to roles in an organisation, one grant at a time.
+ */
+function Chain({ permission, roles, grants }: { permission: string; roles: EnforcedRole[]; grants: EnforcedGrant[] }) {
+  const carriers = roles.filter(r => r.permissions.includes(permission) || r.permissions.includes('*'));
+
+  if (carriers.length === 0) {
+    return (
+      <div className="chain">
+        <span className="small" style={{ color: 'var(--err)' }}>
+          No role carries <span className="mono">{permission}</span>, so nobody can reach this route —
+          which, from the caller&apos;s side, is indistinguishable from lacking the right.
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="chain">
+      {carriers.map(carrier => {
+        // Who holds this role, and where. A grant names an organisation, so the same person can hold
+        // the role in one and not in another — showing the person without the organisation would
+        // claim more than the grant does.
+        const holders = grants
+          .map(g => ({ ...g, held: g.held.filter(h => h.roles.includes(carrier.role)) }))
+          .filter(g => g.held.length > 0);
+
+        return (
+          <div key={carrier.role} className="chain-step">
+            <div className="chain-head">
+              <Chip>{permission}</Chip>
+              <span className="chain-arrow" aria-hidden="true">←</span>
+              <span className="small muted">carried by role</span>
+              <Chip tone="plain">{carrier.role}</Chip>
+            </div>
+            {holders.length === 0 ? (
+              <span className="small" style={{ color: 'var(--err)' }}>
+                Nobody holds <span className="mono">{carrier.role}</span> anywhere.
+              </span>
+            ) : (
+              <ul className="chain-holders">
+                {holders.map(holder => (
+                  <li key={holder.subject}>
+                    {/* The address for a reader, the identifier when nothing can name it — a grant
+                        nobody can attribute is more interesting than one that can be, not less. */}
+                    <span className={holder.email ? '' : 'mono'}>
+                      {holder.email ?? holder.subject}
+                    </span>
+                    <span className="small muted"> in </span>
+                    {holder.held.map(h => (
+                      <Chip key={h.organisation} tone="plain" title={h.organisation}>
+                        {h.organisationName ?? h.organisation}
+                      </Chip>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RouteTable({
+  routes,
+  roles,
+  grants,
+}: {
+  routes: NonNullable<EnforcedDocument['routes']>;
+  roles: EnforcedRole[];
+  grants: EnforcedGrant[];
+}) {
+  const [open, setOpen] = useState<string | null>(null);
   const carriedBy = (permission: string) =>
     roles.filter(r => r.permissions.includes(permission) || r.permissions.includes('*')).map(r => r.role);
 
@@ -43,8 +124,13 @@ function RouteTable({ routes, roles }: { routes: NonNullable<EnforcedDocument['r
       <tbody>
         {routes.map(route => {
           const holders = route.permission ? carriedBy(route.permission) : [];
+          const id = `${route.method} ${route.path}`;
           return (
-            <tr key={`${route.method} ${route.path}`}>
+            <Fragment key={id}>
+            <tr
+              className={route.permission ? 'expandable' : ''}
+              onClick={() => route.permission && setOpen(open === id ? null : id)}
+            >
               <td><Method m={route.method} /></td>
               <td className="mono">{route.path}</td>
               <td>
@@ -68,6 +154,14 @@ function RouteTable({ routes, roles }: { routes: NonNullable<EnforcedDocument['r
                     : <span className="small" style={{ color: 'var(--err)' }}>no role carries it</span>}
               </td>
             </tr>
+            {open === id && route.permission && (
+              <tr className="chain-row">
+                <td colSpan={5}>
+                  <Chain permission={route.permission} roles={roles} grants={grants} />
+                </td>
+              </tr>
+            )}
+            </Fragment>
           );
         })}
       </tbody>
@@ -83,6 +177,7 @@ export function EnforcedPage() {
   // Every role the platform defines, wherever it was declared — the routes of one document are
   // almost never in the same document as the roles that satisfy them.
   const roles = useMemo(() => documents.flatMap(d => d.roles ?? []), [documents]);
+  const grants = useMemo(() => documents.flatMap(d => d.grants ?? []), [documents]);
 
   const current = documents.find(d => `${d.kind}/${d.name}` === selected) ?? documents[0];
 
@@ -159,7 +254,7 @@ export function EnforcedPage() {
               </span>
             </header>
             {current.routes && current.routes.length > 0 && !asYaml
-              ? <RouteTable routes={current.routes} roles={roles} />
+              ? <RouteTable routes={current.routes} roles={roles} grants={grants} />
               : <YamlView value={current.yaml} ariaLabel={`${current.kind} ${current.name} as YAML`} />}
           </section>
         )}
