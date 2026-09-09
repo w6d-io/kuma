@@ -607,6 +607,16 @@ export function useMyOrganizations() {
   });
 }
 
+/** What to call each organisation, for the screens that show one to a person. */
+export function useMyOrganizationNames() {
+  return useQuery({
+    queryKey: ['my-orgs'],
+    queryFn: () => api.myOrganizations(),
+    select: (payload) => payload.names ?? {},
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
 export function useMyOrganizationsScope() {
   return useQuery({
     queryKey: ['my-orgs'],
