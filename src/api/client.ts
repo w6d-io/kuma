@@ -442,8 +442,15 @@ export const api = {
   // The scope is kept, not dropped: it says WHICH authority answered. `claim` means the deployment
   // reads organisations from the verified token, so nobody administers them here and a screen that
   // advised asking an administrator would be advising the impossible.
+  // `names` is what to call each one on screen, keyed by identifier — served by the API because
+  // that is where they are known. Absent, a screen shows the identifier: worse to read, still
+  // correct, and never a guess.
   myOrganizations: () =>
-    request<{ organizations: string[]; scope?: 'delegated' | 'claim' | 'all' }>('/me/organizations'),
+    request<{
+      organizations: string[]
+      names?: Record<string, string>
+      scope?: 'delegated' | 'claim' | 'all'
+    }>('/me/organizations'),
 
   // Groups the caller may assign within an org — already narrowed by jinbe to the
   // org's service + containment (never the full catalog).

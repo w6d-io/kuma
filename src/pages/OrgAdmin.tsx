@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect } from 'react';
-import { organisationLabel } from '../auth/directory';
 import { emptyOrganisationsHint, organisationsSourceNote } from '../auth/authority';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
@@ -7,6 +6,7 @@ import { Chip, Avatar, Drawer, EmptyHint, Switch } from '../components/ui/Primit
 import { type KratosIdentity } from '../api/client';
 import {
   useMyOrganizations,
+  useMyOrganizationNames,
   useMyOrganizationsScope,
   useAssignableGroups,
   useOrgUsers,
@@ -219,6 +219,9 @@ export function OrgAdminPage() {
   const orgsQ = useMyOrganizations();
   // Where the list came from, so an empty one can say why rather than blame the reader.
   const scope = useMyOrganizationsScope().data ?? 'delegated';
+  // Names come from the API, which is where they are known. An unnamed one still shows its
+  // identifier: a row nobody can read beats a row nobody can select.
+  const orgNames = useMyOrganizationNames().data ?? {};
   // Surface a failed org list (403/network) instead of silently showing the
   // "no orgs" empty state.
   useEffect(() => { if (orgsQ.error) toastErr(orgsQ.error); }, [orgsQ.error, toastErr]);
@@ -274,7 +277,7 @@ export function OrgAdminPage() {
           <label className="small muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             Organization
             <select className="input mono" style={{ width: 'auto' }} value={activeOrg} onChange={e => { setOrg(e.target.value); setQ(''); setSearch(''); }}>
-              {orgs.map(o => <option key={o} value={o}>{organisationLabel(o)}</option>)}
+              {orgs.map(o => <option key={o} value={o}>{orgNames[o] ?? o}</option>)}
             </select>
           </label>
           <div style={{ position: 'relative', flex: 1, maxWidth: 320 }}>
