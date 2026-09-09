@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, Fragment } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { signIn } from './auth/session';
+import { leave } from './auth/leave';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { useSession, useStats, useRealtime, useUserSearch } from './api/hooks';
 import { searchedToUser } from './api/transforms';
@@ -95,6 +97,9 @@ function hasAnyPerm(userPerms: string[] | undefined, required: string[]): boolea
 }
 
 function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
+  // Emptied on the way out: what this console read stays in memory otherwise, and the next person
+  // at the same browser sees the previous one's data behind a sign-in screen.
+  const queryClient = useQueryClient();
   const { page, setPage, state, tweaks, apiError } = useApp();
   const showCounts = tweaks?.showCounts !== false;
   const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
@@ -170,25 +175,7 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
             className="logout-link"
             onClick={async (e) => {
               e.stopPropagation();
-              const authDomain = (window as any).__AUTH_DOMAIN__;
-              if (!authDomain) return;
-              const returnTo = `https://${authDomain}/login`;
-              // Kratos logout is TWO steps: /self-service/logout/browser CREATES
-              // the flow and returns JSON { logout_url } (carrying the CSRF
-              // token); you must then navigate to logout_url. Navigating
-              // straight to the browser endpoint just renders that JSON — the
-              // bug this fixes. kuma and auth are served from the same parent
-              // domain, so the session cookie is sent, and Kratos CORS allows
-              // the app's subdomain with credentials, so this fetch is reliable.
-              try {
-                const res = await fetch(
-                  `https://${authDomain}/self-service/logout/browser?return_to=${encodeURIComponent(returnTo)}`,
-                  { credentials: 'include', headers: { Accept: 'application/json' } },
-                );
-                const data = await res.json();
-                if (data?.logout_url) { window.location.href = data.logout_url; return; }
-              } catch { /* fall through to a best-effort redirect */ }
-              window.location.href = returnTo;
+              await leave(() => queryClient.clear());
             }}
             title="Sign out"
             style={{

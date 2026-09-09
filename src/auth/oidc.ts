@@ -99,4 +99,38 @@ export class OidcClient {
   async forget(): Promise<void> {
     await this.manager.removeUser();
   }
+
+  /**
+   * Sign out for real: revoke, drop, then end the authority's own session.
+   *
+   * Dropping the token in this tab is the easy third of it and the only part most consoles do. A
+   * refresh token outlives the click by design — hours, typically — so one that is merely forgotten
+   * here is still a live credential for anybody who has a copy. It is revoked first, while the
+   * authority still has a session to revoke it against.
+   *
+   * Then the browser goes to the authority's end-session endpoint, which is what ends the session
+   * behind the sign-in. Without that last step the next visit signs in again without asking, which
+   * looks exactly like a sign-out that did nothing.
+   */
+  async signOut(returnTo: string): Promise<void> {
+    const user = await this.manager.getUser();
+
+    // Best effort, and deliberately not fatal: a revocation the authority refuses must not leave
+    // somebody stuck on a console they asked to leave. The end-session call below still runs.
+    try {
+      await this.manager.revokeTokens(['access_token', 'refresh_token']);
+    } catch (failure) {
+      console.warn('[oidc] the authority refused to revoke:', failure);
+    }
+
+    await this.manager.removeUser();
+
+    // The hint is read before the store is emptied, because that is where it lives. Passed
+    // explicitly rather than left to be looked up, so emptying the store first cannot silently
+    // turn this into an unauthenticated request the authority answers with its own choice of page.
+    await this.manager.signoutRedirect({
+      id_token_hint: user?.id_token,
+      post_logout_redirect_uri: returnTo,
+    });
+  }
 }

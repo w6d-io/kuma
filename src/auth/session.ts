@@ -67,3 +67,16 @@ export async function signIn(): Promise<boolean> {
 export async function forgetToken(): Promise<void> {
   await client?.forget();
 }
+
+/**
+ * Leave, and leave nothing behind.
+ *
+ * Returns false when this deployment does not sign in against an authority, so the caller can fall
+ * back to the session it does use. Otherwise the browser leaves for the authority and does not come
+ * back here signed in — so anything that must be cleaned up locally is cleaned up before that.
+ */
+export async function signOut(returnTo: string = redirectUri()): Promise<boolean> {
+  if (!client) return false;
+  await client.signOut(returnTo);
+  return true;
+}

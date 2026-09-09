@@ -41,12 +41,16 @@ ENV OIDC_AUDIENCE=""
 #              when this console does not own it. Empty -> "your identity provider". Never a name
 #              this code knows: a console that hardcoded one would stop being portable.
 ENV ORG_AUTHORITY=""
+# KRATOS_PUBLIC_URL: where the identity service answers, for the deployments that sign in with its
+#                    session rather than a token. Needed only when it is not at the root of
+#                    AUTH_DOMAIN: behind a path prefix, the self-service endpoints move with it.
+ENV KRATOS_PUBLIC_URL=""
 
 EXPOSE 8080
 
 # Inject runtime config into index.html, then start nginx.
 # envsubst whitelist: only the listed vars are substituted (preserves other ${...} content).
 CMD ["/bin/sh", "-c", \
-  "envsubst '${API_BASE} ${AUTH_DOMAIN} ${GRAFANA_URL} ${BACKUP_ENABLED} ${OIDC_AUTHORITY} ${OIDC_CLIENT_ID} ${OIDC_AUDIENCE} ${ORG_AUTHORITY}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
+  "envsubst '${API_BASE} ${AUTH_DOMAIN} ${GRAFANA_URL} ${BACKUP_ENABLED} ${OIDC_AUTHORITY} ${OIDC_CLIENT_ID} ${OIDC_AUDIENCE} ${ORG_AUTHORITY} ${KRATOS_PUBLIC_URL}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
    mv /tmp/index.html /usr/share/nginx/html/index.html && \
    nginx -g 'daemon off;'"]
