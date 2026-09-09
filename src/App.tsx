@@ -20,6 +20,7 @@ import { SettingsPage } from './pages/Settings';
 import { BackupPage } from './pages/Backup';
 import type { PageId } from './api/types';
 import { UserMenu } from './components/UserMenu';
+import * as Dialog from '@radix-ui/react-dialog';
 
 type NavItem = {
   id: PageId
@@ -95,7 +96,53 @@ function hasAnyPerm(userPerms: string[] | undefined, required: string[]): boolea
   return required.some((r) => userPerms.includes(r))
 }
 
+/**
+ * The rail, on a screen wide enough to give it a column of its own. Hidden below the breakpoint,
+ * where the same content is served by the sheet instead.
+ */
 function Sidebar() {
+  return (
+    <aside className="sidebar">
+      <RailContent />
+    </aside>
+  );
+}
+
+/**
+ * The rail as a sheet, for a screen too narrow to spare 244 pixels.
+ *
+ * On a dialog primitive rather than by hand: a scrim that closes on click, focus trapped inside
+ * while it is open and returned to the button afterwards, Escape, the page behind locked against
+ * scrolling, and `aria-modal` for anybody not looking at it. Every one of those is a thing people
+ * notice only when it is missing.
+ *
+ * Closes on navigation, because a menu that stays open over the page you just asked for makes you
+ * dismiss it before you can read it.
+ */
+function RailDrawer() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger className="burger" aria-label="Menu">
+        <span aria-hidden="true">☰</span>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="rail-scrim" />
+        <Dialog.Content className="rail-sheet" aria-label="Navigation">
+          <Dialog.Title className="sr-only">Navigation</Dialog.Title>
+          <RailContent onNavigate={() => setOpen(false)} />
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+/**
+ * What the rail contains. Rendered twice — once in the fixed rail, once inside the sheet a narrow
+ * screen opens — because two copies of a navigation is how the two stop agreeing.
+ */
+function RailContent({ onNavigate }: { onNavigate?: () => void }) {
   const { page, setPage, state, tweaks, apiError } = useApp();
   const showCounts = tweaks?.showCounts !== false;
   const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
@@ -108,7 +155,7 @@ function Sidebar() {
   const sections = [...new Set(visibleNav.map((n) => n.section))]
 
   return (
-    <aside className="sidebar">
+    <>
       <div className="sidebar-header">
         <div className="logo-mark">K</div>
         <div className="logo-text">
@@ -133,7 +180,7 @@ function Sidebar() {
                 n.id === "services" ? state.services.length :
                 null;
               return (
-                <button key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => setPage(n.id)}>
+                <button key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => { setPage(n.id); onNavigate?.(); }}>
                   <span className="ico">{n.ico}</span>
                   {n.name}
                   {count != null && showCounts && <span className="count">{count}</span>}
@@ -143,7 +190,7 @@ function Sidebar() {
           </Fragment>
         ))}
       </nav>
-    </aside>
+    </>
   );
 }
 
@@ -420,6 +467,7 @@ function AppShell() {
   return (
     <div className="app">
       <Sidebar />
+      <RailDrawer />
       <div className="main">
         <Topbar onOpenCmdk={() => setCmdkOpen(true)} />
         <div className="content">

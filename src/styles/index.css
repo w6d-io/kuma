@@ -1865,3 +1865,99 @@ html[data-matrixcolor="on"] .matrix-cell.lv-admin { background: color-mix(in okl
     display: none;
   }
 }
+
+/* ── Narrow screens ────────────────────────────────────────────────────────────────────────────
+   Below the breakpoint the rail gives up its column: 244 pixels of navigation on a 390-pixel
+   screen leaves the page itself unreadable. The same content comes back as a sheet, and the button
+   that opens it exists ONLY here — above the breakpoint the rail is always on screen and the button
+   would do nothing. */
+.burger {
+  display: none;
+}
+
+.rail-scrim,
+.rail-sheet {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .burger {
+    position: fixed;
+    top: var(--space-2);
+    left: var(--space-2);
+    z-index: 45;
+    display: grid;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel);
+    color: var(--ink);
+    font-size: var(--fs-16);
+    cursor: pointer;
+    place-items: center;
+  }
+
+  /* The topbar starts after the button rather than under it: a control drawn on top of a search
+     field is a control that eats the first tap aimed at the field. */
+  .topbar {
+    padding-left: calc(36px + var(--space-4));
+  }
+
+  .rail-scrim {
+    position: fixed;
+    display: block;
+    background: rgb(0 0 0 / 45%);
+    inset: 0;
+    z-index: 48;
+  }
+
+  .rail-sheet {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 49;
+    display: flex;
+    width: min(86vw, var(--sidebar-w));
+    flex-direction: column;
+    overflow-y: auto;
+    padding: var(--space-3) var(--space-2);
+    border-right: 1px solid var(--line);
+    background: var(--sidebar-bg, var(--panel));
+  }
+
+  /* Out of the corner the sheet covers, and narrower: the bubble is the avatar alone here. */
+  .userbubble {
+    right: var(--space-3);
+    bottom: var(--space-3);
+  }
+}
+
+/* Announced, not drawn: a dialog needs a title for anybody not looking at it, and this one's title
+   is the word the button already carries. */
+.sr-only {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Wide content must scroll inside its own box; the page itself never scrolls sideways. */
+.content {
+  overflow-x: hidden;
+}
+
+table {
+  min-width: 0;
+}
