@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Signed out</title>
+<!--
+  Loaded by the authority, in a hidden frame, while somebody signs out — of this console or of
+  anything else that shares the session.
+
+  Ending the session does not reach a token already handed out: it stays valid until it expires,
+  which is why signing out of one application appeared to leave the others signed in. This is where
+  this origin is told to drop what it holds.
+
+  Deliberately not the console: a page that booted the application would run its start-up, ask for a
+  token, and could sign somebody back in during their own sign-out. Nothing here but the forgetting.
+-->
+<script>
+  try {
+    sessionStorage.clear();
+  } catch (refused) {
+    // A browser that refuses storage never held anything to drop.
+  }
+</script>
+<p>Signed out.</p>
