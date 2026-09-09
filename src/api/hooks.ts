@@ -93,6 +93,21 @@ export function useUsers(search?: string) {
 // hit doesn't carry the multi-org list. Fetching here also prevents a stale row
 // from clobbering the array on save (a merge-PUT built on a false-empty base
 // would wipe real memberships). Enabled lazily so it only fires when needed.
+/**
+ * The enforced configuration. No mutation hook accompanies it on purpose — see api.getEnforcedConfig.
+ *
+ * Not cached for long: it changes when somebody merges, not when somebody clicks, and a stale
+ * document read as "what is enforced" is the failure this screen exists to end.
+ */
+export function useEnforcedConfig(enabled = true) {
+  return useQuery({
+    queryKey: ['enforced-config'],
+    queryFn: () => api.getEnforcedConfig(),
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
 export function useUserIdentity(id: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ['user-identity', id],
