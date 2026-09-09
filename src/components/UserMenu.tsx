@@ -6,16 +6,15 @@ import { leave } from '../auth/leave';
 /**
  * Who is signed in, and the few things somebody does about it.
  *
- * A bubble in the corner rather than a row in the rail. The rail answers "where am I going"; this
- * answers "who am I", which is a different question and does not belong where it can be mistaken
- * for navigation. The corner also survives every page, including the ones with no rail.
+ * At the foot of the rail, where this platform's own consoles put it. One row that opens a menu,
+ * rather than a row that navigates AND carries a link inside it: those were two targets on top of
+ * each other, and the small one won by accident.
  *
  * Built on a menu primitive rather than by hand. Outside-click, Escape, focus return, roving focus
- * with the arrow keys, `aria-expanded`, and collision-aware placement are all things a menu needs
- * and none of them are this console's problem to solve. The primitive also renders in a PORTAL,
- * which is what keeps the placement honest: positioned inside the rail, an ancestor with a
- * transform — which the rail has the moment it slides in on a narrow screen — would become the
- * containing block and the bubble would land in the middle of the rail instead of the corner.
+ * with the arrow keys, `aria-expanded` and collision-aware placement are all things a menu needs and
+ * none of them are this console's problem to solve. The primitive also renders in a PORTAL, which is
+ * what makes it safe here: the rail slides in on a transform on a narrow screen, and a menu
+ * positioned inside a transformed ancestor is placed against that ancestor rather than the screen.
  */
 export function UserMenu({
   email,
@@ -33,21 +32,20 @@ export function UserMenu({
 
   return (
     <Menu.Root>
-      <Menu.Trigger className="userbubble" aria-label="Account">
+      <Menu.Trigger className="userbtn" aria-label="Account">
         <Avatar name={local} />
-        {/* Hidden on a narrow screen by CSS, where the avatar alone is the whole control: a name
-            and a role beside it would take a third of the width from the page itself. */}
-        <span className="userbubble-text">
-          <span className="userbubble-name">
+        <span className="userbtn-text">
+          <span className="userbtn-name">
             <span className="user-local">{local}</span>
             {domain && <span className="user-domain">@{domain}</span>}
           </span>
-          <span className="userbubble-role">{role}</span>
+          <span className="userbtn-role">{role}</span>
         </span>
+        <span className="chev" aria-hidden="true">▴</span>
       </Menu.Trigger>
 
       <Menu.Portal>
-        <Menu.Content className="usermenu-content" side="top" align="end" sideOffset={8} collisionPadding={12}>
+        <Menu.Content className="usermenu-content" side="top" align="start" sideOffset={6} collisionPadding={10}>
           <Menu.Label className="usermenu-label">
             {email}
           </Menu.Label>

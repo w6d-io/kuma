@@ -100,10 +100,10 @@ function hasAnyPerm(userPerms: string[] | undefined, required: string[]): boolea
  * The rail, on a screen wide enough to give it a column of its own. Hidden below the breakpoint,
  * where the same content is served by the sheet instead.
  */
-function Sidebar() {
+function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
   return (
     <aside className="sidebar">
-      <RailContent />
+      <RailContent onOpenTweaks={onOpenTweaks} />
     </aside>
   );
 }
@@ -119,7 +119,7 @@ function Sidebar() {
  * Closes on navigation, because a menu that stays open over the page you just asked for makes you
  * dismiss it before you can read it.
  */
-function RailDrawer() {
+function RailDrawer({ onOpenTweaks }: { onOpenTweaks: () => void }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -131,7 +131,7 @@ function RailDrawer() {
         <Dialog.Overlay className="rail-scrim" />
         <Dialog.Content className="rail-sheet" aria-label="Navigation">
           <Dialog.Title className="sr-only">Navigation</Dialog.Title>
-          <RailContent onNavigate={() => setOpen(false)} />
+          <RailContent onNavigate={() => setOpen(false)} onOpenTweaks={onOpenTweaks} />
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -142,7 +142,7 @@ function RailDrawer() {
  * What the rail contains. Rendered twice — once in the fixed rail, once inside the sheet a narrow
  * screen opens — because two copies of a navigation is how the two stop agreeing.
  */
-function RailContent({ onNavigate }: { onNavigate?: () => void }) {
+function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; onOpenTweaks: () => void }) {
   const { page, setPage, state, tweaks, apiError } = useApp();
   const showCounts = tweaks?.showCounts !== false;
   const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
@@ -190,6 +190,24 @@ function RailContent({ onNavigate }: { onNavigate?: () => void }) {
           </Fragment>
         ))}
       </nav>
+      <div className="sidebar-foot">
+        <UserMenu
+          email={session?.email || "you@console"}
+          role={session?.roles?.[0] || ""}
+          onOpenTweaks={onOpenTweaks}
+          onOpenSettings={() => {
+            // Account settings live on the auth domain — opened in a new tab so this session stays
+            // put. __AUTH_DOMAIN__ is injected by the chart at runtime; without one, the in-app
+            // settings are the nearest thing that exists.
+            const authDomain = (window as unknown as Record<string, string>).__AUTH_DOMAIN__;
+            if (authDomain) {
+              window.open(`https://${authDomain}/settings`, '_blank', 'noopener,noreferrer');
+            } else {
+              setPage("settings");
+            }
+          }}
+        />
+      </div>
     </>
   );
 }
@@ -466,8 +484,8 @@ function AppShell() {
 
   return (
     <div className="app">
-      <Sidebar />
-      <RailDrawer />
+      <Sidebar onOpenTweaks={() => setTweaksOpen(true)} />
+      <RailDrawer onOpenTweaks={() => setTweaksOpen(true)} />
       <div className="main">
         <Topbar onOpenCmdk={() => setCmdkOpen(true)} />
         <div className="content">
@@ -492,22 +510,6 @@ function AppShell() {
       <ServiceDrawer />
       <GrantAccess />
       <CmdK open={cmdkOpen} onClose={() => setCmdkOpen(false)} />
-      <UserMenu
-        email={session?.email || "you@console"}
-        role={session?.roles?.[0] || ""}
-        onOpenTweaks={() => setTweaksOpen(true)}
-        onOpenSettings={() => {
-          // Account settings live on the auth domain — opened in a new tab so this session stays
-          // put. __AUTH_DOMAIN__ is injected by the chart at runtime; without one, the in-app
-          // settings are the nearest thing that exists.
-          const authDomain = (window as unknown as Record<string, string>).__AUTH_DOMAIN__;
-          if (authDomain) {
-            window.open(`https://${authDomain}/settings`, '_blank', 'noopener,noreferrer');
-          } else {
-            setPage("settings");
-          }
-        }}
-      />
       <TweaksPanel open={tweaksOpen} onClose={() => setTweaksOpen(false)} />
       <Toasts toasts={toasts} />
     </div>
