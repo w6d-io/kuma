@@ -21,6 +21,26 @@ export function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
+/**
+ * The organisations an identity belongs to, from whoever owns them.
+ *
+ * jinbe answers `organizations` from the records it owns — the effective set, primary included. A
+ * backend that does not own membership omits the field, and then what was written on the identity
+ * (`metadata_admin.organizations`) is the best available answer. Absent and empty are different
+ * answers: `[]` states that somebody belongs to nothing, so it must NOT fall through.
+ *
+ * Exported because the screen that EDITS membership has to start from the same answer the table
+ * shows. Reading the identity while the truth lived elsewhere showed an empty list to people who
+ * belong to three — and that screen saves what it shows.
+ */
+export function membershipsOf(
+  k: { organizations?: unknown; metadata_admin?: { organizations?: unknown } | null },
+): string[] {
+  if (Array.isArray(k.organizations)) return k.organizations as string[];
+  if (Array.isArray(k.metadata_admin?.organizations)) return k.metadata_admin!.organizations as string[];
+  return [];
+}
+
 /** Kratos identity (enriched by jinbe) → Kuma User row. */
 export function kratosToUser(k: KratosIdentity): User {
   // jinbe's enriched users response carries credential presence as
@@ -51,13 +71,7 @@ export function kratosToUser(k: KratosIdentity): User {
     if (totpReg || webauthnReg || lookupReg) mfa = true;
     else if (Object.keys(c).length > 0) mfa = false;
   }
-  // Multi-org membership lives in metadata_admin.organizations (authoritative
-  // on post-migration backends; unioned with the native organization_id by
-  // jinbe). Legacy identities have no such field — default to [] so call sites
-  // can read `.length` without guarding for undefined.
-  const organizations = Array.isArray(k.metadata_admin?.organizations)
-    ? (k.metadata_admin!.organizations as string[])
-    : [];
+  const organizations = membershipsOf(k);
   return {
     id: k.id,
     name: k.traits.name || k.traits.email,

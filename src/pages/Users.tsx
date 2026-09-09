@@ -6,7 +6,7 @@ import { Chip, Avatar, Drawer, PermTree, Switch, ConfirmDialog, EmptyHint } from
 import { Pagination, usePagination } from '../components/ui/Pagination';
 import { isPrivilegedGroup } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
-import { searchedToUser } from '../api/transforms';
+import { membershipsOf, searchedToUser } from '../api/transforms';
 import { RiskBadge, riskOf } from './Audit';
 import type { User, AuditEvent } from '../api/types';
 
@@ -456,8 +456,9 @@ export function UserDrawer() {
 // Multi-organization membership editor (Users drawer · Organizations tab).
 //
 // A user's EFFECTIVE membership = the native primary `organization_id` UNION the
-// additional `metadata_admin.organizations` list — the exact union jinbe folds
-// into OPA's `user_organizations`. Both are edited against EXISTING endpoints:
+// additional list. jinbe OWNS that set now and answers it as `organizations`;
+// `metadata_admin.organizations` is the write path and the fallback, no longer
+// the truth. Both halves are edited against EXISTING endpoints:
 //   • primary    → PATCH /admin/users/:id/organization  (native, UUID-checked)
 //   • additional → PATCH /admin/users/:id/metadata       (merge; refuses groups)
 // The org catalog for the picker comes from GET /me/organizations (a super_admin
@@ -480,12 +481,17 @@ function OrgMembershipTab({ user }: { user: User }) {
   const identity = identityQ.data;
   const catalogQ = useMyOrganizations();
   const catalog = useMemo(() => catalogQ.data ?? [], [catalogQ.data]);
-  const baselineAdditional = useMemo(
-    () => (Array.isArray(identity?.metadata_admin?.organizations)
-      ? (identity!.metadata_admin!.organizations as string[])
-      : []),
-    [identity],
-  );
+  // The starting point of an EDIT, which is why the source matters more here than anywhere else:
+  // this screen saves what it is showing. jinbe answers `organizations` from the records it owns —
+  // the effective set, primary included — so the additional list is that set minus the primary.
+  // Only when the field is absent (a backend that does not own membership) does what was written on
+  // the identity stand in. Seeding from the identity while the truth lived elsewhere would have
+  // shown an empty list to somebody who belongs to three, and saving it would have made that true.
+  const baselineAdditional = useMemo(() => {
+    if (!identity) return [];
+    const primaryId = identity.organization_id ?? "";
+    return membershipsOf(identity).filter(o => o && o !== primaryId);
+  }, [identity]);
 
   const [primary, setPrimary] = useState("");
   const [additional, setAdditional] = useState<string[]>([]);
@@ -586,7 +592,7 @@ function OrgMembershipTab({ user }: { user: User }) {
       <div>
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
           <label className="input-label" style={{ margin: 0 }}>Additional organizations</label>
-          <span className="small muted mono">metadata_admin.organizations</span>
+          <span className="small muted" title="Read from the membership records jinbe owns; written through metadata_admin.organizations">held by jinbe</span>
         </div>
         {candidates.length === 0
           ? (
