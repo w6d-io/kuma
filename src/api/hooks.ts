@@ -596,10 +596,22 @@ export function useUpdateServiceRoles(serviceName: string) {
 // same query-cache + optimistic-mutation model as the rest of the console,
 // replacing its ad-hoc local useState/Promise flow.
 
+// Two views of one request: existing callers keep the plain list, and a screen that needs to say
+// where the list came from reads the scope off the same cached query rather than asking twice.
 export function useMyOrganizations() {
   return useQuery({
     queryKey: ['my-orgs'],
     queryFn: () => api.myOrganizations(),
+    select: (payload) => payload.organizations,
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
+export function useMyOrganizationsScope() {
+  return useQuery({
+    queryKey: ['my-orgs'],
+    queryFn: () => api.myOrganizations(),
+    select: (payload) => payload.scope ?? 'delegated',
     staleTime: CONFIG_STALE_TIME,
   });
 }

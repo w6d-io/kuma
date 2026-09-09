@@ -9,7 +9,7 @@ import { startSession } from './auth/session'
 // substitutes at container start. On the vite dev server nothing substitutes
 // them, so readers would see a TRUTHY garbage value and build broken
 // "https://${AUTH_DOMAIN}/login" redirects. Blank them out once at boot.
-for (const k of ['__API_BASE__', '__AUTH_DOMAIN__', '__GRAFANA_URL__', '__BACKUP_ENABLED__', '__OIDC_AUTHORITY__', '__OIDC_CLIENT_ID__', '__OIDC_AUDIENCE__'] as const) {
+for (const k of ['__API_BASE__', '__AUTH_DOMAIN__', '__GRAFANA_URL__', '__BACKUP_ENABLED__', '__OIDC_AUTHORITY__', '__OIDC_CLIENT_ID__', '__OIDC_AUDIENCE__', '__ORG_AUTHORITY__'] as const) {
   const v = (window as unknown as Record<string, unknown>)[k]
   if (typeof v === 'string' && v.startsWith('${')) {
     (window as unknown as Record<string, unknown>)[k] = ''

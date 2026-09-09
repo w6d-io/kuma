@@ -37,12 +37,16 @@ ENV BACKUP_ENABLED=""
 ENV OIDC_AUTHORITY=""
 ENV OIDC_CLIENT_ID=""
 ENV OIDC_AUDIENCE=""
+# ORG_AUTHORITY: the name of the directory that owns organisation membership, shown to the reader
+#              when this console does not own it. Empty -> "your identity provider". Never a name
+#              this code knows: a console that hardcoded one would stop being portable.
+ENV ORG_AUTHORITY=""
 
 EXPOSE 8080
 
 # Inject runtime config into index.html, then start nginx.
 # envsubst whitelist: only the listed vars are substituted (preserves other ${...} content).
 CMD ["/bin/sh", "-c", \
-  "envsubst '${API_BASE} ${AUTH_DOMAIN} ${GRAFANA_URL} ${BACKUP_ENABLED} ${OIDC_AUTHORITY} ${OIDC_CLIENT_ID} ${OIDC_AUDIENCE}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
+  "envsubst '${API_BASE} ${AUTH_DOMAIN} ${GRAFANA_URL} ${BACKUP_ENABLED} ${OIDC_AUTHORITY} ${OIDC_CLIENT_ID} ${OIDC_AUDIENCE} ${ORG_AUTHORITY}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
    mv /tmp/index.html /usr/share/nginx/html/index.html && \
    nginx -g 'daemon off;'"]

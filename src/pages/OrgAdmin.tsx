@@ -1,10 +1,12 @@
 import { useState, useMemo, useEffect } from 'react';
+import { emptyOrganisationsHint, organisationsSourceNote } from '../auth/authority';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, EmptyHint, Switch } from '../components/ui/Primitives';
 import { type KratosIdentity } from '../api/client';
 import {
   useMyOrganizations,
+  useMyOrganizationsScope,
   useAssignableGroups,
   useOrgUsers,
   useCreateOrgUser,
@@ -214,6 +216,8 @@ export function OrgAdminPage() {
   const [manageUser, setManageUser] = useState<KratosIdentity | null>(null);
 
   const orgsQ = useMyOrganizations();
+  // Where the list came from, so an empty one can say why rather than blame the reader.
+  const scope = useMyOrganizationsScope().data ?? 'delegated';
   // Surface a failed org list (403/network) instead of silently showing the
   // "no orgs" empty state.
   useEffect(() => { if (orgsQ.error) toastErr(orgsQ.error); }, [orgsQ.error, toastErr]);
@@ -241,9 +245,9 @@ export function OrgAdminPage() {
   if (orgs.length === 0) {
     return (
       <>
-        <div className="page-head"><div><h1>Org Admin</h1><div className="sub">Manage users in organizations you administer</div></div></div>
+        <div className="page-head"><div><h1>Org Admin</h1><div className="sub">{organisationsSourceNote(scope) ?? 'Manage users in organizations you administer'}</div></div></div>
         <div className="panel" style={{ padding: 40 }}>
-          <EmptyHint>You don&apos;t administer any organizations. Ask a super_admin to add you to an org-admin group.</EmptyHint>
+          <EmptyHint>{emptyOrganisationsHint(scope).message}</EmptyHint>
         </div>
       </>
     );

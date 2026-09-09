@@ -439,8 +439,11 @@ export const api = {
 
   // ─── Delegated org-admin (self-service; scoped to the caller's orgs) ───
   // The organizations the caller may administer (delegation manageable_orgs).
+  // The scope is kept, not dropped: it says WHICH authority answered. `claim` means the deployment
+  // reads organisations from the verified token, so nobody administers them here and a screen that
+  // advised asking an administrator would be advising the impossible.
   myOrganizations: () =>
-    request<{ organizations: string[] }>('/me/organizations').then(r => r.organizations),
+    request<{ organizations: string[]; scope?: 'delegated' | 'claim' | 'all' }>('/me/organizations'),
 
   // Groups the caller may assign within an org — already narrowed by jinbe to the
   // org's service + containment (never the full catalog).
