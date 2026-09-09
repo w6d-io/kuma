@@ -183,6 +183,13 @@ export const api = {
       body: JSON.stringify({ source, options }),
     }),
 
+  // ─── Enforced configuration (read-only) ───
+  // What actually decides, read from the cluster objects the engines load. There is no writer and
+  // there must not be one: the source of truth is a repository synced by Argo, so a write here
+  // would be reverted by the next sync without telling anybody.
+  getEnforcedConfig: () =>
+    request<{ documents: EnforcedDocument[] }>(`/admin/enforced-config`).then(r => r.documents),
+
   // ─── Access Rules (Oathkeeper) ───
   getAccessRules: () =>
     request<{ rules: JinbeAccessRule[] }>(`/admin/rbac/access-rules`).then(r => r.rules),
@@ -569,7 +576,13 @@ export interface WhoamiResponse {
   error: string | null;
   groups: string[];
   roles: string[];
-  permissions: string[];
+  permissions: string[];  /**
+   * Where the rules are enforced from — `service` (this console is the source) or `gitops` (Rule
+   * resources and labelled ConfigMaps, synced from a repository). Absent on an older service, which
+   * reads as `service`: see policy/source.ts.
+   */
+  rules_source?: 'service' | 'gitops';
+
 }
 
 export interface SetUserGroupsResponse {
@@ -678,6 +691,18 @@ export interface ImportPreview {
   derived: DerivedRoute[];
   diff: { add: DerivedRoute[]; changed: ChangedRoute[]; unchanged: DerivedRoute[]; stale: StaleRoute[]; };
   warnings: { kind: string; message: string; detail?: string }[];
+}
+
+/** One object that decides something, as the service that reads the cluster answers it. */
+export interface EnforcedDocument {
+  /** The Kubernetes kind — `Rule` for the edge, `ConfigMap` for the policy data. */
+  kind: string;
+  name: string;
+  namespace: string;
+  /** What it decides, in the reader's terms rather than the cluster's. */
+  decides: string;
+  /** The object as YAML, pruned of what the API server adds. */
+  yaml: string;
 }
 
 export interface JinbeAccessRule {

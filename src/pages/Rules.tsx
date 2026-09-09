@@ -3,7 +3,8 @@ import { useApp } from '../contexts/AppContext';
 import { Chip, Method, ConfirmDialog, StageRow, AdvancedDisclosure, Switch } from '../components/ui/Primitives';
 import { I } from '../components/ui/Icons';
 import { useApplyChange } from '../hooks/useApplyChange';
-import { useUpdateAccessRule, useOathkeeperHandlers } from '../api/hooks';
+import { useSession, useUpdateAccessRule, useOathkeeperHandlers } from '../api/hooks';
+import { rulesAreEditable, NOT_ENFORCED_HERE } from '../policy/source';
 import {
   HandlerStageEditor, PRESETS, classify, rulePosture, serviceGatewayPosture,
   toDraftHandler, newDraftHandler, draftHandlerToConfig, draftHandlersValid, isRealAuthn,
@@ -282,7 +283,12 @@ export function RulesPage({ svc, unassigned = false }: { svc?: string; unassigne
   // Per-rule editing targets ONE rule by id (safe on multi-rule services). Only
   // regular, registered, non-system services are editable; infra/system are
   // read-only. Each field is overlaid on the raw rule so nothing is dropped.
-  const canEdit = !!svc && svc !== 'global' && !svcObj?.system && !unassigned;
+  // A deployment whose engines read their rules from Git is one more reason this rule cannot be
+  // edited here, and it is not a lesser one: a write would report success into a store nothing
+  // reads. Folded into the existing gate so every control already keyed on it is covered.
+  const { data: session } = useSession();
+  const enforcedFromGit = !rulesAreEditable(session);
+  const canEdit = !!svc && svc !== 'global' && !svcObj?.system && !unassigned && !enforcedFromGit;
 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [activeStage, setActiveStage] = useState<Stage | null>(null);
@@ -513,7 +519,7 @@ export function RulesPage({ svc, unassigned = false }: { svc?: string; unassigne
   };
 
   const doSave = () => {
-    if (!rule || !canSave) return;
+    if (!rule || !canSave || enforcedFromGit) return;
     applyChange('update', `gateway: ${rule.id}`, () => updateRule.mutateAsync({ id: rule.id, rule: buildMerged() }).then(() => undefined));
     cancelEdit();
     setConfirmOpen(false);
@@ -627,6 +633,10 @@ export function RulesPage({ svc, unassigned = false }: { svc?: string; unassigne
         <span className="small muted">
           {unassigned
             ? <>These gateway rules aren't tied to a registered service (infrastructure or legacy rules) — read-only.</>
+            : enforcedFromGit
+              /* Before every other reason: with editing off for this one, the branches below would
+                 explain the wrong cause — "system service" reads as a permission problem. */
+              ? <>{NOT_ENFORCED_HERE}</>
             : canEdit
               ? (catalog
                   ? <>Pick a protection preset, or open a step below to fine-tune it. Changes apply to the selected rule only.</>

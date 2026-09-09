@@ -1958,3 +1958,67 @@ html[data-matrixcolor="on"] .matrix-cell.lv-admin { background: color-mix(in okl
 table {
   min-width: 0;
 }
+
+/* ── Enforced configuration ────────────────────────────────────────────────────
+   A list of documents and one document, side by side. The document takes the
+   remaining height rather than a fixed one: YAML runs from ten lines to two
+   hundred, and both a scrollbar inside a short box and a page that grows to a
+   thousand pixels make it harder to read than it needs to be. */
+.enforced { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+
+.enforced-note {
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--panel);
+}
+
+.enforced-split {
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-height: 0;
+}
+
+.enforced-list { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+.enforced-item {
+  display: flex; flex-direction: column; gap: 2px;
+  text-align: left; width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--ink); cursor: pointer;
+  font: inherit;
+}
+.enforced-item:hover { background: var(--hover); }
+.enforced-item.active { background: var(--panel); border-color: var(--line); }
+.enforced-item-head { display: flex; align-items: center; gap: 6px; justify-content: space-between; }
+.enforced-item-head .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The line that says what the object decides may wrap: it is the reason to click. */
+.enforced-item-decides { line-height: 1.35; }
+
+.enforced-doc { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.enforced-doc-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px; border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.enforced-doc-head .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The editor owns its own scrolling, so a long document never widens the page. */
+.yaml-view { max-height: min(68vh, 760px); overflow: auto; }
+.yaml-view .cm-editor { height: 100%; }
+.yaml-fallback {
+  margin: 0; padding: 10px 12px;
+  max-height: min(68vh, 760px); overflow: auto;
+  font-size: 12.5px; line-height: 1.65; color: var(--ink);
+  white-space: pre-wrap; word-break: break-word;
+}
+
+@media (max-width: 860px) {
+  .enforced-split { grid-template-columns: minmax(0, 1fr); }
+  .enforced-list { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
+  .enforced-item { min-width: 190px; }
+}
