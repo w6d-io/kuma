@@ -1,64 +1,19 @@
 /* Kuma — Design System */
 
+/* The palette lives in styles/theme.css, mapped onto the Strada design system, and every name below
+   reads from there. Kept out of this file so a design-system change is one diff in one place, and so
+   nothing here can quietly disagree with the dark theme. */
+@import './vendor/strada-tokens.css';
+@import './theme.css';
+
+/* The shadows, radii, type scale and font stacks come from the design system under their own names,
+   so nothing is restated here. Only the two measurements that are this console's own shape. */
 :root {
-  --bg: #fafaf9;
-  --panel: #ffffff;
-  --panel-2: #f5f5f4;
-  --panel-3: #ececeb;
-  --line: #e7e5e3;
-  --line-2: #dcd9d5;
-  --ink: #0f0f0e;
-  --ink-2: #3b3a37;
-  --ink-3: #6b6964;
-  --ink-4: #9c9a94;
-  --accent: oklch(62% 0.17 35);
-  --accent-soft: oklch(95% 0.04 35);
-  --ok: oklch(60% 0.14 150);
-  --ok-soft: oklch(95% 0.05 150);
-  --warn: oklch(72% 0.15 80);
-  --warn-soft: oklch(95% 0.06 80);
-  --err: oklch(58% 0.19 25);
-  --err-soft: oklch(95% 0.05 25);
-  --info: oklch(62% 0.13 250);
-  --info-soft: oklch(95% 0.04 250);
-  --focus: oklch(62% 0.17 35 / 0.35);
-  --shadow-sm: 0 1px 0 rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow: 0 1px 0 rgba(0,0,0,0.03), 0 8px 24px rgba(0,0,0,0.06);
-  --shadow-lg: 0 20px 60px rgba(0,0,0,0.14);
-  --radius: 6px;
-  --radius-lg: 10px;
   --sidebar-w: 244px;
   --topbar-h: 48px;
-  --sidebar-bg: #f7f6f3;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
-[data-theme="dark"] {
-  --bg: #0d0d0c;
-  --panel: #1a1a18;
-  --panel-2: #1c1c1a;
-  --panel-3: #242421;
-  --sidebar-bg: #0a0a09;
-  --line: #2a2925;
-  --line-2: #353330;
-  --ink: #f5f4f1;
-  --ink-2: #d1cfca;
-  --ink-3: #908d87;
-  --ink-4: #605d57;
-  --accent: oklch(72% 0.16 38);
-  --accent-soft: oklch(28% 0.06 35);
-  --ok: oklch(72% 0.14 150);
-  --ok-soft: oklch(26% 0.05 150);
-  --warn: oklch(78% 0.14 80);
-  --warn-soft: oklch(28% 0.06 80);
-  --err: oklch(70% 0.17 25);
-  --err-soft: oklch(28% 0.06 25);
-  --info: oklch(72% 0.11 250);
-  --info-soft: oklch(26% 0.04 250);
-  --shadow-sm: 0 1px 0 rgba(0,0,0,0.3);
-  --shadow: 0 8px 24px rgba(0,0,0,0.4);
-  --shadow-lg: 0 20px 60px rgba(0,0,0,0.55);
-}
+
+
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -1788,4 +1743,130 @@ html[data-matrixcolor="on"] .matrix-cell.lv-admin { background: color-mix(in okl
   font-size: 0.72rem;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+}
+
+/* ── The rail's foot: who is signed in, and the few things somebody does about it ───────────────
+   Opens UPWARDS, because it sits at the bottom of the screen and a menu that grows downwards from
+   there has nowhere to go. */
+.usermenu {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.userbtn {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.userbtn:hover,
+.userbtn.on {
+  border-color: var(--line);
+  background: var(--panel);
+}
+
+.userbtn-text {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.userbtn-name,
+.userbtn-role {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userbtn-name {
+  font-size: var(--fs-13);
+  font-weight: var(--fw-medium);
+}
+
+.userbtn-role {
+  color: var(--ink-3);
+  font-size: var(--fs-11);
+}
+
+.userbtn .chev {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  font-size: var(--fs-10);
+}
+
+.usermenu .menu {
+  position: absolute;
+  bottom: calc(100% + var(--space-1));
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+}
+
+.usermenu .menu-label {
+  margin: var(--space-1) var(--space-2) var(--space-1);
+  color: var(--ink-3);
+  font-size: var(--fs-10);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* An organisation is shown, not chosen: this console administers every one the token carries, and
+   the switcher on the Org Admin screen is what moves between them. */
+.usermenu .menu-org {
+  margin: 0;
+  overflow: hidden;
+  padding: var(--space-1) var(--space-2);
+  color: var(--ink-2);
+  font-size: var(--fs-12);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usermenu .menu-item {
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-13);
+  text-align: left;
+  cursor: pointer;
+}
+
+.usermenu .menu-item:hover {
+  background: var(--hover);
+}
+
+.usermenu .menu-item.danger {
+  color: var(--err);
+}
+
+.usermenu .menu-sep {
+  margin: var(--space-1) 0;
+  border-top: 1px solid var(--line);
+}
+
+.sidebar-foot .tweaks-btn {
+  flex: 0 0 auto;
+  padding: var(--space-1);
 }
