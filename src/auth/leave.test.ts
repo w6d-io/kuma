@@ -48,10 +48,28 @@ describe('leave', () => {
     });
   });
 
-  it('empties what this console holds before going anywhere', async () => {
+  it('empties the caches, and leaves the stored session for the sign-out to read', async () => {
+    // The ordering IS the behaviour. Emptying storage first takes away the stored session and the
+    // token naming it, so the sign-out has nothing to name the session with — and an authority
+    // handed half a request rejects all of it, which looks exactly like a broken session.
+    sessionMock.signsInWithToken.mockReturnValue(true);
+    sessionMock.signOut.mockImplementation(async () => {
+      expect(window.sessionStorage.getItem('left-behind')).toBe('x');
+      return true;
+    });
+
     await leave(clearCaches);
 
     expect(clearCaches).toHaveBeenCalled();
+    expect(sessionMock.signOut).toHaveBeenCalled();
+  });
+
+  it('empties the stored session once the sign-out could not use it', async () => {
+    sessionMock.signsInWithToken.mockReturnValue(true);
+    sessionMock.signOut.mockResolvedValue(false);
+
+    await leave(clearCaches);
+
     expect(window.sessionStorage.getItem('left-behind')).toBeNull();
   });
 

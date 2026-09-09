@@ -147,6 +147,9 @@ export class OidcClient {
 
     await this.manager.removeUser();
     forgetIdToken();
+    // Emptied only now, and only here: what had to be read out of it has been. Before the redirect
+    // rather than after, because the request about to be built writes its own state there.
+    wipeSession();
 
     if (!idToken) return false;
 
@@ -192,5 +195,21 @@ function forgetIdToken(): void {
     window.sessionStorage.removeItem(ID_TOKEN_KEY);
   } catch {
     // Nothing was stored, so nothing is left behind.
+  }
+}
+
+/**
+ * Everything else this origin kept for the session.
+ *
+ * Signing out has to leave nothing behind, and it also has to READ two things out of here first —
+ * the stored session and the identity token that names it. Doing the emptying anywhere earlier
+ * takes away what the sign-out needs and turns it into a request the authority rejects, which is
+ * indistinguishable from a broken session.
+ */
+function wipeSession(): void {
+  try {
+    window.sessionStorage.clear();
+  } catch {
+    // A browser that refuses storage never held anything to clear.
   }
 }
