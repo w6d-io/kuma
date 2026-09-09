@@ -59,9 +59,8 @@ async function sessionEndUrl(base: string): Promise<string | null> {
   }
 }
 
-/** Empty the caches this console keeps, so nothing it read stays readable after somebody leaves. */
-function forgetLocalState(clearCaches: () => void): void {
-  clearCaches();
+/** What this origin kept for the session, once nothing else needs to read it. */
+function forgetStoredState(): void {
   try {
     window.sessionStorage.clear();
   } catch {
@@ -70,10 +69,16 @@ function forgetLocalState(clearCaches: () => void): void {
 }
 
 export async function leave(clearCaches: () => void): Promise<void> {
-  forgetLocalState(clearCaches);
+  // In memory, so emptying it takes nothing away from the steps below.
+  clearCaches();
 
-  // The authority owns the session, so it is the only one that can end it. This does not return.
+  // The authority owns the session, so it is the only one that can end it. It reads the stored
+  // session and the token naming it, and empties that store itself — which is why nothing here
+  // clears storage first. Doing so used to leave the sign-out with nothing to name the session
+  // with, and the authority rejects half a request. This does not return when it succeeds.
   if (signsInWithToken() && (await signOut(consoleUrl()))) return;
+
+  forgetStoredState();
 
   const base = identityBaseUrl();
   const back = consoleUrl();
