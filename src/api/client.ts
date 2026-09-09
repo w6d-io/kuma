@@ -611,6 +611,15 @@ export interface KratosIdentity {
     [key: string]: unknown;
   };
   organization_id?: string;
+  /**
+   * The organisations this identity belongs to, as the service that OWNS membership answers them —
+   * the primary one included. This is the truth now: `metadata_admin.organizations` is what somebody
+   * once wrote on the identity, kept as the fallback for a backend that does not own membership yet.
+   *
+   * Absent and empty are different answers. `[]` means "belongs to nothing"; absent means nobody
+   * could say, and the fallback applies.
+   */
+  organizations?: string[];
   created_at: string;
   updated_at: string;
 }
