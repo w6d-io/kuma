@@ -177,6 +177,7 @@ export async function forgetToken(): Promise<void> {
  */
 export async function signOut(returnTo: string = redirectUri()): Promise<boolean> {
   if (!client) return false;
-  await client.signOut(returnTo);
-  return true;
+  // Its answer is passed on rather than swallowed: false means the authority could not be asked to
+  // send the browser back here, and the caller still has to get somebody off this console.
+  return client.signOut(returnTo);
 }
