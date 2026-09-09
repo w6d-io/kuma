@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   DirectoryUnavailableError,
+  knownOrganisations,
   listOrganisations,
+  organisationLabel,
   readDirectorySettings,
   selectOrganisation,
 } from './directory';
@@ -85,6 +87,37 @@ describe('listOrganisations', () => {
   it('refuses an answer that is not a list', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ oops: true }) })));
     await expect(listOrganisations(settings, 't')).rejects.toThrow(DirectoryUnavailableError);
+  });
+});
+
+describe('the names, kept for the screens', () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it('remembers what the directory called them, so no screen asks again', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => [{ id: 'org-a', name: 'Business' }],
+    })));
+
+    await listOrganisations(settings, 't');
+
+    // The second sign-in is a full page load, so this has to outlive the module that fetched it.
+    expect(knownOrganisations()).toEqual([{ id: 'org-a', name: 'Business' }]);
+    expect(organisationLabel('org-a')).toBe('Business');
+  });
+
+  it('labels an unknown organisation with its identifier rather than nothing', () => {
+    // A row still has to be selectable, and an empty label is not a name.
+    expect(organisationLabel('org-never-seen')).toBe('org-never-seen');
+  });
+
+  it('survives storage holding something it did not write', () => {
+    window.sessionStorage.setItem('kuma.organisation-names', 'not json at all');
+    expect(knownOrganisations()).toEqual([]);
+    expect(organisationLabel('org-a')).toBe('org-a');
   });
 });
 
