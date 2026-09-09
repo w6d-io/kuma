@@ -94,6 +94,7 @@ export class OidcClient {
   /** Finish the exchange, and say which step it was and where it was meant to lead. */
   async completeCallback(): Promise<{ returnTo: string | null; stage: Stage }> {
     const user = await this.manager.signinRedirectCallback();
+    rememberIdToken(user.id_token);
     const state = user.state as { returnTo?: string; stage?: Stage } | undefined;
     return { returnTo: state?.returnTo ?? null, stage: state?.stage === 'directory' ? 'directory' : 'api' };
   }
@@ -126,9 +127,15 @@ export class OidcClient {
    * Then the browser goes to the authority's end-session endpoint, which is what ends the session
    * behind the sign-in. Without that last step the next visit signs in again without asking, which
    * looks exactly like a sign-out that did nothing.
+   *
+   * Returns false when the authority cannot be asked to send the browser back here, so the caller
+   * can get somebody off this console by the means it does have. Saying where to come back to
+   * requires naming the session being ended, and an authority handed one without the other refuses
+   * the whole request — which puts an error page in front of somebody who asked to leave.
    */
-  async signOut(returnTo: string): Promise<void> {
+  async signOut(returnTo: string): Promise<boolean> {
     const user = await this.manager.getUser();
+    const idToken = user?.id_token ?? rememberedIdToken();
 
     // Best effort, and deliberately not fatal: a revocation the authority refuses must not leave
     // somebody stuck on a console they asked to leave. The end-session call below still runs.
@@ -139,13 +146,51 @@ export class OidcClient {
     }
 
     await this.manager.removeUser();
+    forgetIdToken();
 
-    // The hint is read before the store is emptied, because that is where it lives. Passed
-    // explicitly rather than left to be looked up, so emptying the store first cannot silently
-    // turn this into an unauthenticated request the authority answers with its own choice of page.
+    if (!idToken) return false;
+
     await this.manager.signoutRedirect({
-      id_token_hint: user?.id_token,
+      id_token_hint: idToken,
       post_logout_redirect_uri: returnTo,
     });
+    return true;
+  }
+}
+
+/**
+ * The identity token, kept aside for the one thing it is needed for: naming the session to end.
+ *
+ * It comes with the sign-in and is meant to stay for the life of it, but a silent renew replaces
+ * the whole record — and a refresh grant is not obliged to answer one, so the copy in the store
+ * quietly becomes undefined. That is invisible until somebody signs out, which is the moment it is
+ * required. Kept here so a renew cannot take it away.
+ *
+ * Session-scoped and per-tab, like the token it describes.
+ */
+const ID_TOKEN_KEY = 'kuma.id-token';
+
+function rememberIdToken(idToken: string | undefined): void {
+  if (!idToken) return;
+  try {
+    window.sessionStorage.setItem(ID_TOKEN_KEY, idToken);
+  } catch {
+    // A browser that refuses storage falls back to whatever the store still holds.
+  }
+}
+
+function rememberedIdToken(): string | undefined {
+  try {
+    return window.sessionStorage.getItem(ID_TOKEN_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function forgetIdToken(): void {
+  try {
+    window.sessionStorage.removeItem(ID_TOKEN_KEY);
+  } catch {
+    // Nothing was stored, so nothing is left behind.
   }
 }

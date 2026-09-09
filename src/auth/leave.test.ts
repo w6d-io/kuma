@@ -95,3 +95,43 @@ describe('leave', () => {
     expect(clearCaches).toHaveBeenCalled();
   });
 });
+
+describe('leaving when the authority cannot send the browser back', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { origin: 'https://auth.test', pathname: '/admin/', href: '', search: '' },
+    });
+    (window as never as Record<string, unknown>)['__KRATOS_PUBLIC_URL__'] = 'https://auth.test/kratos';
+  });
+
+  it('still ends the session, and still lands on this console', async () => {
+    // Naming where to come back to requires naming the session being ended, and an authority handed
+    // one without the other refuses the whole request — which is an error page for somebody who
+    // asked to leave. So the console falls back to the session it can end, and comes back HERE.
+    sessionMock.signsInWithToken.mockReturnValue(true);
+    sessionMock.signOut.mockResolvedValue(false);
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ logout_url: 'https://auth.test/kratos/self-service/logout?token=t' }),
+    })));
+
+    await leave(vi.fn<() => void>());
+
+    expect(window.location.href).toBe(
+      'https://auth.test/kratos/self-service/logout?token=t&return_to=' +
+        encodeURIComponent('https://auth.test/admin/'),
+    );
+  });
+
+  it('lands on this console even when nothing at all answers', async () => {
+    sessionMock.signsInWithToken.mockReturnValue(true);
+    sessionMock.signOut.mockResolvedValue(false);
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('refused'); }));
+
+    await leave(vi.fn<() => void>());
+
+    expect(window.location.href).toBe('https://auth.test/admin/');
+  });
+});
