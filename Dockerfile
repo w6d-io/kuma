@@ -28,12 +28,21 @@ ENV API_BASE=""
 ENV AUTH_DOMAIN=""
 ENV GRAFANA_URL=""
 ENV BACKUP_ENABLED=""
+# OIDC_AUTHORITY / OIDC_CLIENT_ID: sign in against an OpenID Connect authority instead of
+#              redirecting to the login UI for a session cookie. Both empty (default) → the cookie
+#              redirect, exactly as before. Naming an authority is all this console learns about the
+#              identity stack: which login screen it shows, and which directory decided what the
+#              token asserts, stay its business.
+# OIDC_AUDIENCE: the audience the token is minted for, when the authority wants it named.
+ENV OIDC_AUTHORITY=""
+ENV OIDC_CLIENT_ID=""
+ENV OIDC_AUDIENCE=""
 
 EXPOSE 8080
 
 # Inject runtime config into index.html, then start nginx.
 # envsubst whitelist: only the listed vars are substituted (preserves other ${...} content).
 CMD ["/bin/sh", "-c", \
-  "envsubst '${API_BASE} ${AUTH_DOMAIN} ${GRAFANA_URL} ${BACKUP_ENABLED}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
+  "envsubst '${API_BASE} ${AUTH_DOMAIN} ${GRAFANA_URL} ${BACKUP_ENABLED} ${OIDC_AUTHORITY} ${OIDC_CLIENT_ID} ${OIDC_AUDIENCE}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
    mv /tmp/index.html /usr/share/nginx/html/index.html && \
    nginx -g 'daemon off;'"]
