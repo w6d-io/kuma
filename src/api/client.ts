@@ -703,6 +703,24 @@ export interface EnforcedDocument {
   decides: string;
   /** The object as YAML, pruned of what the API server adds. */
   yaml: string;
+  /** The route table as rows, when this document holds one. Parsed by the service, not here. */
+  routes?: EnforcedRoute[];
+  /** What each role carries, when this document holds that instead. */
+  roles?: EnforcedRole[];
+}
+
+export interface EnforcedRoute {
+  method: string;
+  path: string;
+  /** `public` | `authenticated` | `authorized` — what the edge requires before forwarding. */
+  class: string;
+  /** Only for `authorized`: the permission the caller must hold. */
+  permission?: string;
+}
+
+export interface EnforcedRole {
+  role: string;
+  permissions: string[];
 }
 
 export interface JinbeAccessRule {

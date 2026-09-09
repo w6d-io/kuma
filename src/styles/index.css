@@ -2022,3 +2022,17 @@ table {
   .enforced-list { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
   .enforced-item { min-width: 190px; }
 }
+
+/* The route table. Scrolls inside its own container: a path is as long as somebody made it, and the
+   page must not scroll sideways because one route is verbose. */
+.enforced-routes { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
+.enforced-routes thead th {
+  text-align: left; font-weight: 500; font-size: 11px; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--muted);
+  padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+.enforced-routes tbody td {
+  padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle;
+}
+.enforced-routes tbody tr:last-child td { border-bottom: none; }
+.enforced-routes tbody tr:hover { background: var(--hover); }
