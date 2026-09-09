@@ -100,6 +100,11 @@
 
     --hover: rgba(255, 255, 255, 0.06);
     --focus: rgba(100, 181, 246, 0.35);
+
+    /* Their shadows are tuned for a light ground and vanish on a dark one. */
+    --shadow-sm: 0 1px 0 rgba(0, 0, 0, 0.3);
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.55);
   }
 }
 
@@ -138,4 +143,9 @@
 
   --hover: rgba(255, 255, 255, 0.06);
   --focus: rgba(100, 181, 246, 0.35);
+
+  /* Their shadows are tuned for a light ground and vanish on a dark one. */
+  --shadow-sm: 0 1px 0 rgba(0, 0, 0, 0.3);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.55);
 }
