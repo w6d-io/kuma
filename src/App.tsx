@@ -95,14 +95,13 @@ function hasAnyPerm(userPerms: string[] | undefined, required: string[]): boolea
   return required.some((r) => userPerms.includes(r))
 }
 
-function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
+function Sidebar() {
   const { page, setPage, state, tweaks, apiError } = useApp();
   const showCounts = tweaks?.showCounts !== false;
   const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
 
   const { data: session } = useSession();
   const { data: stats } = useStats();
-  const role  = session?.roles?.[0] || "";
 
   // Filter nav by user permissions — non-admins only see Overview + Settings.
   const visibleNav = NAV.filter((n) => hasAnyPerm(session?.permissions, n.perms))
@@ -144,26 +143,6 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
           </Fragment>
         ))}
       </nav>
-      <div className="sidebar-foot">
-        <UserMenu
-          email={session?.email || "you@console"}
-          role={role}
-          onOpenSettings={() => {
-            // Account settings live on the auth domain — opened in a new tab so this session stays
-            // put. __AUTH_DOMAIN__ is injected by the chart at runtime; without one, the in-app
-            // settings are the nearest thing that exists.
-            const authDomain = (window as unknown as Record<string, string>).__AUTH_DOMAIN__;
-            if (authDomain) {
-              window.open(`https://${authDomain}/settings`, '_blank', 'noopener,noreferrer');
-            } else {
-              setPage("settings");
-            }
-          }}
-        />
-        <button className="btn ghost sm tweaks-btn" onClick={onOpenTweaks} title="Tweaks">
-          <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.cog}</span>
-        </button>
-      </div>
     </aside>
   );
 }
@@ -440,7 +419,7 @@ function AppShell() {
 
   return (
     <div className="app">
-      <Sidebar onOpenTweaks={() => setTweaksOpen(true)} />
+      <Sidebar />
       <div className="main">
         <Topbar onOpenCmdk={() => setCmdkOpen(true)} />
         <div className="content">
@@ -465,6 +444,22 @@ function AppShell() {
       <ServiceDrawer />
       <GrantAccess />
       <CmdK open={cmdkOpen} onClose={() => setCmdkOpen(false)} />
+      <UserMenu
+        email={session?.email || "you@console"}
+        role={session?.roles?.[0] || ""}
+        onOpenTweaks={() => setTweaksOpen(true)}
+        onOpenSettings={() => {
+          // Account settings live on the auth domain — opened in a new tab so this session stays
+          // put. __AUTH_DOMAIN__ is injected by the chart at runtime; without one, the in-app
+          // settings are the nearest thing that exists.
+          const authDomain = (window as unknown as Record<string, string>).__AUTH_DOMAIN__;
+          if (authDomain) {
+            window.open(`https://${authDomain}/settings`, '_blank', 'noopener,noreferrer');
+          } else {
+            setPage("settings");
+          }
+        }}
+      />
       <TweaksPanel open={tweaksOpen} onClose={() => setTweaksOpen(false)} />
       <Toasts toasts={toasts} />
     </div>
