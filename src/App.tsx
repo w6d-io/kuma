@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useMemo, Fragment } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { signIn } from './auth/session';
-import { leave } from './auth/leave';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { useSession, useStats, useRealtime, useUserSearch } from './api/hooks';
 import { searchedToUser } from './api/transforms';
 import { I } from './components/ui/Icons';
-import { Avatar, Switch, Toasts, EmptyHint } from './components/ui/Primitives';
+import { Switch, Toasts, EmptyHint } from './components/ui/Primitives';
 import { DashboardPage } from './pages/Dashboard';
 import { SimulatorPage } from './pages/Simulator';
 import { UsersPage, UserDrawer } from './pages/Users';
@@ -21,6 +19,7 @@ import { RecertificationPage } from './pages/Recertification';
 import { SettingsPage } from './pages/Settings';
 import { BackupPage } from './pages/Backup';
 import type { PageId } from './api/types';
+import { UserMenu } from './components/UserMenu';
 
 type NavItem = {
   id: PageId
@@ -97,18 +96,13 @@ function hasAnyPerm(userPerms: string[] | undefined, required: string[]): boolea
 }
 
 function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
-  // Emptied on the way out: what this console read stays in memory otherwise, and the next person
-  // at the same browser sees the previous one's data behind a sign-in screen.
-  const queryClient = useQueryClient();
   const { page, setPage, state, tweaks, apiError } = useApp();
   const showCounts = tweaks?.showCounts !== false;
   const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
 
   const { data: session } = useSession();
   const { data: stats } = useStats();
-  const email = session?.email || "you@console";
   const role  = session?.roles?.[0] || "";
-  const [localPart, domain] = email.includes("@") ? [email.split("@")[0], "@" + email.split("@")[1]] : [email, ""];
 
   // Filter nav by user permissions — non-admins only see Overview + Settings.
   const visibleNav = NAV.filter((n) => hasAnyPerm(session?.permissions, n.perms))
@@ -150,51 +144,23 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
           </Fragment>
         ))}
       </nav>
-      <div className="sidebar-foot" style={{ cursor: "pointer" }} onClick={() => {
-        // Account settings live on the auth domain — open in a new tab so
-        // the kuma session stays put (no return_to round-trip needed). The
-        // window-level __AUTH_DOMAIN__ is injected by the chart at runtime.
-        const authDomain = (window as any).__AUTH_DOMAIN__;
-        if (authDomain) {
-          window.open(`https://${authDomain}/settings`, '_blank', 'noopener,noreferrer');
-        } else {
-          // Fallback to in-app settings (admin-only RBAC management) if no
-          // auth domain configured.
-          setPage("settings");
-        }
-      }} title="Account settings · opens in new tab">
-        <Avatar name={localPart} />
-        <div className="who">
-          <span className="n">
-            <span className="user-local">{localPart}</span>
-            {domain && <span className="user-domain">{domain}</span>}
-          </span>
-          <span className="e">{role}</span>
-          <button
-            type="button"
-            className="logout-link"
-            onClick={async (e) => {
-              e.stopPropagation();
-              await leave(() => queryClient.clear());
-            }}
-            title="Sign out"
-            style={{
-              fontSize: 11,
-              color: 'var(--ink-3)',
-              textDecoration: 'none',
-              marginTop: 2,
-              display: 'inline-block',
-              background: 'none',
-              border: 0,
-              padding: 0,
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
-          >
-            ↩ Sign out
-          </button>
-        </div>
-        <button className="btn ghost sm" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); onOpenTweaks(); }} title="Tweaks">
+      <div className="sidebar-foot">
+        <UserMenu
+          email={session?.email || "you@console"}
+          role={role}
+          onOpenSettings={() => {
+            // Account settings live on the auth domain — opened in a new tab so this session stays
+            // put. __AUTH_DOMAIN__ is injected by the chart at runtime; without one, the in-app
+            // settings are the nearest thing that exists.
+            const authDomain = (window as unknown as Record<string, string>).__AUTH_DOMAIN__;
+            if (authDomain) {
+              window.open(`https://${authDomain}/settings`, '_blank', 'noopener,noreferrer');
+            } else {
+              setPage("settings");
+            }
+          }}
+        />
+        <button className="btn ghost sm tweaks-btn" onClick={onOpenTweaks} title="Tweaks">
           <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.cog}</span>
         </button>
       </div>

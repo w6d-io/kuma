@@ -1,0 +1,141 @@
+/* The names this application paints with, mapped onto the Strada design system.
+ *
+ * A mapping layer rather than a copy: a new version of the design system moves this console without
+ * a hunt through hex codes, and it stays readable which values are theirs and which are ours.
+ *
+ * It exists at all because the design system is LIGHT ONLY — the product it comes from runs one
+ * theme. Pointing a component straight at `--surface` leaves it white in the dark. So every name
+ * below is defined twice, and the dark half is an extension: derived here, to hold the same contrast
+ * the light half has.
+ *
+ * Six values in light mode are ours, because the design system does not define them:
+ *   --warn        their --warning #ff9800 is a fill and fails contrast as text on white
+ *   --ok-line, --warn-line, --err-line   soft borders for status pills, which their product has none of
+ *   --focus       a ring in the accent rather than their fixed blue one
+ *   --sidebar-bg  their --sidebar-bg is pure white; a rail that does not read as a rail
+ * Said here rather than left to be discovered.
+ *
+ * The accent is the product blue, not the wordmark red. The red is the brand mark and reads as an
+ * alarm at button size; the blue is what the platform's own screens use for anything actionable.
+ */
+
+:root {
+  --bg: var(--surface);
+  --panel: var(--surface);
+  --panel-2: var(--surface-2);
+  --panel-3: var(--surface-3);
+  --sidebar-bg: #f7f8fa;
+
+  --line: var(--border);
+  --line-2: var(--border-strong);
+
+  --ink: var(--fg-1);
+  --ink-2: var(--fg-2);
+  --ink-3: var(--fg-3);
+  --ink-4: var(--fg-disabled);
+
+  --accent: var(--primary);
+  --accent-ink: var(--fg-on-primary);
+  --accent-soft: var(--primary-soft-3);
+  --accent-line: var(--primary-soft);
+
+  --ok: var(--success);
+  --ok-soft: var(--success-soft);
+  --ok-line: #b7e4c7;
+  --warn: #b26a00;
+  --warn-soft: var(--warning-soft);
+  --warn-line: #f3d38a;
+  --err: var(--danger);
+  --err-soft: var(--danger-soft);
+  --err-line: #f3b6b1;
+  --info: var(--theme-blue);
+  --info-soft: var(--primary-soft-3);
+
+  --hover: var(--surface-hover);
+  --focus: var(--primary-soft);
+
+  /* 6px is what this console was built on and their scale has it, so the corners do not move.
+     --radius-lg and --radius-pill come straight from them under those names. */
+  --radius: var(--radius-md);
+
+  /* The font stacks come from the design system under these same names, so restating them here
+     would be a property referring to itself — which computes to nothing. */
+}
+
+/* The dark half. Not in the design system: derived here to keep the same contrast ratios, and
+   declared twice so a chosen theme wins over the system preference in both directions. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1f2023;
+    --page: #17181a;
+    --panel: #1f2023;
+    --panel-2: #24262a;
+    --panel-3: #2a2c30;
+    --sidebar-bg: #131416;
+
+    --line: #313438;
+    --line-2: #43474d;
+
+    --ink: #e9eaec;
+    --ink-2: #c2c6cd;
+    --ink-3: #9aa1ab;
+    --ink-4: #757c86;
+
+    --accent: #64b5f6;
+    --accent-ink: #10161d;
+    --accent-soft: rgba(100, 181, 246, 0.12);
+    --accent-line: rgba(100, 181, 246, 0.3);
+
+    --ok: #66bb6a;
+    --ok-soft: rgba(102, 187, 106, 0.12);
+    --ok-line: rgba(102, 187, 106, 0.35);
+    --warn: #ffb74d;
+    --warn-soft: rgba(255, 183, 77, 0.12);
+    --warn-line: rgba(255, 183, 77, 0.35);
+    --err: #ef5350;
+    --err-soft: rgba(239, 83, 80, 0.12);
+    --err-line: rgba(239, 83, 80, 0.35);
+    --info: #4fc3f7;
+    --info-soft: rgba(79, 195, 247, 0.12);
+
+    --hover: rgba(255, 255, 255, 0.06);
+    --focus: rgba(100, 181, 246, 0.35);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #1f2023;
+  --page: #17181a;
+  --panel: #1f2023;
+  --panel-2: #24262a;
+  --panel-3: #2a2c30;
+  --sidebar-bg: #131416;
+
+  --line: #313438;
+  --line-2: #43474d;
+
+  --ink: #e9eaec;
+  --ink-2: #c2c6cd;
+  --ink-3: #9aa1ab;
+  --ink-4: #757c86;
+
+  --accent: #64b5f6;
+  --accent-ink: #10161d;
+  --accent-soft: rgba(100, 181, 246, 0.12);
+  --accent-line: rgba(100, 181, 246, 0.3);
+
+  --ok: #66bb6a;
+  --ok-soft: rgba(102, 187, 106, 0.12);
+  --ok-line: rgba(102, 187, 106, 0.35);
+  --warn: #ffb74d;
+  --warn-soft: rgba(255, 183, 77, 0.12);
+  --warn-line: rgba(255, 183, 77, 0.35);
+  --err: #ef5350;
+  --err-soft: rgba(239, 83, 80, 0.12);
+  --err-line: rgba(239, 83, 80, 0.35);
+  --info: #4fc3f7;
+  --info-soft: rgba(79, 195, 247, 0.12);
+
+  --hover: rgba(255, 255, 255, 0.06);
+  --focus: rgba(100, 181, 246, 0.35);
+}

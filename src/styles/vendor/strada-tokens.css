@@ -1,0 +1,216 @@
+/* Strada SWC Design System — the token block, copied unmodified.
+ *
+ * ONLY the `:root` block. The file it comes from also ships utility classes — `.h1`, `.body`,
+ * `.label`, `.caption` — and those set a COLOUR from a light-only token. Included here they would
+ * repaint anything wearing one of those very ordinary class names, in the dark theme, with dark
+ * text on a dark ground. That has happened; it is why the copy stops where it stops.
+ *
+ * Vendored rather than mapped by hand so a new version of the design system moves this application
+ * without a hunt through hex codes. Nothing here is read directly by a component: theme.css turns
+ * these into the names the application uses, because these are light only.
+ */
+/* =============================================================================
+   STRADA SWC DESIGN SYSTEM — Color & Type Tokens
+   Source of truth: swc-time-develop/apps/swc-time/src/app/features/employees/pages/employees-planning-page/employee-planning-page.component.scss
+                    + Strada brand assets (logo-expanded.png)
+   ============================================================================= */
+
+:root {
+  /* ── BRAND ─────────────────────────────────────────────────────────────── */
+  /* From the Strada wordmark: dark slate body, vermilion red dot accent. */
+  --strada-red:        #B83232;   /* dot from logo (sampled, deep vermilion) */
+  --strada-red-bright: #E63946;   /* "On the move" tagline + bright variant  */
+  --strada-charcoal:   #2C3032;   /* wordmark grey, used as primary text     */
+  --strada-charcoal-2: #354360;   /* deep slate used in product icons        */
+
+  /* ── PLATFORM CHROME (swc-shell · RedStar template, theme-white) ───────── */
+  /* The shell applies body classes `theme-white logo-white menu_light` at
+     runtime (swc-shell/app.component.ts). These govern the header + sidebar
+     that wrap EVERY product. Source: @swc-ui/shared _theme-white.scss +
+     _theme-color-variables.scss + _leftsidebaroverlay.scss. */
+  --chrome-accent:       #00bcd4;   /* theme-white-active-color: breadcrumb links, .btn-primary, pagination, tabs */
+  --chrome-navbar-bg:    #ffffff;   /* theme-white navbar.active */
+  --chrome-navbar-shadow: 3px 0 10px 0 rgba(183, 192, 206, 0.2);
+  --chrome-nav-text:     #3a2c70;   /* navbar nav link text (deep purple) */
+  --chrome-icon:         #000000;   /* header feather icons are black in theme-white */
+  --sidebar-bg:          #ffffff;   /* base .sidebar bg (menu_light) */
+  --sidebar-border:      #f2f4f9;   /* sidebar right border */
+  --sidebar-shadow:      0 8px 10px 0 rgba(183, 192, 206, 0.2);
+  --sidebar-hover:       #f0f3fb;   /* menu item hover / active row */
+  --sidebar-active:      #5668f3;   /* active submenu link (indigo) */
+  --sidebar-active-2:    #5783c7;   /* theme var sidebar-menu-active */
+  --sidebar-header-label:#000000;   /* uppercase section labels */
+  --sidebar-width:       260px;
+  --sidebar-width-collapsed: 60px;
+  --navbar-height:       60px;
+  /* Other bundled themes (selectable, not active): blue #03a9f3, cyan #01d8da,
+     green #11a37d, orange #f16735, purple #909de4, black #1a202e. */
+  --theme-blue:          #03a9f3;
+
+  /* ── DASHBOARD HERO GRADIENTS (l-bg-*, from _variables.scss $linear-colors) */
+  /* Used by shared-statistics-card via cardColor. White text + faint ghost icon. */
+  --grad-purple:      linear-gradient(135deg, #9a56ff 0%, #e36cd9 100%);   /* @kind color */
+  --grad-purple-dark: linear-gradient(135deg, #8e4cf1 0, #c554bc 100%);   /* @kind color */ /* Frais/Expenses */
+  --grad-green:       linear-gradient(135deg, #23bdb8 0%, #43e794 100%);   /* @kind color */
+  --grad-green-dark:  linear-gradient(135deg, #23bdb8 0, #65a986 100%);   /* @kind color */ /* Primes/Allowances */
+  --grad-orange:      linear-gradient(135deg, #f48665 0%, #fda23f 100%);   /* @kind color */
+  --grad-orange-dark: linear-gradient(135deg, #f48665 0, #d68e41 100%);   /* @kind color */ /* Infractions/Offenses */
+  --grad-cyan:        linear-gradient(135deg, #289cf5, #84c0ec);   /* @kind color */
+  --grad-cyan-dark:   linear-gradient(135deg, #289cf5, #4f8bb7);   /* @kind color */
+  --grad-red:         linear-gradient(to right, #a77ffc 0%, #ff6eac 100%);   /* @kind color */
+  --grad-yellow:      linear-gradient(to right, #f6e384, #ffd500);   /* @kind color */
+
+  /* ── PRIMARY (SWC TIME PRODUCT CONTENT — Material blue) ─────────────────── */
+  /* Inside SWC Time pages, interactive elements use Material blue. This is
+     distinct from the cyan chrome accent above. */
+  --primary:           #2196f3;
+  --primary-hover:     #1976d2;
+  --primary-soft:      rgba(33, 150, 243, 0.15);
+  --primary-soft-2:    rgba(33, 150, 243, 0.08);
+  --primary-soft-3:    rgba(33, 150, 243, 0.05);
+
+  /* Cell-selection accent (planning page) */
+  --accent-purple:     #7E30C2;
+  --accent-purple-soft: rgba(126, 48, 194, 0.15);
+
+  /* ── NEUTRALS ─────────────────────────────────────────────────────────── */
+  --bg:                #f5f5f5;   /* app background (planning) */
+  --surface:           #ffffff;   /* cards, modal, header bg   */
+  --surface-2:         #fafafa;   /* footer bg, employee col   */
+  --surface-3:         #f0f0f0;   /* hover on neutral surfaces */
+  --surface-hover:     rgba(0, 0, 0, 0.02);
+
+  /* ── TEXT ─────────────────────────────────────────────────────────────── */
+  --fg-1:              #333333;   /* primary text */
+  --fg-2:              #666666;   /* secondary    */
+  --fg-3:              #999999;   /* muted        */
+  --fg-disabled:       #cccccc;
+  --fg-on-primary:     #ffffff;
+
+  /* ── BORDERS ──────────────────────────────────────────────────────────── */
+  --border:            #e0e0e0;
+  --border-strong:     #dddddd;
+  --border-dashed:     #a7a7a7;   /* file upload */
+
+  /* ── STATUS ───────────────────────────────────────────────────────────── */
+  --success:           #4caf50;   /* + chart green #00cd00 used in pills */
+  --success-soft:      #e7f9f1;
+  --success-strong:    #00cd00;
+  --warning:           #ff9800;   /* + #f1c40f highlight, #ffbd00 pill   */
+  --warning-soft:      rgba(255, 189, 0, 0.10);
+  --warning-pill-fg:   #ffbd00;
+  --weekend-bg:        #fff3e0;
+  --danger:            #f44336;   /* + #e74c3c chart red, #db1e27 pill   */
+  --danger-soft:       #faeded;
+  --danger-pill-fg:    #db1e27;
+  --info:              #2196f3;
+  --info-link:         #1976d2;
+
+  /* Snackbar (matches styles.scss) */
+  --snack-success:     rgb(25, 135, 84);
+  --snack-info:        rgb(68, 138, 255);
+  --snack-warning:     rgb(255, 193, 7);
+  --snack-danger:      rgb(220, 53, 69);
+
+  /* ── DASHBOARD CHART PALETTE ──────────────────────────────────────────── */
+  /* From dashboard-graph-cards.component.html + ui-utils.ts */
+  --chart-green:       #4caf50;
+  --chart-amber:       #f8e4ab;
+  --chart-red:         #e74c3c;
+  --chart-amber-2:     #f1c40f;
+  --chart-blue-light:  #0096FF;
+  --chart-blue-dark:   #0047AB;
+  --chart-purple:      #9b59b6;
+  --chart-orange:      #e67e22;
+  --chart-grey:        #ecf0f1;
+  --chart-grey-2:      #d7dbdd;
+  --chart-grey-3:      #bdc3c7;
+
+  /* ── PLANNING ENTRY-TYPE COLORS ───────────────────────────────────────── */
+  --entry-service-fg:  #8c8c8c;
+  --entry-service-bg:  rgba(212, 216, 212, 0.33);
+  --entry-absence-fg:  #741b7c;
+  --entry-absence-bg:  rgba(204, 138, 211, 0.33);
+
+  /* ── SETTINGS PASTEL TAG SWATCHES ─────────────────────────────────────── */
+  /* From features/settings/pages/data.ts */
+  --tag-mint:   #50E3C2;
+  --tag-pink:   #EFB6D7;
+  --tag-green:  #D9FACA;
+  --tag-purple: #C0A4F0;
+  --tag-coral:  #FCABAB;
+  --tag-olive:  #DADD9C;
+  --tag-orange: #F7B972;
+  --tag-blue:   #A7C6FD;
+  --tag-tan:    #BF9A7B;
+  --tag-rose:   #C29BA3;
+
+  /* ── INDIGO LINK (used in dashboard graph card cursor) ────────────────── */
+  --indigo-link: #5668f3;
+
+  /* ── SHADOWS / ELEVATION ──────────────────────────────────────────────── */
+  --shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow:     0 2px 6px rgba(0, 0, 0, 0.06);
+  --shadow-md:  0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg:  0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-focus-blue: 0 0 0 3px rgba(33, 150, 243, 0.25);
+  --shadow-cell-purple: 0 0 0 2px rgba(126, 48, 194, 0.30);
+
+  /* ── RADII ────────────────────────────────────────────────────────────── */
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius:    4px;       /* Material default, used everywhere */
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-pill: 9999px;
+  --radius-badge: 9px;    /* entries-count-badge */
+
+  /* ── SPACING (Bootstrap-style 4-pt scale; the app uses p-4, py-0, m-2 …) */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;   /* Bootstrap p-4 == 1.5rem */
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* ── TYPOGRAPHY ───────────────────────────────────────────────────────── */
+  /* Stack: Angular Material default is Roboto. Strada wordmark itself is a
+     custom display face — for product UI we follow Material → Roboto.       */
+  --font-sans: "Roboto", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Roboto", "Helvetica Neue", Arial, sans-serif; /* same; brand mark is image-only */
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; /* system stack — app uses no custom mono face */
+
+  /* Font size scale (matches sizes seen in planning grid + cards) */
+  --fs-10: 10px;   /* day-name, summary unit */
+  --fs-11: 11px;   /* badge, micro labels    */
+  --fs-12: 12px;   /* dense table text       */
+  --fs-13: 13px;   /* default body / footer  */
+  --fs-14: 14px;   /* card titles, base body */
+  --fs-16: 16px;   /* day-number, section h  */
+  --fs-18: 18px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --fs-32: 32px;
+
+  /* Weights — from app: 400 default, 500 for medium emphasis, 700 for headers,
+     900 for the dashboard "title" / "list-label" idiom.                       */
+  --fw-regular: 400;   /* @kind font */
+  --fw-medium:  500;   /* @kind font */
+  --fw-bold:    700;   /* @kind font */
+  --fw-heavy:   900;   /* @kind font */  /* dashboard graph card .title { font-weight: 900 } */
+
+  --lh-tight:  1.1;    /* @kind font */
+  --lh-snug:   1.2;    /* @kind font */
+  --lh-base:   1.4;    /* @kind font */
+  --lh-relaxed: 1.6;   /* @kind font */
+
+  /* ── MOTION ───────────────────────────────────────────────────────────── */
+  --ease-standard: cubic-bezier(0.4, 0.0, 0.2, 1);   /* @kind other */ /* Material standard */
+  --ease-out:      cubic-bezier(0.0, 0.0, 0.2, 1);   /* @kind other */
+  --ease-in:       cubic-bezier(0.4, 0.0, 1, 1);     /* @kind other */
+  --dur-fast:   0.15s;   /* @kind other */ /* row hover */
+  --dur:        0.25s;   /* @kind other */ /* graph-card hover, bg fade */
+  --dur-slow:   0.7s;    /* @kind other */ /* spinner */
+}
