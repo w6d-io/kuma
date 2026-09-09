@@ -707,6 +707,8 @@ export interface EnforcedDocument {
   routes?: EnforcedRoute[];
   /** What each role carries, when this document holds that instead. */
   roles?: EnforcedRole[];
+  /** Who holds which role, and in which organisation. */
+  grants?: EnforcedGrant[];
 }
 
 export interface EnforcedRoute {
@@ -721,6 +723,15 @@ export interface EnforcedRoute {
 export interface EnforcedRole {
   role: string;
   permissions: string[];
+}
+
+/** Who holds which role, and where — the last link of the chain a reader follows. */
+export interface EnforcedGrant {
+  /** The immutable identity the grant is keyed on. */
+  subject: string;
+  /** The address that identity carries today. Absent when the directory could not name it. */
+  email?: string;
+  held: { organisation: string; organisationName?: string; roles: string[] }[];
 }
 
 export interface JinbeAccessRule {
