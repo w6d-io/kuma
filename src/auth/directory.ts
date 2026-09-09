@@ -46,6 +46,50 @@ function setting(value: unknown): string {
 export class DirectoryUnavailableError extends Error {}
 
 /**
+ * The names the directory gave, kept for the rest of the session.
+ *
+ * The list is answered once, before a token for this API exists, and the second sign-in is a full
+ * page load — so it is written down rather than held in memory. Screens that show an organisation
+ * then have a name to show without asking anybody again: an identifier is what a machine needs, and
+ * a person reading a row cannot tell one UUID from another.
+ *
+ * Session-scoped and per-tab, like the token: it describes who is signed in, and it goes when they
+ * leave.
+ */
+const NAMES_KEY = 'kuma.organisation-names';
+
+function remember(organisations: readonly Organisation[]): void {
+  try {
+    window.sessionStorage.setItem(NAMES_KEY, JSON.stringify(organisations));
+  } catch {
+    // A browser that refuses storage costs a name on a row, and nothing else.
+  }
+}
+
+/** What the directory called each organisation, for the screens that show one. */
+export function knownOrganisations(): readonly Organisation[] {
+  try {
+    const held: unknown = JSON.parse(window.sessionStorage.getItem(NAMES_KEY) ?? '[]');
+    if (!Array.isArray(held)) return [];
+    return held.filter(
+      (entry): entry is Organisation =>
+        typeof entry?.id === 'string' && typeof entry?.name === 'string',
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * What to call an organisation on screen: its name where one is known, its identifier otherwise.
+ *
+ * Never a name invented here, and never an empty label — an unnamed row still has to be selectable.
+ */
+export function organisationLabel(organisationId: string): string {
+  return knownOrganisations().find((x) => x.id === organisationId)?.name ?? organisationId;
+}
+
+/**
  * What the signed-in person may act in.
  *
  * An empty list is an answer, not a failure: it means the directory holds nothing for them, and the
@@ -69,13 +113,16 @@ export async function listOrganisations(
   const held: unknown = await answer.json();
   if (!Array.isArray(held)) throw new DirectoryUnavailableError('the directory answered no list');
 
-  return held
+  const organisations = held
     .map((entry) => entry as Record<string, unknown>)
     .filter((entry) => typeof entry.id === 'string' && entry.id.length > 0)
     .map((entry) => ({
       id: entry.id as string,
       name: typeof entry.name === 'string' && entry.name ? entry.name : (entry.id as string),
     }));
+
+  remember(organisations);
+  return organisations;
 }
 
 /**

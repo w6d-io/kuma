@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { organisationLabel } from '../auth/directory';
 import { emptyOrganisationsHint, organisationsSourceNote } from '../auth/authority';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
@@ -273,7 +274,7 @@ export function OrgAdminPage() {
           <label className="small muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             Organization
             <select className="input mono" style={{ width: 'auto' }} value={activeOrg} onChange={e => { setOrg(e.target.value); setQ(''); setSearch(''); }}>
-              {orgs.map(o => <option key={o} value={o}>{o}</option>)}
+              {orgs.map(o => <option key={o} value={o}>{organisationLabel(o)}</option>)}
             </select>
           </label>
           <div style={{ position: 'relative', flex: 1, maxWidth: 320 }}>

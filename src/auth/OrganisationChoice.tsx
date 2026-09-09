@@ -33,7 +33,10 @@ export function OrganisationChoice({
   return (
     <main className="choice">
       <h1>Choose an organization</h1>
-      <p className="sub">You administer more than one. This session acts in the one you pick.</p>
+      <p className="sub">
+        The directory records which one this session acts in. You can still switch between the ones
+        you administer once you are inside.
+      </p>
 
       {refused && <p className="refused">That did not go through — {refused}</p>}
 
