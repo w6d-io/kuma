@@ -35,6 +35,9 @@ import type { EnforcedDocument, EnforcedGrant, EnforcedRole } from '../api/clien
  * There is no group in this chain, and its absence is the finding rather than an omission: what the
  * engine enforces binds a PERSON to roles in an organisation, one grant at a time.
  */
+/** As `groups.json` writes it: a group granting here grants wherever the holder happens to be. */
+const EVERY_ORGANISATION = '*';
+
 function Chain({ permission, roles, grants }: { permission: string; roles: EnforcedRole[]; grants: EnforcedGrant[] }) {
   const carriers = roles.filter(r => r.permissions.includes(permission) || r.permissions.includes('*'));
 
@@ -82,9 +85,24 @@ function Chain({ permission, roles, grants }: { permission: string; roles: Enfor
                     </span>
                     <span className="small muted"> in </span>
                     {holder.held.map(h => (
-                      <Chip key={h.organisation} tone="plain" title={h.organisation}>
-                        {h.organisationName ?? h.organisation}
-                      </Chip>
+                      <span key={h.organisation}>
+                        {/* The name for a reader, the identifier in the tooltip and when nothing can
+                            name it. `*` is the model's own way of saying every one, so it is said in
+                            words rather than shown as a symbol nobody outside the file recognises. */}
+                        <Chip tone="plain" title={h.organisation}>
+                          {h.organisation === EVERY_ORGANISATION
+                            ? 'every organisation'
+                            : (h.organisationName ?? h.organisation)}
+                        </Chip>
+                        {/* WHY they hold it. Without the group a reader sees the role and has no way
+                            to know what to change to take it away. */}
+                        {h.viaGroups?.length ? (
+                          <span className="small muted">
+                            {' via '}
+                            <span className="mono">{h.viaGroups.join(', ')}</span>
+                          </span>
+                        ) : null}
+                      </span>
                     ))}
                   </li>
                 ))}
