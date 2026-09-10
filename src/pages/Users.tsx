@@ -9,6 +9,8 @@ import { useApplyChange } from '../hooks/useApplyChange';
 import { membershipsOf, searchedToUser } from '../api/transforms';
 import { RiskBadge, riskOf } from './Audit';
 import type { User, AuditEvent } from '../api/types';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../api/client';
 
 // Small debounce so typing a name doesn't re-filter (and, for emails, re-query
 // the server) on every keystroke.
@@ -160,11 +162,23 @@ export function UsersPage() {
 export function UserDrawer() {
   const { userDrawer, setUserDrawer, state, pushToast, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSendRecoveryEmail } = useApp();
   const applyChange = useApplyChange();
-  const { data: session } = useSession();
-  // Privilege-escalation guard mirror: only super_admin actors can grant
-  // groups that confer admin / super_admin power. Frontend disables the
-  // checkboxes; jinbe rejects the mutation as 422 either way.
-  const actorIsSuperAdmin = (session?.roles || []).includes('super_admin');
+  /**
+   * What this actor may hand out, asked of the model the engine decides against.
+   *
+   * What this replaced offered `state.groups` — the previous model's catalogue, read from a cache —
+   * and greyed the privileged ones when the session did NOT carry a role literally called
+   * `super_admin`. Neither survives: the policy defines no such role (global power is a group
+   * granting in every organisation, read off the shape), so every privileged row was greyed for
+   * everybody; and the names on offer were not the ones the policy knows, so assigning one wrote a
+   * membership that granted nothing while looking like it had worked.
+   */
+  const assignable = useQuery({
+    queryKey: ['assignable-groups'],
+    queryFn: () => api.assignableGroups(),
+    staleTime: 30_000,
+  });
+  const offered = assignable.data?.groups ?? [];
+  const mayAssign = assignable.data?.mayAssign ?? false;
 
   // edit state
   const editing = userDrawer?.user;
@@ -227,23 +241,29 @@ export function UserDrawer() {
     if (ok) setUserDrawer(null);
   };
 
-  const groupRows = (checked: string[], toggle: (g: string) => void, targetMfa?: boolean) =>
-    Object.entries(state.groups).map(([g, map], i) => {
+  const groupRows = (checked: string[], toggle: (g: string) => void, targetMfa?: boolean) => {
+    // Everything the model declares, plus anything the target already holds — a membership the
+    // catalogue no longer offers must stay visible and removable, or it becomes invisible and
+    // permanent.
+    const rows = [...new Set([...offered, ...checked])].sort();
+    return rows.map((g, i) => {
       const on = checked.includes(g);
+      const known = offered.includes(g);
       const privileged = isPrivilegedGroup(g, state);
-      // MFA gate (frontend mirror of jinbe's backend refusal): a privileged
-      // group cannot be picked for a target user without a second factor.
+      // MFA gate (frontend mirror of jinbe's backend refusal): a privileged group cannot be picked
+      // for a target user without a second factor.
       const blockedByMfa = privileged && targetMfa === false && !on;
-      // Privilege-escalation guard: only super_admin actors can grant a
-      // privileged group. Non-super_admins see the box disabled with
-      // explanation; backend enforces it via 422 either way.
-      const blockedByActor = privileged && !actorIsSuperAdmin && !on;
+      // Whether this actor may hand out anything at all is the model's answer, not a role name.
+      const blockedByActor = !mayAssign && !on;
       const blocked = blockedByMfa || blockedByActor;
       const title = blockedByActor
-        ? `Group '${g}' grants admin privileges. Only super_admins may assign it.`
+        ? 'Assigning a group needs a group that grants in every organisation.'
         : blockedByMfa
         ? `Group '${g}' grants admin privileges. Target user must enroll a second factor (TOTP / security key / backup codes) before assignment.`
+        : !known
+        ? `Group '${g}' is held but is not declared in the enforced model, so it grants nothing. It can be removed.`
         : undefined;
+      const map = state.groups[g] ?? {};
       return (
         <label
           key={g}
@@ -252,7 +272,7 @@ export function UserDrawer() {
             alignItems: "center",
             gap: 10,
             padding: "10px 14px",
-            borderBottom: i < Object.keys(state.groups).length - 1 ? "1px solid var(--line)" : "none",
+            borderBottom: i < rows.length - 1 ? "1px solid var(--line)" : "none",
             cursor: blocked ? "not-allowed" : "pointer",
             background: on ? "var(--accent-soft)" : "transparent",
             opacity: blocked ? 0.55 : 1,
@@ -266,17 +286,21 @@ export function UserDrawer() {
             onChange={() => { if (!blocked) toggle(g); }}
           />
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 500, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontWeight: 500, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               {g}
               {privileged && <Chip tone="warn">🔒 privileged</Chip>}
-              {blockedByActor && <Chip tone="err">super_admin only</Chip>}
+              {!known && <Chip tone="err">not in the model</Chip>}
               {blockedByMfa && !blockedByActor && <Chip tone="err">MFA required</Chip>}
             </div>
-            <div className="small muted mono">{Object.entries(map).map(([s, rs]) => `${s}: ${rs.join(",")}`).join(" · ")}</div>
+            <div className="small muted mono" style={{ overflowWrap: 'anywhere' }}>
+              {Object.entries(map).map(([s, rs]) => `${s}: ${rs.join(",")}`).join(" · ") ||
+                'declared in the enforced model'}
+            </div>
           </div>
         </label>
       );
     });
+  };
 
   if (userDrawer.mode === 'create') {
     return (
@@ -357,7 +381,7 @@ export function UserDrawer() {
           )}
           {drawerTab === "groups" && (
             <>
-              <div className="grid" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 12, alignItems: "start" }}>
+              <div className="drawer-split">
                 <div>
                   <label className="input-label">Groups</label>
                   <div className="panel" style={{ padding: 0 }}>{groupRows(groups, toggleGroup, user?.mfa)}</div>

@@ -183,6 +183,13 @@ export const api = {
       body: JSON.stringify({ source, options }),
     }),
 
+  /**
+   * The groups the caller may hand out, and whether they may at all — from the model the engine
+   * decides against, not from the previous one.
+   */
+  assignableGroups: () =>
+    request<{ groups: string[]; mayAssign: boolean }>('/admin/assignable-groups'),
+
   // ─── Enforced configuration (read-only) ───
   // What actually decides, read from the cluster objects the engines load. There is no writer and
   // there must not be one: the source of truth is a repository synced by Argo, so a write here

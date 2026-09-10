@@ -2051,3 +2051,19 @@ table {
 .chain-arrow { color: var(--muted); }
 .chain-holders { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
 .chain-holders li { line-height: 1.6; }
+
+/* Two panels side by side in a drawer — the picker and what it results in. On a phone the drawer is
+   the width of the screen, so side-by-side leaves each panel too narrow to read: labels truncate
+   mid-word and long identifiers are cut. Stacked below the same breakpoint the shell already uses. */
+.drawer-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3, 12px);
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .drawer-split {
+    grid-template-columns: 1fr;
+  }
+}
