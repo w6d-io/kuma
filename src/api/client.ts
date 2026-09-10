@@ -426,23 +426,7 @@ export const api = {
     }),
 
   // ─── Impact preview — who gains/loses access if this change is applied ───
-  previewImpact: (proposed: {
-    groups?: Record<string, Record<string, string[]>>;
-    roles?: Record<string, Record<string, string[]>>;
-    routeMaps?: Record<string, unknown>;
-    groupMembership?: Record<string, string[]>;
-  }) =>
-    request<ImpactPreviewResult>('/admin/rbac/impact-preview', {
-      method: 'POST',
-      body: JSON.stringify(proposed),
-    }),
 
-  // ─── Permission simulator (live OPA query) ───
-  simulate: (input: { email: string; service: string; method: string; path: string }) =>
-    request<SimulateResponse>('/admin/rbac/simulate', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
 
   // ─── Delegated org-admin (self-service; scoped to the caller's orgs) ───
   // The organizations the caller may administer (delegation manageable_orgs).

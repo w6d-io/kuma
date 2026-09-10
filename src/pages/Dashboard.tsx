@@ -121,10 +121,6 @@ export function DashboardPage() {
           <div className="sub">{totalUsers} users · {totalGroups} groups · {totalServices} services</div>
         </div>
         <div className="page-actions">
-          <button className="btn" onClick={() => setPage("simulator")}>
-            <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.sparkle}</span>
-            Simulate access
-          </button>
           <button className="btn primary" onClick={() => setGrant({})}>
             <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.shield}</span>
             Grant access

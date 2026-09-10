@@ -5,8 +5,6 @@ import { Chip, Drawer, AccessLevel, ConfirmDialog } from '../components/ui/Primi
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
 import { useStats } from '../api/hooks';
-import { api } from '../api/client';
-import type { ImpactPreviewResult } from '../api/client';
 
 export function GroupsPage() {
   const { state, setGroupDrawer } = useApp();
@@ -94,11 +92,6 @@ export function GroupDrawer() {
   const [name, setName] = useState(isEdit && groupDrawer?.name ? groupDrawer.name : "");
   const [mapping, setMapping] = useState<Record<string, string[]>>(existing || {});
   const [confirmDelete, setConfirmDelete] = useState(false);
-  // Impact preview: computed on the first "Apply change" click (edit only) so
-  // the operator SEES who gains/loses access before confirming. Any further
-  // edit to the mapping invalidates it.
-  const [impact, setImpact] = useState<ImpactPreviewResult | null>(null);
-  const [previewing, setPreviewing] = useState(false);
 
   // Seed form when the drawer opens on a group (keyed on name+mode). `existing`
   // is derived from the live cache and would re-seed on every optimistic edit,
@@ -115,7 +108,6 @@ export function GroupDrawer() {
   const isSystem = !!(isEdit && groupDrawer.name && state.groupsMeta?.[groupDrawer.name]?.system);
 
   const toggle = (svc: string, role: string) => {
-    setImpact(null);
     setMapping(prev => {
       const cur = prev[svc] || [];
       const on = cur.includes(role);
@@ -128,21 +120,10 @@ export function GroupDrawer() {
 
   const save = async () => {
     if (!validName) return;
-    // Edit path: first click computes the impact preview; the operator applies
-    // only after seeing who gains/loses access. Create can't flip anything for
-    // existing users (no members yet) — applied directly.
-    if (isEdit && !impact) {
-      setPreviewing(true);
-      try {
-        setImpact(await api.previewImpact({ groups: { [name]: mapping } }));
-      } catch {
-        // Preview endpoint unavailable (older jinbe) — degrade to direct apply.
-        setImpact({ losses: [], gains: [], unchanged: 0, sample: { audit: 0, synthetic: 0, total: 0 }, evaluated: false });
-      } finally {
-        setPreviewing(false);
-      }
-      return;
-    }
+    // An edit used to take two clicks: the first computed who would gain and lose access, the second
+    // applied it. That preview asked an engine for a path the model no longer has, so it answered
+    // "unavailable" every time — the second click read nothing and confirmed nothing. Both are gone
+    // with it. Bringing the two steps back means bringing the information back first.
     const summary = isEdit ? `group:${name} updated` : `group:${name} created`;
     const ok = applyChange(
       isEdit ? "update" : "create",
@@ -175,8 +156,8 @@ export function GroupDrawer() {
             <button className="btn" onClick={() => setGroupDrawer(null)}>Cancel</button>
             {/* On EDIT, an empty mapping is a legitimate intent (clearing every role).
                 On CREATE, refuse it — a group with no roles grants nothing. */}
-            <button className="btn primary" onClick={save} disabled={previewing || !validName || (!isEdit && Object.keys(mapping).length === 0)}>
-              {!isEdit ? "Create group" : previewing ? "Previewing impact…" : impact ? "Confirm & apply" : "Preview & apply"}
+            <button className="btn primary" onClick={save} disabled={!validName || (!isEdit && Object.keys(mapping).length === 0)}>
+              {isEdit ? "Apply change" : "Create group"}
             </button>
           </div>
         </>
@@ -198,41 +179,6 @@ export function GroupDrawer() {
               ? "Saving will remove every permission from this group. Members will keep their identity but lose access until reassigned."
               : "Pick at least one role for at least one service to give this group meaningful access."}
           </div>
-        </div>
-      )}
-      {/* Impact preview — rendered after "Preview & apply", before confirm. */}
-      {impact && (
-        <div className="panel mb-12" style={{ padding: 12, borderColor: impact.losses.length ? 'var(--err, #ef4444)' : impact.gains.length ? 'var(--warn, #d97706)' : 'var(--line)' }}>
-          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
-            {impact.evaluated
-              ? impact.losses.length + impact.gains.length === 0
-                ? 'No access change detected'
-                : `Impact: ${impact.losses.length} lose access · ${impact.gains.length} gain access`
-              : 'Impact preview unavailable (policy engine unreachable)'}
-          </div>
-          {impact.evaluated && (
-            <div className="small muted" style={{ marginBottom: impact.losses.length + impact.gains.length ? 8 : 0 }}>
-              Evaluated {impact.sample.total} access checks against the live policy ({impact.sample.audit} from real traffic, {impact.sample.synthetic} from declared routes) — {impact.unchanged} unchanged.
-            </div>
-          )}
-          {impact.losses.length > 0 && (
-            <div style={{ marginBottom: impact.gains.length ? 8 : 0 }}>
-              <div className="small" style={{ fontWeight: 600, color: 'var(--err, #ef4444)', marginBottom: 2 }}>Loses access</div>
-              {impact.losses.slice(0, 8).map((f, i) => (
-                <div key={i} className="small mono" style={{ color: 'var(--ink-2)' }}>{f.email} — {f.action} {f.object}</div>
-              ))}
-              {impact.losses.length > 8 && <div className="small muted">…and {impact.losses.length - 8} more</div>}
-            </div>
-          )}
-          {impact.gains.length > 0 && (
-            <div>
-              <div className="small" style={{ fontWeight: 600, color: 'var(--warn, #d97706)', marginBottom: 2 }}>Gains access</div>
-              {impact.gains.slice(0, 8).map((f, i) => (
-                <div key={i} className="small mono" style={{ color: 'var(--ink-2)' }}>{f.email} — {f.action} {f.object}</div>
-              ))}
-              {impact.gains.length > 8 && <div className="small muted">…and {impact.gains.length - 8} more</div>}
-            </div>
-          )}
         </div>
       )}
       <label className="input-label">Roles per service</label>
