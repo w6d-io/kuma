@@ -622,6 +622,15 @@ export function useMyOrganizations() {
   });
 }
 
+/** Every organisation, for the screen that administers them. Refuses rather than narrowing. */
+export function useAllOrganizations() {
+  return useQuery({
+    queryKey: ['all-orgs'],
+    queryFn: () => api.allOrganizations(),
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
 /** What to call each organisation, for the screens that show one to a person. */
 export function useMyOrganizationNames() {
   return useQuery({

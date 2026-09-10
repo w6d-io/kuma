@@ -4,7 +4,7 @@ import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, EmptyHint, MultiSelectPills, ConfirmDialog } from '../components/ui/Primitives';
 import { kratosToUser } from '../api/transforms';
 import {
-  useMyOrganizations, useMyOrganizationNames,
+  useAllOrganizations,
   useOrgServiceMap,
   useSetOrgServiceBundle,
   useDeleteOrgServiceMapping,
@@ -29,12 +29,19 @@ import { InviteDrawer } from './OrgAdmin';
 // its bundle + people, bundle/invite/grant from one place.
 
 export function OrganizationsPage() {
-  const orgsQ = useMyOrganizations();
-  // The hook existed and this page never called it: the names travelled from the directory to the
-  // client and stopped one line short of the screen, which listed raw identifiers instead.
-  const { data: names = {} } = useMyOrganizationNames();
+  // EVERY organisation, from the route that answers that question and refuses when the caller may
+  // not ask it. This page used to call `/me/organizations`, which widened to everything for an
+  // administrator and returned only theirs otherwise — the same call meaning two different things.
+  const orgsQ = useAllOrganizations();
+  const names = useMemo(
+    () => Object.fromEntries((orgsQ.data?.organizations ?? []).map((o) => [o.id, o.name])),
+    [orgsQ.data],
+  );
   const { data: orgServiceMap = {} } = useOrgServiceMap();
-  const orgs = useMemo(() => (orgsQ.isError ? [] : orgsQ.data ?? null), [orgsQ.isError, orgsQ.data]);
+  const orgs = useMemo(
+    () => (orgsQ.isError ? [] : orgsQ.data ? orgsQ.data.organizations.map((o) => o.id) : null),
+    [orgsQ.isError, orgsQ.data],
+  );
 
   const [sel, setSel] = useState('');
   const [q, setQ] = useState('');
