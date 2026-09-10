@@ -6,7 +6,6 @@ import { searchedToUser } from './api/transforms';
 import { I } from './components/ui/Icons';
 import { Switch, Toasts, EmptyHint } from './components/ui/Primitives';
 import { DashboardPage } from './pages/Dashboard';
-import { SimulatorPage } from './pages/Simulator';
 import { UsersPage, UserDrawer } from './pages/Users';
 import { OrgAdminPage } from './pages/OrgAdmin';
 import { GroupsPage, GroupDrawer } from './pages/Groups';
@@ -34,7 +33,6 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { id: "dashboard", name: "Overview",  ico: I.grid,    section: "Platform", perms: [] },
-  { id: "simulator", name: "Simulator", ico: I.sparkle, section: "Platform", perms: ["admin:read"] },
   { id: "users",     name: "Users",     ico: I.users,   section: "Platform", perms: ["admin:read"] },
   { id: "groups",    name: "Groups",    ico: I.group,   section: "Platform", perms: ["admin:read"] },
   { id: "services",  name: "Services",  ico: I.service, section: "Policy",   perms: ["admin:read"] },
@@ -495,7 +493,6 @@ function AppShell() {
         <div className="content">
           {(simulatingForbidden(tweaks) || (apiError as any)?.status === 403) ? <ForbiddenPage /> : <>
             {page === "dashboard" && <DashboardPage />}
-            {page === "simulator" && <SimulatorPage />}
             {page === "users" && <UsersPage />}
             {page === "groups" && <GroupsPage />}
             {(page === "services" || page === "roles" || page === "routes" || page === "rules") && <ServicesPage />}

@@ -220,7 +220,7 @@ export interface AppState {
 // from the type again. (It did once: 'recertification' was added to the type
 // but not to pageFromHash's hand-copied list — first click on the nav entry
 // bounced back to the dashboard.)
-export const PAGE_IDS = ['dashboard', 'simulator', 'users', 'groups', 'services', 'roles', 'routes', 'rules', 'audit', 'accessreview', 'recertification', 'settings', 'orgadmin', 'organizations', 'backup', 'enforced'] as const;
+export const PAGE_IDS = ['dashboard', 'users', 'groups', 'services', 'roles', 'routes', 'rules', 'audit', 'accessreview', 'recertification', 'settings', 'orgadmin', 'organizations', 'backup', 'enforced'] as const;
 export type PageId = (typeof PAGE_IDS)[number];
 
 export interface TweakDefaults {
