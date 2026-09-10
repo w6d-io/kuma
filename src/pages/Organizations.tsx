@@ -4,7 +4,7 @@ import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, EmptyHint, MultiSelectPills, ConfirmDialog } from '../components/ui/Primitives';
 import { kratosToUser } from '../api/transforms';
 import {
-  useMyOrganizations,
+  useMyOrganizations, useMyOrganizationNames,
   useOrgServiceMap,
   useSetOrgServiceBundle,
   useDeleteOrgServiceMapping,
@@ -30,6 +30,9 @@ import { InviteDrawer } from './OrgAdmin';
 
 export function OrganizationsPage() {
   const orgsQ = useMyOrganizations();
+  // The hook existed and this page never called it: the names travelled from the directory to the
+  // client and stopped one line short of the screen, which listed raw identifiers instead.
+  const { data: names = {} } = useMyOrganizationNames();
   const { data: orgServiceMap = {} } = useOrgServiceMap();
   const orgs = useMemo(() => (orgsQ.isError ? [] : orgsQ.data ?? null), [orgsQ.isError, orgsQ.data]);
 
@@ -78,7 +81,7 @@ export function OrganizationsPage() {
   return (
     <>
       {header}
-      <div className="grid" style={{ gridTemplateColumns: '280px 1fr', gap: 14, alignItems: 'start' }}>
+      <div className="list-detail">
         {/* Left rail — one row per org, with a bundle summary */}
         <div className="panel" style={{ padding: 0 }}>
           <div style={{ padding: 8, borderBottom: '1px solid var(--line)' }}>
@@ -91,7 +94,18 @@ export function OrganizationsPage() {
               <button key={o} onClick={() => setSel(o)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderBottom: i < filtered.length - 1 ? '1px solid var(--line)' : 'none', background: on ? 'var(--panel-2)' : 'transparent', color: 'var(--ink)', cursor: 'pointer', display: 'flex', gap: 9, alignItems: 'center' }}>
                 <span style={{ color: svcs.length ? 'var(--ink-3)' : 'var(--warn)', flexShrink: 0, display: 'grid', placeItems: 'center', width: 15, height: 15 }}>{svcs.length ? I.globe : I.alert}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="mono" style={{ fontWeight: on ? 600 : 500, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis' }}>{o}</div>
+                  {/* The name when the directory knows it, the identifier when it does not — worse to
+                      read, still correct, and never a guess. A list of raw UUIDs is unreadable, and
+                      three of the eight here do carry a name nobody was showing. */}
+                  <div
+                    className={names[o] ? '' : 'mono'}
+                    style={{ fontWeight: on ? 600 : 500, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis' }}
+                  >
+                    {names[o] ?? o}
+                  </div>
+                  {names[o] && (
+                    <div className="small muted mono" style={{ overflowWrap: 'anywhere' }}>{o}</div>
+                  )}
                   <div className="small muted mt-4">
                     {svcs.length
                       ? <>{svcs.length} service{svcs.length === 1 ? '' : 's'} bundled</>
