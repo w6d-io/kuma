@@ -384,6 +384,18 @@ export function UserDrawer() {
               <div className="drawer-split">
                 <div>
                   <label className="input-label">Groups</label>
+                  {/* A screen offering nothing must say why — and must not make "you may not" and
+                      "I could not tell" look alike: one is an answer, the other is a failure. */}
+                  {assignable.isError ? (
+                    <div className="small" style={{ color: 'var(--err)', marginBottom: 8 }}>
+                      The authorization model could not be read, so what you may assign is unknown.
+                    </div>
+                  ) : !assignable.isLoading && !mayAssign ? (
+                    <div className="small muted" style={{ marginBottom: 8 }}>
+                      You cannot assign groups: it needs <span className="mono">admin.membership:write</span>.
+                      Below is what this person already holds.
+                    </div>
+                  ) : null}
                   <div className="panel" style={{ padding: 0 }}>{groupRows(groups, toggleGroup, user?.mfa)}</div>
                 </div>
                 <div>
