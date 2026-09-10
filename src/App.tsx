@@ -8,7 +8,7 @@ import { Switch, Toasts, EmptyHint } from './components/ui/Primitives';
 import { DashboardPage } from './pages/Dashboard';
 import { UsersPage, UserDrawer } from './pages/Users';
 import { OrgAdminPage } from './pages/OrgAdmin';
-import { GroupsPage, GroupDrawer } from './pages/Groups';
+import { GroupsPage } from './pages/Groups';
 import { ServicesPage, ServiceDrawer } from './pages/Services';
 import { OrganizationsPage } from './pages/Organizations';
 import { EnforcedPage } from './pages/Enforced';
@@ -290,7 +290,7 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
 }
 
 function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { setPage, state, setGroupDrawer, setServiceDrawer, setActiveService, setGrant, setTheme, theme } = useApp();
+  const { setPage, state, setServiceDrawer, setActiveService, setGrant, setTheme, theme } = useApp();
   const [q, setQ] = useState("");
   const [idx, setIdx] = useState(0);
   useEffect(() => { if (open) { setQ(""); setIdx(0); } }, [open]);
@@ -308,14 +308,13 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
       kind: "user", label: u.name, sub: u.email, run: () => { setGrant({ user: u }); }
     }));
     const grps = Object.keys(state.groups).filter(match).slice(0, 6).map(g => ({
-      kind: "group", label: `Edit group · ${g}`, sub: "groups.json", run: () => { setPage("groups"); setGroupDrawer({ mode: "edit", name: g }); }
+      kind: "group", label: `Group · ${g}`, sub: "groups.json", run: () => { setPage("groups"); }
     }));
     const svcs = state.services.filter(s => match(s.name)).map(s => ({
       kind: "service", label: `Service · ${s.name}`, sub: s.upstreamUrl || "virtual", run: () => { setActiveService(s.name); setPage("services"); }
     }));
     const actions = [
       { kind: "action", label: "Grant access to a user", sub: "guided", run: () => { setGrant({}); } },
-      { kind: "action", label: "New group", sub: "groups.json", run: () => { setGroupDrawer({ mode: "create" }); } },
       { kind: "action", label: "Register service", sub: "creates roles + route_map + rule", run: () => { setServiceDrawer({ mode: "create" }); } },
       { kind: "action", label: `Toggle ${theme === "dark" ? "light" : "dark"} theme`, sub: "ui", run: () => setTheme(theme === "dark" ? "light" : "dark") },
     ].filter(a => match(a.label));
@@ -508,7 +507,6 @@ function AppShell() {
         </div>
       </div>
       <UserDrawer />
-      <GroupDrawer />
       <ServiceDrawer />
       <GrantAccess />
       <CmdK open={cmdkOpen} onClose={() => setCmdkOpen(false)} />

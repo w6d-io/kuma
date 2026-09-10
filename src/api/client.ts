@@ -200,6 +200,13 @@ export const api = {
   assignableGroups: () =>
     request<{ groups: string[]; mayAssign: boolean }>('/admin/assignable-groups'),
 
+  /**
+   * The model the engine decides against: what each group grants, per organisation, and what each
+   * role carries. Read-only — it lives in Git and changes at a release.
+   */
+  authorizationModel: () =>
+    request<AuthorizationModel>('/admin/authorization-model'),
+
   // ─── Enforced configuration (read-only) ───
   // What actually decides, read from the cluster objects the engines load. There is no writer and
   // there must not be one: the source of truth is a repository synced by Argo, so a write here
@@ -924,3 +931,10 @@ export interface AuditStreamEvent {
   severity?:      string;
   changes?:       import('./types').AuditChanges;
 }
+
+
+/** A group grants roles per organisation; `*` means every organisation the caller is in. */
+export type AuthorizationModel = {
+  groups: Record<string, Record<string, string[]>>;
+  roles: Record<string, string[]>;
+};

@@ -650,6 +650,14 @@ export function useMyOrganizationsScope() {
   });
 }
 
+export function useAuthorizationModel() {
+  return useQuery({
+    queryKey: ['authorization-model'],
+    queryFn: () => api.authorizationModel(),
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
 export function useAssignableGroups(orgId: string) {
   return useQuery({
     queryKey: ['assignable-groups', orgId],

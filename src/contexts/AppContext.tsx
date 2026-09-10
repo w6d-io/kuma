@@ -40,12 +40,6 @@ export interface UserDrawerState {
   user?: import('../api/types').User;
 }
 
-export interface GroupDrawerState {
-  mode: 'edit' | 'create';
-  name?: string;
-  group?: string;
-}
-
 export interface ServiceDrawerState {
   mode: 'create' | 'edit';
   serviceName?: string;
@@ -85,8 +79,6 @@ interface AppContextType {
   registerUnsavedGuard: (fn: (() => boolean) | null) => void;
   userDrawer: UserDrawerState | null;
   setUserDrawer: (d: UserDrawerState | null) => void;
-  groupDrawer: GroupDrawerState | null;
-  setGroupDrawer: (d: GroupDrawerState | null) => void;
   serviceDrawer: ServiceDrawerState | null;
   setServiceDrawer: (d: ServiceDrawerState | null) => void;
   grant: GrantState | null;
@@ -117,9 +109,6 @@ interface AppContextType {
    * Errors bubble so the drawer can surface why and keep the drafted list.
    */
   apiSetUserOrganizations: (id: string, organizations: string[]) => Promise<void>;
-  apiCreateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
-  apiUpdateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
-  apiDeleteGroup: (name: string) => Promise<void>;
   apiCreateService: (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string; signIn?: import("../api/client").SignInMethod[] }) => Promise<void>;
   apiUpdateService: (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null; signIn?: import("../api/client").SignInMethod[] }) => Promise<void>;
   apiDeleteService: (name: string) => Promise<void>;
@@ -288,7 +277,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     guardedNavigate(() => setActiveServiceRaw(s));
   }, [activeService, guardedNavigate]);
   const [userDrawer, setUserDrawer] = useState<UserDrawerState | null>(null);
-  const [groupDrawer, setGroupDrawer] = useState<GroupDrawerState | null>(null);
   const [serviceDrawer, setServiceDrawer] = useState<ServiceDrawerState | null>(null);
   const [grant, setGrant] = useState<GrantState | null>(null);
   const [auditFocus, setAuditFocus] = useState<AuditFocus | null>(null);
@@ -378,24 +366,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     qc.invalidateQueries({ queryKey: ['user-identity', id] });
   }, [qc]);
 
-  const apiCreateGroup = useCallback(async (name: string, services: Record<string, string[]>) => {
-    await withOptimism(qc, [['groups'], ['groups-map']],
-      () => cachePatch.upsertGroup(qc, name, services),
-      () => api.createGroup({ name, services }));
-  }, [qc]);
-
-  const apiUpdateGroup = useCallback(async (name: string, services: Record<string, string[]>) => {
-    await withOptimism(qc, [['groups'], ['groups-map']],
-      () => cachePatch.upsertGroup(qc, name, services),
-      () => api.updateGroup(name, services));
-  }, [qc]);
-
-  const apiDeleteGroup = useCallback(async (name: string) => {
-    await withOptimism(qc, [['groups'], ['groups-map'], ['users'], ['stats']],
-      () => cachePatch.removeGroup(qc, name),
-      () => api.deleteGroup(name));
-  }, [qc]);
-
   const apiCreateService = useCallback(async (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string; signIn?: import("../api/client").SignInMethod[] }) => {
     // Create spawns roles/routes/rules server-side; invalidate-only.
     await withOptimism(qc, [['services'], ['access-rules'], ['all-roles'], ['all-routes']],
@@ -423,7 +393,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     activeService, setActiveService,
     registerUnsavedGuard,
     userDrawer, setUserDrawer,
-    groupDrawer, setGroupDrawer,
     serviceDrawer, setServiceDrawer,
     grant, setGrant,
     auditFocus, setAuditFocus,
@@ -431,7 +400,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     theme, setTheme, persona, setPersona,
     tweaks, setTweak,
     apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata, apiSetUserOrganization, apiSetUserOrganizations, apiSendRecoveryEmail,
-    apiCreateGroup, apiUpdateGroup, apiDeleteGroup,
     apiCreateService, apiUpdateService, apiDeleteService,
   };
 
