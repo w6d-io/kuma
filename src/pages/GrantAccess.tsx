@@ -44,7 +44,7 @@ function grantsOf(group: string, state: ReturnType<typeof useApp>['state']) {
 }
 
 export function GrantAccess() {
-  const { grant, setGrant, state, apiSetUserGroups, setUserDrawer, setGroupDrawer } = useApp();
+  const { grant, setGrant, state, apiSetUserGroups, setUserDrawer } = useApp();
   const applyChange = useApplyChange();
   const { data: session } = useSession();
   // Privilege-escalation guard mirror: only super_admin actors can grant groups
@@ -159,10 +159,7 @@ export function GrantAccess() {
       title={user ? `Grant access · ${user.name}` : 'Grant access'}
       footer={
         <>
-          <button className="btn ghost sm" onClick={() => { setGrant(null); setGroupDrawer({ mode: 'create' }); }}>
-            <span style={{ width: 14, height: 14, display: 'grid', placeItems: 'center' }}>{I.plus}</span>
-            New group
-          </button>
+          <div />
           <div className="row">
             <button className="btn" onClick={() => setGrant(null)}>Cancel</button>
             {step !== 'who' && (
@@ -290,8 +287,7 @@ export function GrantAccess() {
           <div className="panel" style={{ padding: 0, maxHeight: 380, overflowY: 'auto' }}>
             {outcomes.length === 0 && (
               <div className="small muted" style={{ padding: 14 }}>
-                No outcome matches “{gq}”.{' '}
-                <button className="btn ghost sm" onClick={() => { setGrant(null); setGroupDrawer({ mode: 'create' }); }}>Create a group</button>
+                No outcome matches “{gq}”. Groups come from the model in Git.
               </div>
             )}
             {outcomes.map((o, i) => {

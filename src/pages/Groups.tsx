@@ -1,240 +1,142 @@
-import { useState, useEffect } from 'react';
-import { useApp } from '../contexts/AppContext';
-import { I } from '../components/ui/Icons';
-import { Chip, Drawer, AccessLevel, ConfirmDialog } from '../components/ui/Primitives';
-import { accessLevelOf } from '../hooks/useRbac';
-import { useApplyChange } from '../hooks/useApplyChange';
-import { useStats } from '../api/hooks';
+import { Chip } from '../components/ui/Primitives';
+import { useAuthorizationModel, useStats } from '../api/hooks';
+import { scopesOf, grantsEveryOrganisation, resolveRoles, type RoleCatalogue } from '../policy/model';
 
+/**
+ * What each group grants, from the model the engine decides against.
+ *
+ * This is a REPORT, not an editor. The model lives in Git and changes at a release, because a diff
+ * of it is the only way anybody sees a permission change coming — so there is no writer here and
+ * there must not be one. Who is IN a group is the opposite kind of fact: it changes daily, and the
+ * Users screen owns it.
+ *
+ * What this replaces read a catalogue from Redis and laid it out as a column per SERVICE — the
+ * retired model's shape. It listed groups the policy does not define, omitted every group it does,
+ * and offered to edit them, which wrote where nothing reads.
+ */
 export function GroupsPage() {
-  const { state, setGroupDrawer } = useApp();
+  const { data: model, isLoading, error } = useAuthorizationModel();
   const { data: stats } = useStats();
-  const services = state.services.map(s => s.name);
+
+  const groups = model?.groups ?? {};
+  const roles = model?.roles ?? {};
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Groups</h1>
-          <div className="sub"><span className="mono">groups.json</span> · group → roles per service</div>
-        </div>
-        <div className="page-actions">
-          <button className="btn primary" onClick={() => setGroupDrawer({ mode: "create" })}>
-            <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.plus}</span> New group
-          </button>
+          <div className="sub">
+            <span className="mono">groups.json</span> · what each group grants, per organisation
+          </div>
         </div>
       </div>
-      {/* Sticky-column matrix: GROUP, USERS, and the trailing edit button stay
-          fixed while the SERVICES columns scroll horizontally. Without sticky
-          columns, on accounts with many services the user has no anchor for
-          which row they're editing once the table scrolls. */}
-      <div className="panel group-matrix-wrap" style={{ overflowX: "auto", overflowY: "visible", position: "relative" }}>
-        <table className="table group-matrix">
-          <thead>
-            <tr>
-              <th className="sticky-col" style={{ width: 180, left: 0 }}>Group</th>
-              <th className="sticky-col" style={{ width: 70, left: 180 }}>Users</th>
-              {services.map(s => <th key={s} style={{ minWidth: 140 }}>{s}</th>)}
-              <th className="sticky-col-right" style={{ width: 60, right: 0 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(state.groups).map(([g, map]) => {
-              const users = stats?.perGroup?.[g] ?? 0;
-              return (
-                <tr key={g}>
-                  <td className="sticky-col" style={{ left: 0, fontWeight: 500 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span>{g}</span>
-                      {state.groupsMeta?.[g]?.system && (
-                        <Chip tone="info" title={state.groupsMeta[g].description || "Bootstrap-protected — cannot be deleted"}>🔒 system</Chip>
-                      )}
-                      {Object.values(map).some(rs => rs.includes("*")) && <Chip tone="accent">wildcard</Chip>}
-                    </div>
-                  </td>
-                  <td className="sticky-col" style={{ left: 180 }}><span className="mono small">{users}</span></td>
-                  {services.map(s => {
-                    const roles = map[s] || [];
-                    const perms = roles.flatMap(r => (state.roles[s]?.[r]) || []);
-                    const level = roles.length === 0 ? "none" : accessLevelOf(perms);
-                    return (
-                      <td key={s} className={`matrix-cell lv-${level}`} style={{ minWidth: 140 }}>
-                        {roles.length === 0 ? <span className="small muted">—</span> : (
-                          <div className="matrix-stack">
-                            <AccessLevel level={level} compact />
-                            <span className="small mono" style={{ color: "var(--ink-2)" }}>{roles.join(" · ")}</span>
-                          </div>
-                        )}
-                      </td>
-                    );
-                  })}
-                  <td className="sticky-col-right" style={{ right: 0 }}>
-                    <button className="btn ghost sm" onClick={() => setGroupDrawer({ mode: "edit", name: g })}>
-                      <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.edit}</span>
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+
+      <div className="panel" style={{ padding: 12, marginBottom: 12 }}>
+        <div className="small muted">
+          Reviewed in Git and shipped with the policy bundle — this screen reports it and cannot
+          change it. To add a group or move a permission, change the model and let Argo sync it.
+        </div>
       </div>
+
+      {error ? (
+        <div className="panel" style={{ padding: 16 }}>
+          <strong>The authorization model could not be read.</strong>
+          <div className="small muted" style={{ marginTop: 4 }}>
+            This is not an empty model: nothing here says what anybody holds. Retry, and check that
+            the policy ConfigMaps are present in the namespace.
+          </div>
+        </div>
+      ) : isLoading ? (
+        <div className="panel" style={{ padding: 16 }}>
+          <span className="small muted">Reading the model…</span>
+        </div>
+      ) : Object.keys(groups).length === 0 ? (
+        <div className="panel" style={{ padding: 16 }}>
+          <span className="small muted">The model declares no group.</span>
+        </div>
+      ) : (
+        <div className="list-detail">
+          {Object.entries(groups).map(([group, definition]) => {
+            const members = stats?.perGroup?.[group] ?? 0;
+            const everywhere = grantsEveryOrganisation(definition);
+            const scopes = scopesOf(definition);
+            return (
+              <div key={group} className="panel" style={{ padding: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <strong className="mono">{group}</strong>
+                  {/* Held in every organisation at once. Handing one out goes through the actor's
+                      authority, the target's second factor and the actor's own step-up. */}
+                  {everywhere && <Chip tone="accent">every organisation</Chip>}
+                  <span className="small muted">
+                    {members} {members === 1 ? 'member' : 'members'}
+                  </span>
+                </div>
+
+                <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                  {scopes.map(scope => (
+                    <ScopeRow
+                      key={scope.key}
+                      scope={scope.everyOrganisation ? 'Every organisation' : scope.key}
+                      roleNames={scope.roles}
+                      roles={roles}
+                      mono={!scope.everyOrganisation}
+                    />
+                  ))}
+                  {scopes.length === 0 && <span className="small muted">Grants nothing.</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }
 
-export function GroupDrawer() {
-  const { groupDrawer, setGroupDrawer, state, apiCreateGroup, apiUpdateGroup, apiDeleteGroup } = useApp();
-  const { data: stats } = useStats();
-  const applyChange = useApplyChange();
-  const isEdit = groupDrawer?.mode === "edit";
-  const existing = isEdit && groupDrawer.name ? state.groups[groupDrawer.name] : null;
-  const [name, setName] = useState(isEdit && groupDrawer?.name ? groupDrawer.name : "");
-  const [mapping, setMapping] = useState<Record<string, string[]>>(existing || {});
-  const [confirmDelete, setConfirmDelete] = useState(false);
-
-  // Seed form when the drawer opens on a group (keyed on name+mode). `existing`
-  // is derived from the live cache and would re-seed on every optimistic edit,
-  // wiping in-progress changes — intentionally excluded.
-  useEffect(() => {
-    setName(isEdit && groupDrawer?.name ? groupDrawer.name : "");
-    setMapping(existing || {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupDrawer?.name, groupDrawer?.mode]);
-
-  if (!groupDrawer) return null;
-  const services = state.services.map(s => s.name);
-  const validName = /^[a-z0-9_-]+$/.test(name);
-  const isSystem = !!(isEdit && groupDrawer.name && state.groupsMeta?.[groupDrawer.name]?.system);
-
-  const toggle = (svc: string, role: string) => {
-    setMapping(prev => {
-      const cur = prev[svc] || [];
-      const on = cur.includes(role);
-      const next = on ? cur.filter(r => r !== role) : [...cur, role];
-      const out = { ...prev };
-      if (next.length === 0) delete out[svc]; else out[svc] = next;
-      return out;
-    });
-  };
-
-  const save = async () => {
-    if (!validName) return;
-    // An edit used to take two clicks: the first computed who would gain and lose access, the second
-    // applied it. That preview asked an engine for a path the model no longer has, so it answered
-    // "unavailable" every time — the second click read nothing and confirmed nothing. Both are gone
-    // with it. Bringing the two steps back means bringing the information back first.
-    const summary = isEdit ? `group:${name} updated` : `group:${name} created`;
-    const ok = applyChange(
-      isEdit ? "update" : "create",
-      summary,
-      () => isEdit ? apiUpdateGroup(name, mapping) : apiCreateGroup(name, mapping),
-    );
-    if (ok) setGroupDrawer(null);
-  };
-
-  const remove = () => {
-    if (!groupDrawer.name) return;
-    const gName = groupDrawer.name;
-    const ok = applyChange("delete", `group:${gName} removed`, () => apiDeleteGroup(gName));
-    if (ok) setGroupDrawer(null);
-  };
+/** One organisation a group grants in, and the permissions that follow from its roles there. */
+function ScopeRow({
+  scope,
+  roleNames,
+  roles,
+  mono,
+}: {
+  scope: string;
+  roleNames: string[];
+  roles: RoleCatalogue;
+  mono?: boolean;
+}) {
+  const { permissions, undefined: undefined_ } = resolveRoles(roleNames, roles);
 
   return (
-    <Drawer
-      open={!!groupDrawer} onClose={() => setGroupDrawer(null)} size="lg"
-      eyebrow={isEdit ? "PUT /api/admin/rbac/groups/{name}" : "POST /api/admin/rbac/groups"}
-      title={isEdit ? `Edit group · ${groupDrawer.name}` : "New group"}
-      footer={
-        <>
-          {isEdit && !isSystem ? (
-            <button className="btn danger sm" onClick={() => setConfirmDelete(true)}><span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.trash}</span> Delete group</button>
-          ) : isEdit && isSystem ? (
-            <span className="small muted" title="System groups cannot be deleted">🔒 system group</span>
-          ) : <div />}
-          <div className="row">
-            <button className="btn" onClick={() => setGroupDrawer(null)}>Cancel</button>
-            {/* On EDIT, an empty mapping is a legitimate intent (clearing every role).
-                On CREATE, refuse it — a group with no roles grants nothing. */}
-            <button className="btn primary" onClick={save} disabled={!validName || (!isEdit && Object.keys(mapping).length === 0)}>
-              {isEdit ? "Apply change" : "Create group"}
-            </button>
-          </div>
-        </>
-      }
-    >
-      <div className="mb-12">
-        <label className="input-label">Group name</label>
-        <input className="input mono" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. qa, security_reviewers" disabled={isEdit} />
-        <div className="input-hint">{name && !validName ? <span style={{ color: "var(--err)" }}>Only lowercase letters, numbers, underscores and hyphens.</span> : "Lowercase, alphanumeric, underscores and hyphens."}</div>
+    <div style={{ borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+      <div className={mono ? 'small mono' : 'small'} style={{ color: 'var(--ink-2)' }}>
+        {scope}
       </div>
-      {/* Empty-mapping warning. With PUT-replace semantics on the backend,
-          saving with no roles wipes all of the group's permissions. Surface
-          that explicitly so it's intentional. */}
-      {Object.keys(mapping).length === 0 && (
-        <div className="panel mb-12" style={{ padding: 10, background: "var(--warn-soft, #422)", border: "1px solid var(--warn, #d97706)", color: "var(--warn, #d97706)" }}>
-          <div style={{ fontWeight: 500, fontSize: 12.5 }}>{isEdit ? "All roles cleared" : "No roles selected"}</div>
-          <div className="small" style={{ marginTop: 4 }}>
-            {isEdit
-              ? "Saving will remove every permission from this group. Members will keep their identity but lose access until reassigned."
-              : "Pick at least one role for at least one service to give this group meaningful access."}
-          </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+        {roleNames.length === 0 ? (
+          <span className="small muted">no role</span>
+        ) : (
+          roleNames.map(r => (
+            <Chip key={r} tone={roles[r] ? 'info' : 'warn'}>
+              {r}
+              {!roles[r] && ' · not defined'}
+            </Chip>
+          ))
+        )}
+      </div>
+      {permissions.length > 0 && (
+        <div className="small mono" style={{ marginTop: 6, color: 'var(--ink-2)' }}>
+          {permissions.join(' · ')}
         </div>
       )}
-      <label className="input-label">Roles per service</label>
-      <div className="panel" style={{ padding: 0 }}>
-        {services.map((svc, i) => {
-          const roles = Object.keys(state.roles[svc] || {});
-          const current = mapping[svc] || [];
-          const perms = current.flatMap(r => (state.roles[svc]?.[r]) || []);
-          const level = current.length === 0 ? "none" : accessLevelOf(perms);
-          return (
-            <div key={svc} style={{ padding: 12, borderBottom: i < services.length - 1 ? "1px solid var(--line)" : "none" }}>
-              <div className="row mb-8" style={{ justifyContent: "space-between" }}>
-                <span className="mono" style={{ fontSize: 12.5, fontWeight: 500 }}>{svc}</span>
-                <AccessLevel level={level} compact />
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {roles.map(r => {
-                  const on = current.includes(r);
-                  return (
-                    <button key={r} onClick={() => toggle(svc, r)} className="chip" style={{ cursor: "pointer", fontWeight: 500, background: on ? "var(--accent)" : "var(--panel-2)", color: on ? "white" : "var(--ink-2)", borderColor: on ? "var(--accent)" : "var(--line)" }}>
-                      {on && <span style={{ fontSize: 10 }}>✓</span>} {r}
-                    </button>
-                  );
-                })}
-              </div>
-              {current.length > 0 && (() => {
-                const uniq = [...new Set(perms)];
-                return (
-                  <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
-                    <span className="small muted">grants:</span>
-                    {uniq.includes("*")
-                      ? <Chip tone="accent">everything (*)</Chip>
-                      : uniq.slice(0, 12).map(p => <Chip key={p}>{p}</Chip>)}
-                    {!uniq.includes("*") && uniq.length > 12 && <span className="small muted">+{uniq.length - 12} more</span>}
-                  </div>
-                );
-              })()}
-            </div>
-          );
-        })}
-      </div>
-      <ConfirmDialog
-        open={confirmDelete}
-        title={`Delete group ${groupDrawer?.name ?? ""}?`}
-        danger
-        confirmLabel="Delete group"
-        body={<>Members immediately lose the access this group grants. This can't be undone.</>}
-        blastRadius={(() => {
-          // Accurate member count from the cached stats endpoint (state.users is
-          // only page 1 here, so filtering it would undercount).
-          const n = groupDrawer?.name ? (stats?.perGroup?.[groupDrawer.name] ?? 0) : 0;
-          return n > 0 ? <><b>{n}</b> user{n !== 1 ? "s" : ""} will lose this group.</> : undefined;
-        })()}
-        onCancel={() => setConfirmDelete(false)}
-        onConfirm={() => { setConfirmDelete(false); remove(); }}
-      />
-    </Drawer>
+      {undefined_.length > 0 && (
+        <div className="small" style={{ marginTop: 4, color: 'var(--warn)' }}>
+          {undefined_.join(', ')} {undefined_.length === 1 ? 'is' : 'are'} not in{' '}
+          <span className="mono">roles.json</span>, so{' '}
+          {undefined_.length === 1 ? 'it grants' : 'they grant'} nothing.
+        </div>
+      )}
+    </div>
   );
 }

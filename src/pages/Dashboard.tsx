@@ -8,7 +8,7 @@ import { riskOf } from './Audit';
 
 export function DashboardPage() {
   const app = useApp();
-  const { state, setPage, setGrant, setGroupDrawer, setServiceDrawer, apiError, setAuditFocus } = app;
+  const { state, setPage, setGrant, setServiceDrawer, apiError, setAuditFocus } = app;
   // Real audit stream (not the SEED-polluted AppContext.audit mirror — same
   // fix as the Audit page; "Recent changes" must show real events only).
   const { data: audit = [] } = useAudit();
@@ -201,7 +201,7 @@ export function DashboardPage() {
               </thead>
               <tbody>
                 {groupRows.map(row => (
-                  <tr key={row.g} className="matrix-row" onClick={() => setGroupDrawer({ mode: "edit", name: row.g })}>
+                  <tr key={row.g} className="matrix-row" onClick={() => setPage("groups")}>
                     <th className="matrix-group"><span className="mono">{row.g}</span></th>
                     {row.cells.map(c => (
                       <td key={c.svc} className="matrix-cell">
@@ -286,7 +286,6 @@ export function DashboardPage() {
         <div className="panel">
           <div className="panel-head"><div><h3>Quick actions</h3><div className="sub">Common operations</div></div></div>
           <div className="panel-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <QuickAction ico={I.group} title="New group" sub="Bundle roles across services" onClick={() => setGroupDrawer({ mode: "create" })} />
             <QuickAction ico={I.service} title="Register service" sub="Add an app with its own roles" onClick={() => setServiceDrawer({ mode: "create" })} />
           </div>
         </div>
