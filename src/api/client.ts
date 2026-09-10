@@ -731,7 +731,18 @@ export interface EnforcedGrant {
   subject: string;
   /** The address that identity carries today. Absent when the directory could not name it. */
   email?: string;
-  held: { organisation: string; organisationName?: string; roles: string[] }[];
+  held: {
+    organisation: string;
+    organisationName?: string;
+    roles: string[];
+    /**
+     * The group the roles came through — the hop that explains the rest.
+     *
+     * Optional because a deployment answering the previous shape omits it, and a screen must degrade
+     * to "who holds what" rather than break on the missing "why".
+     */
+    viaGroups?: string[];
+  }[];
 }
 
 export interface JinbeAccessRule {
