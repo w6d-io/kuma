@@ -1,3 +1,8 @@
+/* Heights follow the VISIBLE viewport, not the large one.
+   iOS Safari measures `vh` against the viewport that extends under its own toolbar, so a panel sized
+   at 100vh puts its footer — and the button in it — below the screen. The body scrolls separately, so
+   scrolling never reveals it: the control is simply unreachable. `dvh` follows what is actually
+   visible; the `vh` line above each stays as the fallback. */
 /* Kuma — Design System */
 
 /* The palette lives in styles/theme.css, mapped onto the Strada design system, and every name below
@@ -35,12 +40,13 @@ a { color: inherit; text-decoration: none; }
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 .sidebar {
   background: var(--sidebar-bg, var(--panel));
   border-right: 1px solid var(--line);
   display: flex; flex-direction: column;
-  position: sticky; top: 0; height: 100vh;
+  position: sticky; top: 0; height: 100vh; height: 100dvh;
   padding: 10px 10px 10px;
 }
 .sidebar-header {
@@ -156,6 +162,7 @@ a { color: inherit; text-decoration: none; }
   display: flex; flex-direction: column;
   min-width: 0;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .topbar {
@@ -376,6 +383,7 @@ a { color: inherit; text-decoration: none; }
 .drawer {
   width: min(640px, 96vw);
   height: 100vh;
+  height: 100dvh;
   background: var(--bg);
   border-left: 1px solid var(--line);
   display: flex; flex-direction: column;
@@ -395,6 +403,7 @@ a { color: inherit; text-decoration: none; }
 .modal {
   width: min(720px, 100%);
   max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -2064,6 +2073,22 @@ table {
 
 @media (max-width: 860px) {
   .drawer-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A list beside the thing it selects. On a phone the two cannot share a row: the list gets a column
+   too narrow to read and the panel wraps character by character. Stacked below the same breakpoint
+   the shell uses, with the list first because it is what you act on. */
+.list-detail {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .list-detail {
     grid-template-columns: 1fr;
   }
 }
