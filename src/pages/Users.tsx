@@ -292,10 +292,15 @@ export function UserDrawer() {
               {!known && <Chip tone="err">not in the model</Chip>}
               {blockedByMfa && !blockedByActor && <Chip tone="err">MFA required</Chip>}
             </div>
-            <div className="small muted mono" style={{ overflowWrap: 'anywhere' }}>
-              {Object.entries(map).map(([s, rs]) => `${s}: ${rs.join(",")}`).join(" · ") ||
-                'declared in the enforced model'}
-            </div>
+            {/* What the PREVIOUS model mapped this group to, when it mapped anything. Silent
+                otherwise: an empty mapping says nothing about the enforced model, and printing
+                "declared in the enforced model" here contradicted the badge above on the one row
+                that is not — and said it of every other row without knowing. */}
+            {Object.keys(map).length > 0 && (
+              <div className="small muted mono" style={{ overflowWrap: 'anywhere' }}>
+                {Object.entries(map).map(([s, rs]) => `${s}: ${rs.join(",")}`).join(" · ")}
+              </div>
+            )}
           </div>
         </label>
       );
