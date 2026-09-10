@@ -187,6 +187,16 @@ export const api = {
    * The groups the caller may hand out, and whether they may at all — from the model the engine
    * decides against, not from the previous one.
    */
+  /**
+   * Every organisation, for the screen that administers them.
+   *
+   * Not `/me/organizations`: that one answers with MINE, whoever asks. It used to widen to every
+   * organisation for an administrator, so the same URL meant two things and a `scope` field existed
+   * to say which — a screen asking for everything could not tell a short answer from a complete one.
+   */
+  allOrganizations: () =>
+    request<{ organizations: { id: string; name: string; tenant: string }[] }>('/admin/organizations'),
+
   assignableGroups: () =>
     request<{ groups: string[]; mayAssign: boolean }>('/admin/assignable-groups'),
 
