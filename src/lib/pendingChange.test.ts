@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { rememberPendingChange, takePendingChange } from './pendingChange';
 
-const NOW = Date.parse('2026-09-11T16:00:00Z');
-
 describe('pendingChange', () => {
   beforeEach(() => sessionStorage.clear());
 
@@ -18,8 +16,10 @@ describe('pendingChange', () => {
   });
 
   it('expires, so a tab left open does not re-propose an old intent', () => {
+    // Measured against the clock it was WRITTEN with — a fixed date here compares a stamp taken
+    // now against a moment in the past, and the answer changes with the time of day.
     rememberPendingChange({ kind: 'user-groups', email: 'a@b.c', groups: ['users'] });
-    expect(takePendingChange(NOW + 60 * 60_000)).toBeNull();
+    expect(takePendingChange(Date.now() + 60 * 60_000)).toBeNull();
   });
 
   it('answers nothing when nothing was interrupted', () => {
