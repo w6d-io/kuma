@@ -56,7 +56,7 @@ export function GroupsPage() {
           <span className="small muted">The model declares no group.</span>
         </div>
       ) : (
-        <div className="list-detail">
+        <div className="group-cards">
           {Object.entries(groups).map(([group, definition]) => {
             const members = stats?.perGroup?.[group] ?? 0;
             const everywhere = grantsEveryOrganisation(definition);
