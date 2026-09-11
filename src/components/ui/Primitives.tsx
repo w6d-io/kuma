@@ -126,11 +126,12 @@ export function ConfirmDialog({
 }
 
 export function Pipeline({ stage }: { stage: string }) {
+  // The real path a change takes. Named for what each step is, so the echo cannot promise a
+  // propagation the deployment does not perform.
   const steps = [
-    { id: "config", name: "Config", meta: "groups.json" },
-    { id: "opal", name: "OPAL", meta: "notify" },
-    { id: "opa", name: "OPA", meta: "policy" },
-    { id: "oathkeeper", name: "Oathkeeper", meta: "gateway" },
+    { id: "stored", name: "Stored", meta: "jinbe" },
+    { id: "bundle", name: "Bundle", meta: "new revision" },
+    { id: "engine", name: "Engine", meta: "polls, ≤40s" },
   ];
   const idx = steps.findIndex(s => s.id === stage);
   return (

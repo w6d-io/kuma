@@ -102,7 +102,7 @@ interface AppContextType {
   /**
    * Replace a user's ADDITIONAL org memberships (`metadata_admin.organizations`).
    * Writes through the merge-patch metadata endpoint, which preserves groups
-   * (it 422s any group change) and fires jinbe's OPA/OPAL bindings refresh.
+   * (it 422s any group change) and lands in the next bundle the engines poll for.
    * Errors bubble so the drawer can surface why and keep the drafted list.
    */
   apiSetUserOrganizations: (id: string, organizations: string[]) => Promise<void>;
@@ -126,17 +126,31 @@ function useToasts() {
   return { toasts, push };
 }
 
+/**
+ * The echo after a write, and what it is allowed to claim.
+ *
+ * What this replaced animated "config → OPAL → OPA → Oathkeeper" on a fixed timer and then said
+ * "synced through Oathkeeper". It measured nothing, and three of those four were untrue: there is
+ * no OPAL in this deployment, memberships do not live in a config file, and nothing syncs THROUGH
+ * Oathkeeper — Oathkeeper ASKS the engine per request.
+ *
+ * What actually happens: the change is stored, and each engine — one per gateway replica — polls
+ * for the new bundle on its own schedule. So it is committed the moment the toast appears and
+ * enforced a little after, which is the part an operator has to know before they go and test it.
+ */
+const ENGINE_POLL_SECONDS = 40;
+
 function usePipeline(pushToast: (msg: string, opts?: { sub?: string }) => void): PipelineState {
   const [stage, setStage] = useState("idle");
   const run = useCallback((summary?: string) => {
-    const seq = ["config", "opal", "opa", "oathkeeper"];
+    const seq = ["stored", "bundle", "engine"];
     setStage(seq[0]);
-    seq.forEach((s, i) => {
-      setTimeout(() => setStage(s), (i + 1) * 240);
-    });
+    seq.forEach((s, i) => setTimeout(() => setStage(s), (i + 1) * 240));
     setTimeout(() => {
       setStage("idle");
-      pushToast(`Applied · ${summary || "change"}`, { sub: "synced through Oathkeeper" });
+      pushToast(`Applied · ${summary || "change"}`, {
+        sub: `Stored. The engines pick it up within ${ENGINE_POLL_SECONDS}s — test after that, not before.`,
+      });
     }, (seq.length + 1) * 240);
   }, [pushToast]);
   return { stage, run };
