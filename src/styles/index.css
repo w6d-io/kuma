@@ -2010,6 +2010,22 @@ table {
 .chain-holders { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
 .chain-holders li { line-height: 1.6; }
 
+/* The change carried back from a step-up, proposed rather than applied. Coloured on the token pair
+   so it reads in both themes, and stated as a success because the factor WAS proven — the sentence
+   inside it is what says nothing has been written yet. */
+.resumed-change {
+  display: flex;
+  gap: var(--space-2, 8px);
+  align-items: flex-start;
+  padding: var(--space-3, 12px);
+  margin-bottom: var(--space-3, 12px);
+  border: 1px solid var(--ok);
+  border-radius: 8px;
+  background: var(--ok-soft);
+}
+
+.resumed-change-icon { color: var(--ok); line-height: 1.4; }
+
 /* Two panels side by side in a drawer — the picker and what it results in. On a phone the drawer is
    the width of the screen, so side-by-side leaves each panel too narrow to read: labels truncate
    mid-word and long identifiers are cut. Stacked below the same breakpoint the shell already uses. */

@@ -1,12 +1,23 @@
 import { useApp } from '../contexts/AppContext';
 import { bounceToStepUp } from '../lib/stepUp';
+import { rememberPendingChange, type PendingIntent } from '../lib/pendingChange';
 
 export function useApplyChange() {
   const { pushToast, pipeline, persona, refreshAudit } = useApp();
 
   // `verb` is retained in the signature for call-site readability and future
   // per-verb handling; the audit record itself comes from jinbe, not the client.
-  return (_verb: string, target: string, mutator?: () => void | Promise<void>) => {
+  // `resume` describes the change in a form that survives a full page load. Given, a step-up
+  // refusal comes back proposing it again instead of costing the operator their selection.
+  return (
+    _verb: string,
+    target: string,
+    mutator?: () => void | Promise<void>,
+    resume?: PendingIntent,
+    // Runs ONLY when the write actually landed. A caller that closes its editor on the synchronous
+    // return closes it on refusals too, and the operator loses what they had selected.
+    onApplied?: () => void,
+  ) => {
     if (persona === "viewer") {
       pushToast("Read-only persona · change blocked", { err: true });
       return false;
@@ -24,6 +35,7 @@ export function useApplyChange() {
         .then(() => {
           pipeline.run(target);
           refreshAudit();
+          onApplied?.();
         })
         .catch((err: Error & { code?: string; status?: number; applied?: boolean; details?: { hint?: string } }) => {
           // A refusal leaves BOTH stores untouched — every gate runs before the first write, and the
@@ -56,6 +68,7 @@ export function useApplyChange() {
               'Two-factor re-verification required',
               { err: true, sub: `You will be sent to re-verify your second factor, then back here to retry. This is not a sign-out. ${nothingApplied}`.trim() },
             );
+            if (resume) rememberPendingChange(resume);
             bounceToStepUp();
             return;
           }

@@ -37,6 +37,12 @@ interface PipelineState {
 export interface UserDrawerState {
   mode: 'edit' | 'create';
   user?: import('../api/types').User;
+  /**
+   * A selection carried back from a step-up, rather than read from the person. Present, the drawer
+   * seeds from it and says so: the operator proved a second factor for THIS change and should not
+   * have to compose it again.
+   */
+  resumeGroups?: string[];
 }
 
 // Grant-access wizard. `user` pre-selects a person (row action); omit to open
