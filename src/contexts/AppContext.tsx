@@ -6,9 +6,9 @@ import { useStore } from '../api/store';
 import { withOptimism, cachePatch } from '../api/mutations';
 import { api } from '../api/client';
 import { ConfirmDialog } from '../components/ui/Primitives';
+import { applyTheme, nextTheme, storeTheme, storedTheme, type Theme } from '../theme';
 
 const TWEAK_DEFAULTS: TweakDefaults = {
-  theme: "light",
   persona: "admin",
   density: "comfortable",
   accent: "terracotta",
@@ -17,7 +17,6 @@ const TWEAK_DEFAULTS: TweakDefaults = {
   showCounts: true,
   showMotion: true,
   navCollapsed: false,
-  matrixColor: true,
   levelStyle: "bars",
   wildcardWarn: true,
   simulateForbidden: false,
@@ -38,17 +37,12 @@ interface PipelineState {
 export interface UserDrawerState {
   mode: 'edit' | 'create';
   user?: import('../api/types').User;
-}
-
-export interface GroupDrawerState {
-  mode: 'edit' | 'create';
-  name?: string;
-  group?: string;
-}
-
-export interface ServiceDrawerState {
-  mode: 'create' | 'edit';
-  serviceName?: string;
+  /**
+   * A selection carried back from a step-up, rather than read from the person. Present, the drawer
+   * seeds from it and says so: the operator proved a second factor for THIS change and should not
+   * have to compose it again.
+   */
+  resumeGroups?: string[];
 }
 
 // Grant-access wizard. `user` pre-selects a person (row action); omit to open
@@ -74,21 +68,15 @@ interface AppContextType {
   refreshAudit: () => void;
   page: PageId;
   setPage: (page: PageId) => void;
-  activeService: string;
-  setActiveService: (s: string) => void;
   /**
    * Register (or clear, with `null`) a predicate that reports whether the
-   * current surface has unsaved changes. `setPage`, `setActiveService`, direct
+   * current surface has unsaved changes. `setPage`, direct
    * hash navigation and tab-close all consult it and prompt before discarding.
    * A component registers on mount and clears on unmount.
    */
   registerUnsavedGuard: (fn: (() => boolean) | null) => void;
   userDrawer: UserDrawerState | null;
   setUserDrawer: (d: UserDrawerState | null) => void;
-  groupDrawer: GroupDrawerState | null;
-  setGroupDrawer: (d: GroupDrawerState | null) => void;
-  serviceDrawer: ServiceDrawerState | null;
-  setServiceDrawer: (d: ServiceDrawerState | null) => void;
   grant: GrantState | null;
   setGrant: (g: GrantState | null) => void;
   auditFocus: AuditFocus | null;
@@ -96,8 +84,9 @@ interface AppContextType {
   pushToast: (msg: string, opts?: { err?: boolean; sub?: string; ttl?: number }) => void;
   toasts: Toast[];
   pipeline: PipelineState;
-  theme: string;
-  setTheme: (t: string) => void;
+  theme: Theme;
+  setTheme: (t: Theme) => void;
+  cycleTheme: () => void;
   persona: string;
   setPersona: (p: string) => void;
   tweaks: TweakDefaults;
@@ -113,16 +102,10 @@ interface AppContextType {
   /**
    * Replace a user's ADDITIONAL org memberships (`metadata_admin.organizations`).
    * Writes through the merge-patch metadata endpoint, which preserves groups
-   * (it 422s any group change) and fires jinbe's OPA/OPAL bindings refresh.
+   * (it 422s any group change) and lands in the next bundle the engines poll for.
    * Errors bubble so the drawer can surface why and keep the drafted list.
    */
   apiSetUserOrganizations: (id: string, organizations: string[]) => Promise<void>;
-  apiCreateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
-  apiUpdateGroup: (name: string, services: Record<string, string[]>) => Promise<void>;
-  apiDeleteGroup: (name: string) => Promise<void>;
-  apiCreateService: (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string; signIn?: import("../api/client").SignInMethod[] }) => Promise<void>;
-  apiUpdateService: (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null; signIn?: import("../api/client").SignInMethod[] }) => Promise<void>;
-  apiDeleteService: (name: string) => Promise<void>;
 }
 
 const AppCtx = createContext<AppContextType | null>(null);
@@ -143,17 +126,31 @@ function useToasts() {
   return { toasts, push };
 }
 
+/**
+ * The echo after a write, and what it is allowed to claim.
+ *
+ * What this replaced animated "config → OPAL → OPA → Oathkeeper" on a fixed timer and then said
+ * "synced through Oathkeeper". It measured nothing, and three of those four were untrue: there is
+ * no OPAL in this deployment, memberships do not live in a config file, and nothing syncs THROUGH
+ * Oathkeeper — Oathkeeper ASKS the engine per request.
+ *
+ * What actually happens: the change is stored, and each engine — one per gateway replica — polls
+ * for the new bundle on its own schedule. So it is committed the moment the toast appears and
+ * enforced a little after, which is the part an operator has to know before they go and test it.
+ */
+const ENGINE_POLL_SECONDS = 40;
+
 function usePipeline(pushToast: (msg: string, opts?: { sub?: string }) => void): PipelineState {
   const [stage, setStage] = useState("idle");
   const run = useCallback((summary?: string) => {
-    const seq = ["config", "opal", "opa", "oathkeeper"];
+    const seq = ["stored", "bundle", "engine"];
     setStage(seq[0]);
-    seq.forEach((s, i) => {
-      setTimeout(() => setStage(s), (i + 1) * 240);
-    });
+    seq.forEach((s, i) => setTimeout(() => setStage(s), (i + 1) * 240));
     setTimeout(() => {
       setStage("idle");
-      pushToast(`Applied · ${summary || "change"}`, { sub: "synced through Oathkeeper" });
+      pushToast(`Applied · ${summary || "change"}`, {
+        sub: `Stored. The engines pick it up within ${ENGINE_POLL_SECONDS}s — test after that, not before.`,
+      });
     }, (seq.length + 1) * 240);
   }, [pushToast]);
   return { stage, run };
@@ -213,7 +210,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ─── Unsaved-changes guard (P1-6) ───────────────────────────────────────
   // A single registered predicate reports whether the active surface (today: the
   // gateway rule editor) holds unsaved edits. Every navigation path consults it:
-  // setPage (hash), setActiveService (Services rail), raw hash changes
+  // setPage (hash), raw hash changes
   // (back/forward, typed URL — these bypass setPage) and tab close. When dirty,
   // the navigation is deferred behind one shared ConfirmDialog.
   const unsavedGuard = useRef<(() => boolean) | null>(null);
@@ -282,18 +279,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
 
-  const [activeService, setActiveServiceRaw] = useState("jinbe");
-  const setActiveService = useCallback((s: string) => {
-    if (s === activeService) { setActiveServiceRaw(s); return; }
-    guardedNavigate(() => setActiveServiceRaw(s));
-  }, [activeService, guardedNavigate]);
   const [userDrawer, setUserDrawer] = useState<UserDrawerState | null>(null);
-  const [groupDrawer, setGroupDrawer] = useState<GroupDrawerState | null>(null);
-  const [serviceDrawer, setServiceDrawer] = useState<ServiceDrawerState | null>(null);
   const [grant, setGrant] = useState<GrantState | null>(null);
   const [auditFocus, setAuditFocus] = useState<AuditFocus | null>(null);
 
-  const [theme, setThemeRaw] = useState(TWEAK_DEFAULTS.theme);
+  const [theme, setThemeRaw] = useState<Theme>(storedTheme());
   const [persona, setPersonaRaw] = useState(TWEAK_DEFAULTS.persona);
   const [tweaks, setTweaksRaw] = useState<TweakDefaults>(TWEAK_DEFAULTS);
 
@@ -303,12 +293,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setTweak = (key: string, val: unknown) => {
     setTweaksRaw(t => ({ ...t, [key]: val }));
   };
-  const setTheme = (t: string) => { setThemeRaw(t); setTweak("theme", t); };
+  const setTheme = useCallback((t: Theme) => {
+    setThemeRaw(t);
+    storeTheme(t);
+    applyTheme(t);
+  }, []);
+  /** The rail's button: the same setting, reached in one click. */
+  const cycleTheme = useCallback(() => setTheme(nextTheme(theme)), [theme, setTheme]);
   const setPersona = (p: string) => { setPersonaRaw(p); setTweak("persona", p); };
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-  }, [theme]);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -316,7 +308,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     html.setAttribute("data-accent", tweaks.accent || "terracotta");
     html.setAttribute("data-monofont", tweaks.monoFont || "jetbrains");
     html.setAttribute("data-motion", tweaks.showMotion ? "on" : "off");
-    html.setAttribute("data-matrixcolor", tweaks.matrixColor ? "on" : "off");
     html.setAttribute("data-levelstyle", tweaks.levelStyle || "bars");
     html.setAttribute("data-navcollapsed", tweaks.navCollapsed ? "on" : "off");
   }, [tweaks]);
@@ -378,61 +369,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     qc.invalidateQueries({ queryKey: ['user-identity', id] });
   }, [qc]);
 
-  const apiCreateGroup = useCallback(async (name: string, services: Record<string, string[]>) => {
-    await withOptimism(qc, [['groups'], ['groups-map']],
-      () => cachePatch.upsertGroup(qc, name, services),
-      () => api.createGroup({ name, services }));
-  }, [qc]);
-
-  const apiUpdateGroup = useCallback(async (name: string, services: Record<string, string[]>) => {
-    await withOptimism(qc, [['groups'], ['groups-map']],
-      () => cachePatch.upsertGroup(qc, name, services),
-      () => api.updateGroup(name, services));
-  }, [qc]);
-
-  const apiDeleteGroup = useCallback(async (name: string) => {
-    await withOptimism(qc, [['groups'], ['groups-map'], ['users'], ['stats']],
-      () => cachePatch.removeGroup(qc, name),
-      () => api.deleteGroup(name));
-  }, [qc]);
-
-  const apiCreateService = useCallback(async (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string; signIn?: import("../api/client").SignInMethod[] }) => {
-    // Create spawns roles/routes/rules server-side; invalidate-only.
-    await withOptimism(qc, [['services'], ['access-rules'], ['all-roles'], ['all-routes']],
-      undefined, () => api.createService(svc));
-  }, [qc]);
-
-  const apiUpdateService = useCallback(async (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null; signIn?: import("../api/client").SignInMethod[] }) => {
-    await withOptimism(qc, [['services'], ['access-rules']],
-      () => { if (payload.upstreamUrl !== undefined) cachePatch.updateService(qc, name, { upstreamUrl: payload.upstreamUrl }); },
-      () => api.updateService(name, payload));
-  }, [qc]);
-
-  const apiDeleteService = useCallback(async (name: string) => {
-    await withOptimism(qc, [['services'], ['access-rules'], ['all-roles'], ['all-routes']],
-      () => cachePatch.removeService(qc, name),
-      () => api.deleteService(name));
-  }, [qc]);
-
   const ctx: AppContextType = {
     state,
     isLive, isLoading, apiError,
     refetch: invalidateAll,
     refreshAudit: invalidateAudit,
     page, setPage,
-    activeService, setActiveService,
     registerUnsavedGuard,
     userDrawer, setUserDrawer,
-    groupDrawer, setGroupDrawer,
-    serviceDrawer, setServiceDrawer,
     grant, setGrant,
     auditFocus, setAuditFocus,
     pushToast, toasts, pipeline,
-    theme, setTheme, persona, setPersona,
+    theme, setTheme, cycleTheme, persona, setPersona,
     tweaks, setTweak,
     apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata, apiSetUserOrganization, apiSetUserOrganizations, apiSendRecoveryEmail,
-    apiCreateGroup, apiUpdateGroup, apiDeleteGroup,
-    apiCreateService, apiUpdateService, apiDeleteService,
   };
 
   return (

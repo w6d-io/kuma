@@ -20,12 +20,11 @@ export interface User {
   /** Primary organization — native Kratos `organization_id` (single). */
   organizationId?: string;
   /**
-   * Additional org memberships (`metadata_admin.organizations`). The user's
-   * effective membership is this list UNION the primary `organizationId`,
-   * matching how jinbe builds OPA's `user_organizations`. Populated by
-   * `kratosToUser`; `undefined` when a row came from a source that omits it
-   * (e.g. a search hit) — the Users drawer refetches the authoritative
-   * identity before editing so a stale row can never clobber the list.
+   * Org memberships as the service that owns them answers, falling back to what was written on the
+   * identity. The user's effective membership is this list UNION the primary `organizationId`.
+   * Populated by `kratosToUser`; `undefined` when a row came from a source that omits it (e.g. a
+   * search hit) — the Users drawer refetches the full identity before editing, so a stale row can
+   * never clobber the list.
    */
   organizations?: string[];
   /** True when the identity has at least one second factor (TOTP, WebAuthn, lookup_secret). */
@@ -221,11 +220,11 @@ export interface AppState {
 // from the type again. (It did once: 'recertification' was added to the type
 // but not to pageFromHash's hand-copied list — first click on the nav entry
 // bounced back to the dashboard.)
-export const PAGE_IDS = ['dashboard', 'simulator', 'users', 'groups', 'services', 'roles', 'routes', 'rules', 'audit', 'accessreview', 'recertification', 'settings', 'orgadmin', 'organizations', 'backup'] as const;
+// `enforced` is kept as the old id of `apis`: a bookmark still opens the screen it names.
+export const PAGE_IDS = ['dashboard', 'users', 'groups', 'apis', 'enforced', 'audit', 'accessreview', 'recertification', 'settings', 'orgadmin', 'organizations', 'backup'] as const;
 export type PageId = (typeof PAGE_IDS)[number];
 
 export interface TweakDefaults {
-  theme: string;
   persona: string;
   density: string;
   accent: string;
@@ -234,7 +233,6 @@ export interface TweakDefaults {
   showCounts: boolean;
   showMotion: boolean;
   navCollapsed: boolean;
-  matrixColor: boolean;
   levelStyle: string;
   wildcardWarn: boolean;
   simulateForbidden: boolean;

@@ -5,6 +5,7 @@ import { Pagination, usePagination } from '../components/ui/Pagination';
 import { useApp } from '../contexts/AppContext';
 import { useAudit, useAuditSummary, useAuditEvents } from '../api/hooks';
 import type { AuditEvent, AuditSummary } from '../api/types';
+import { SkeletonText } from '../components/ui/Skeleton';
 
 // Audit timestamps are ISO/UTC. Render + bucket them in the operator's LOCAL
 // time — a UTC string-slice showed the wrong clock time and could file an event
@@ -131,7 +132,7 @@ function shortLabel(e: AuditEvent): string {
 export function RiskBadge({ e }: { e: AuditEvent }) {
   const r = riskOf(e);
   if (r.level === 'none') return null;
-  return <Chip tone={r.tone} mono={false} title={`${r.level === 'critical' ? 'Critical' : 'Elevated'} risk · ${r.label}`}>{r.level === 'critical' ? '⬤ ' : '▲ '}{r.label}</Chip>;
+  return <Chip tone={r.tone} mono={false} title={`${r.level === 'critical' ? 'Critical' : 'Elevated'} risk · ${r.label}`}><span className="chip-ico">{r.level === 'critical' ? I.alert : I.info}</span>{r.label}</Chip>;
 }
 
 // Plain-language sentence for a high-risk row on the hero.
@@ -153,7 +154,7 @@ function trend(cur?: number, prev?: number): { dir: 'up' | 'down' | 'flat'; pct:
 }
 function TrendPill({ t }: { t: ReturnType<typeof trend> }) {
   if (!t) return null;
-  const glyph = t.dir === 'up' ? '▲' : t.dir === 'down' ? '▼' : '→';
+  const glyph = <span className="kv-ico">{t.dir === 'up' ? I.trendUp : t.dir === 'down' ? I.trendDown : I.trendFlat}</span>;
   return <span className="small muted" style={{ fontFamily: 'var(--font-mono)' }}>{glyph} {t.pct}%</span>;
 }
 
@@ -412,7 +413,7 @@ export function AuditPage() {
         </div>
         <div style={{ padding: 0 }}>
           {riskQ.isLoading && !riskQ.isError ? (
-            <div style={{ padding: 20 }}><EmptyHint>Loading…</EmptyHint></div>
+            <div style={{ padding: 16 }} aria-busy="true" aria-label="Loading signals"><SkeletonText lines={3} /></div>
           ) : heroEvents.length === 0 ? (
             <div style={{ padding: 18, display: 'flex', gap: 10, alignItems: 'center', color: 'var(--ink-3)' }}>
               <span style={{ color: 'var(--ok)' }}>{I.check}</span>
@@ -571,7 +572,9 @@ export function AuditPage() {
           </div>
         )}
         {!auditError && filtered.length === 0 && !(tab === 'signals' && riskQ.isError) && (
-          <div style={{ padding: 28 }}><EmptyHint>{auditLoading || (tab === 'signals' && riskQ.isLoading) ? "Loading…" : "No events match."}</EmptyHint></div>
+          auditLoading || (tab === 'signals' && riskQ.isLoading)
+            ? <div style={{ padding: 16 }} aria-busy="true" aria-label="Loading events"><SkeletonText lines={6} /></div>
+            : <div style={{ padding: 28 }}><EmptyHint>No events match.</EmptyHint></div>
         )}
         {groups.map(g => (
           <div key={g.day} className="audit-day">
@@ -635,8 +638,8 @@ export function AuditPage() {
                       {e.responseTimeMs != null && <span className="audit-kv"><span className="muted">rt</span> {e.responseTimeMs.toFixed(1)}ms</span>}
                       {e.ip && <span className="audit-kv"><span className="muted">ip</span> {e.ip}</span>}
                       {e.ua && <span className="audit-kv ellip"><span className="muted">ua</span> {e.ua}</span>}
-                      {e.mfa === true && <span className="audit-kv"><span className="muted">mfa</span> ✓</span>}
-                      {e.mfa === false && <span className="audit-kv" style={{ color: "var(--err)" }}><span className="muted">mfa</span> ✗</span>}
+                      {e.mfa === true && <span className="audit-kv"><span className="muted">mfa</span> <span className="kv-ico">{I.check}</span></span>}
+                      {e.mfa === false && <span className="audit-kv" style={{ color: "var(--err)" }}><span className="muted">mfa</span> <span className="kv-ico">{I.alert}</span></span>}
                     </div>
                   </div>
 
@@ -703,7 +706,7 @@ export function AuditPage() {
                           const url = grafanaTraceUrl(e);
                           return url ? (
                             <a className="btn ghost sm" href={url} target="_blank" rel="noopener noreferrer"
-                               title="Trace this actor/session in Grafana">Trace in Grafana ↗</a>
+                               title="Trace this actor/session in Grafana">Trace in Grafana <span className="kv-ico">{I.arrowOut}</span></a>
                           ) : null;
                         })()}
                       </div>

@@ -1,10 +1,15 @@
 import { useState, useMemo, useEffect } from 'react';
+import { emptyOrganisationsHint, organisationsSourceNote } from '../auth/authority';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, EmptyHint, Switch } from '../components/ui/Primitives';
 import { type KratosIdentity } from '../api/client';
+import { bounceToStepUp } from '../lib/stepUp';
+import { SkeletonPanel } from '../components/ui/Skeleton';
 import {
   useMyOrganizations,
+  useMyOrganizationNames,
+  useMyOrganizationsScope,
   useAssignableGroups,
   useOrgUsers,
   useCreateOrgUser,
@@ -28,14 +33,8 @@ function makeToastErr(pushToast: PushToast) {
     }
     // R2 step-up: re-verify a recent second factor, then return to retry.
     if (e.code === 'reauth_required') {
-      pushToast('Two-factor re-verification required · redirecting to step-up', { err: true, sub: e.details?.hint || e.message });
-      const authDomain = (window as any).__AUTH_DOMAIN__;
-      if (authDomain) {
-        const returnTo = window.location.href;
-        setTimeout(() => {
-          window.location.href = `https://${authDomain}/login?aal=aal2&refresh=true&return_to=${encodeURIComponent(returnTo)}`;
-        }, 1500);
-      }
+      pushToast('Two-factor re-verification required', { err: true, sub: 'You will be sent to re-verify your second factor, then back here to retry. This is not a sign-out.' });
+      bounceToStepUp();
       return;
     }
     if (e.status === 403) {
@@ -214,6 +213,11 @@ export function OrgAdminPage() {
   const [manageUser, setManageUser] = useState<KratosIdentity | null>(null);
 
   const orgsQ = useMyOrganizations();
+  // Where the list came from, so an empty one can say why rather than blame the reader.
+  const scope = useMyOrganizationsScope().data ?? 'delegated';
+  // Names come from the API, which is where they are known. An unnamed one still shows its
+  // identifier: a row nobody can read beats a row nobody can select.
+  const orgNames = useMyOrganizationNames().data ?? {};
   // Surface a failed org list (403/network) instead of silently showing the
   // "no orgs" empty state.
   useEffect(() => { if (orgsQ.error) toastErr(orgsQ.error); }, [orgsQ.error, toastErr]);
@@ -235,15 +239,20 @@ export function OrgAdminPage() {
   const runSearch = (term: string) => setSearch(term.trim());
 
   if (orgs === null) {
-    return <div className="page-head"><div><h1>Org Admin</h1><div className="sub">loading…</div></div></div>;
+    return (
+      <>
+        <div className="page-head"><div><h1>Org Admin</h1><div className="sub">Reading the organisations you administer…</div></div></div>
+        <div aria-busy="true"><SkeletonPanel lines={4} /></div>
+      </>
+    );
   }
 
   if (orgs.length === 0) {
     return (
       <>
-        <div className="page-head"><div><h1>Org Admin</h1><div className="sub">Manage users in organizations you administer</div></div></div>
+        <div className="page-head"><div><h1>Org Admin</h1><div className="sub">{organisationsSourceNote(scope) ?? 'Manage users in organizations you administer'}</div></div></div>
         <div className="panel" style={{ padding: 40 }}>
-          <EmptyHint>You don&apos;t administer any organizations. Ask a super_admin to add you to an org-admin group.</EmptyHint>
+          <EmptyHint>{emptyOrganisationsHint(scope).message}</EmptyHint>
         </div>
       </>
     );
@@ -269,7 +278,7 @@ export function OrgAdminPage() {
           <label className="small muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             Organization
             <select className="input mono" style={{ width: 'auto' }} value={activeOrg} onChange={e => { setOrg(e.target.value); setQ(''); setSearch(''); }}>
-              {orgs.map(o => <option key={o} value={o}>{o}</option>)}
+              {orgs.map(o => <option key={o} value={o}>{orgNames[o] ?? o}</option>)}
             </select>
           </label>
           <div style={{ position: 'relative', flex: 1, maxWidth: 320 }}>

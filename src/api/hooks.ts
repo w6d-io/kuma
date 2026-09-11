@@ -1,10 +1,9 @@
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useEffect } from 'react';
 import { api, API_BASE } from './client';
-import type { ImportSource, ImportOptions, AuditEventFilters, AuthConfigState, AuthMethodName } from './client';
+import type {AuditEventFilters, AuthConfigState, AuthMethodName } from './client';
 import type { RolesMap, RouteMapsMap, AuditEvent, User } from './types';
 import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents, normalizeAuditEvents } from './transforms';
-import { cachePatch } from './mutations';
 
 // Directory page size. 100 (not the old 1000) keeps each round trip — and the
 // per-identity RBAC enrichment jinbe does per row (PERF-2) — bounded, so the
@@ -93,6 +92,21 @@ export function useUsers(search?: string) {
 // hit doesn't carry the multi-org list. Fetching here also prevents a stale row
 // from clobbering the array on save (a merge-PUT built on a false-empty base
 // would wipe real memberships). Enabled lazily so it only fires when needed.
+/**
+ * The enforced configuration. No mutation hook accompanies it on purpose — see api.getEnforcedConfig.
+ *
+ * Not cached for long: it changes when somebody merges, not when somebody clicks, and a stale
+ * document read as "what is enforced" is the failure this screen exists to end.
+ */
+export function useEnforcedConfig(enabled = true) {
+  return useQuery({
+    queryKey: ['enforced-config'],
+    queryFn: () => api.getEnforcedConfig(),
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
 export function useUserIdentity(id: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ['user-identity', id],
@@ -526,80 +540,58 @@ export function useRealtime(enabled: boolean) {
 // invalidate on settle (STORE-4). They invalidate BOTH the per-service key
 // (pages using the scoped hook directly) and the aggregate key (the store).
 
-export function useUpdateServiceRoutes(serviceName: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (rules: { method: string; path: string; permission?: string }[]) =>
-      api.updateServiceRoutes(serviceName, rules),
-    onMutate: async (rules) => {
-      const keys = [['routes', serviceName], ['all-routes']];
-      await Promise.all(keys.map((k) => qc.cancelQueries({ queryKey: k })));
-      const snapshot = keys.map((k) => [k, qc.getQueriesData({ queryKey: k })] as const);
-      cachePatch.setServiceRoutes(qc, serviceName, rules);
-      return { snapshot };
-    },
-    onError: (_e, _v, ctx) => {
-      for (const [, entries] of ctx?.snapshot ?? []) {
-        for (const [key, data] of entries) qc.setQueryData(key, data);
-      }
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['routes', serviceName] });
-      qc.invalidateQueries({ queryKey: ['all-routes'] });
-    },
-  });
-}
 
-// Dry-run preview of an OpenAPI import. Not cached — a POST action that returns
-// the parsed rules + diff; the actual apply reuses useUpdateServiceRoutes.
-export function useImportPreview(serviceName: string) {
-  return useMutation({
-    mutationFn: (vars: { source: ImportSource; options?: ImportOptions }) =>
-      api.importPreviewRoutes(serviceName, vars.source, vars.options),
-  });
-}
 
-export function useUpdateAccessRule() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, rule }: { id: string; rule: import('./client').JinbeAccessRule }) =>
-      api.updateAccessRule(id, rule),
-    onSettled: () => qc.invalidateQueries({ queryKey: ['access-rules'] }),
-  });
-}
 
-export function useUpdateServiceRoles(serviceName: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (roles: Record<string, string[]>) => api.updateServiceRoles(serviceName, roles),
-    onMutate: async (roles) => {
-      const keys = [['roles', serviceName], ['all-roles']];
-      await Promise.all(keys.map((k) => qc.cancelQueries({ queryKey: k })));
-      const snapshot = keys.map((k) => [k, qc.getQueriesData({ queryKey: k })] as const);
-      cachePatch.setServiceRoles(qc, serviceName, roles);
-      return { snapshot };
-    },
-    onError: (_e, _v, ctx) => {
-      for (const [, entries] of ctx?.snapshot ?? []) {
-        for (const [key, data] of entries) qc.setQueryData(key, data);
-      }
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['roles', serviceName] });
-      qc.invalidateQueries({ queryKey: ['all-roles'] });
-    },
-  });
-}
 
 // ─── Delegated org-admin (self-service; scoped to the caller's orgs) ─────────
 // Newest routes (feat/org-admin-tab). These wire the OrgAdmin page into the
 // same query-cache + optimistic-mutation model as the rest of the console,
 // replacing its ad-hoc local useState/Promise flow.
 
+// Two views of one request: existing callers keep the plain list, and a screen that needs to say
+// where the list came from reads the scope off the same cached query rather than asking twice.
 export function useMyOrganizations() {
   return useQuery({
     queryKey: ['my-orgs'],
     queryFn: () => api.myOrganizations(),
+    select: (payload) => payload.organizations,
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
+/** Every organisation, for the screen that administers them. Refuses rather than narrowing. */
+export function useAllOrganizations() {
+  return useQuery({
+    queryKey: ['all-orgs'],
+    queryFn: () => api.allOrganizations(),
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
+/** What to call each organisation, for the screens that show one to a person. */
+export function useMyOrganizationNames() {
+  return useQuery({
+    queryKey: ['my-orgs'],
+    queryFn: () => api.myOrganizations(),
+    select: (payload) => payload.names ?? {},
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
+export function useMyOrganizationsScope() {
+  return useQuery({
+    queryKey: ['my-orgs'],
+    queryFn: () => api.myOrganizations(),
+    select: (payload) => payload.scope ?? 'delegated',
+    staleTime: CONFIG_STALE_TIME,
+  });
+}
+
+export function useAuthorizationModel() {
+  return useQuery({
+    queryKey: ['authorization-model'],
+    queryFn: () => api.authorizationModel(),
     staleTime: CONFIG_STALE_TIME,
   });
 }
@@ -745,4 +737,22 @@ export function useSetOrgUserGroups(orgId: string) {
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['org-users', orgId] }),
   });
+}
+
+/**
+ * The model the engine decides against, plus the route tables that say which routes each permission
+ * opens. One hook, because three screens show this chain and a second reader is free to disagree
+ * with the engine about what it says.
+ */
+export function usePermissionChain() {
+  const model = useAuthorizationModel();
+  const enforced = useEnforcedConfig();
+  return {
+    model: {
+      groups: model.data?.groups ?? {},
+      roles: model.data?.roles ?? {},
+    },
+    routeTables: (enforced.data ?? []).filter((d) => d.routes?.length),
+    isLoading: model.isLoading,
+  };
 }

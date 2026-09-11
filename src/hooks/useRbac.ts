@@ -1,8 +1,8 @@
+import { grantsEveryOrganisation, type GroupDefinition } from '../policy/model';
 import type { AppState, User } from '../api/types';
 
 export function accessLevelOf(perms: string[]): string {
   if (!perms || perms.length === 0) return "none";
-  if (perms.includes("*")) return "admin";
   const has = (re: RegExp) => perms.some(p => re.test(p));
   if (has(/:(delete|grant|revoke|admin|manage|destroy)\b/)) return "manage";
   if (has(/:(create|update|write|deploy|publish|edit|apply)\b/)) return "write";
@@ -15,15 +15,7 @@ export const LevelMeta: Record<string, { label: string; order: number; desc: str
   read:   { label: "read",   order: 1, desc: "view-only access" },
   write:  { label: "write",  order: 2, desc: "create / update" },
   manage: { label: "manage", order: 3, desc: "destructive ops" },
-  admin:  { label: "admin",  order: 4, desc: "wildcard \u00b7 full control" },
-};
-
-export const ROLE_LEVEL: Record<string, number> = {
-  super_admin: 4, admin: 4,
-  operator: 3,
-  editor: 2, scheduler: 2,
-  support: 1, auditor: 1, billing_reader: 1,
-  viewer: 0,
+  admin:  { label: "admin",  order: 4, desc: "the whole administration surface" },
 };
 
 export function resolvePerms(user: User, state: AppState) {
@@ -52,27 +44,16 @@ export function resolvePerms(user: User, state: AppState) {
 }
 
 /**
- * A group is "privileged" when its RESOLVED permissions grant admin power: the
- * global super_admin role, a global role resolving to "*", or any service role
- * resolving to "*". Derived purely from resolved perms — NOT the `system`
- * metadata flag (finding K8): a non-system group that grants "*" is still
- * privileged and must be gated. jinbe enforces this as 422 regardless; this is
- * the frontend mirror used to disable the control up front and explain why.
+ * A group is "privileged" when it grants in EVERY organisation.
+ *
+ * What this replaced walked `group → service → roles` in the registry this console used to keep, and
+ * looked for the literal role `super_admin` or a role carrying `*`. The model the engine decides
+ * against defines neither name, so it answered "not privileged" for every group that actually is —
+ * and the escalation warning it feeds never appeared.
+ *
+ * The tree has no `*` to spot, so scope is the signal: a right held everywhere at once is not an
+ * ordinary tenant role, whatever it carries.
  */
-export function isPrivilegedGroup(g: string, state: AppState): boolean {
-  const map = state.groups[g] || {};
-  const globalRoles = map.global ?? [];
-  if (globalRoles.includes("super_admin")) return true;
-  const globalDefs = state.roles.global || {};
-  for (const r of globalRoles) {
-    if ((globalDefs[r] ?? []).includes("*")) return true;
-  }
-  for (const [svc, roles] of Object.entries(map)) {
-    if (svc === "global" || !roles?.length) continue;
-    const allRoles = state.roles[svc] || {};
-    for (const r of roles) {
-      if ((allRoles[r] ?? []).includes("*")) return true;
-    }
-  }
-  return false;
+export function isPrivilegedGroup(group: string, groups: Record<string, GroupDefinition>): boolean {
+  return grantsEveryOrganisation(groups[group]);
 }

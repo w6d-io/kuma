@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kuma · RBAC Console</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -22,6 +22,14 @@
       window.__AUTH_DOMAIN__ = "${AUTH_DOMAIN}";
       window.__GRAFANA_URL__ = "${GRAFANA_URL}";
       window.__BACKUP_ENABLED__ = "${BACKUP_ENABLED}";
+      window.__OIDC_AUTHORITY__ = "${OIDC_AUTHORITY}";
+      window.__OIDC_CLIENT_ID__ = "${OIDC_CLIENT_ID}";
+      window.__OIDC_AUDIENCE__ = "${OIDC_AUDIENCE}";
+      window.__ORG_AUTHORITY__ = "${ORG_AUTHORITY}";
+      window.__KRATOS_PUBLIC_URL__ = "${KRATOS_PUBLIC_URL}";
+      window.__ORG_DIRECTORY_AUDIENCE__ = "${ORG_DIRECTORY_AUDIENCE}";
+      window.__ORG_DIRECTORY_URL__ = "${ORG_DIRECTORY_URL}";
+      window.__ORG_SELECTION_URL__ = "${ORG_SELECTION_URL}";
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

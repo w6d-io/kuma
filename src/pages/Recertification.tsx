@@ -13,6 +13,7 @@ import {
 import { api, type RecertCampaignSummary, type RecertItem, type RecertOnExpiry, type RecertStatus } from '../api/client';
 import { I } from '../components/ui/Icons';
 import { Chip, ConfirmDialog, EmptyHint, MultiSelectPills } from '../components/ui/Primitives';
+import { SkeletonRows } from '../components/ui/Skeleton';
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
 
@@ -359,7 +360,7 @@ export function RecertificationPage() {
         <table className="table">
           <thead><tr><th>Name</th><th>Status</th><th>Scope</th><th>Deadline</th><th>Progress</th><th style={{ width: 220 }}></th></tr></thead>
           <tbody>
-            {isLoading && <tr><td colSpan={6}><span className="small muted">Loading…</span></td></tr>}
+            {isLoading && <SkeletonRows rows={5} cols={6} />}
             {!isLoading && (campaigns ?? []).length === 0 && (
               <tr><td colSpan={6}><span className="small muted">No campaigns yet — create one to start a review cycle.</span></td></tr>
             )}

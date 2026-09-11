@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useMemo, Fragment } from 'react';
+import { signIn } from './auth/session';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { useSession, useStats, useRealtime, useUserSearch } from './api/hooks';
 import { searchedToUser } from './api/transforms';
 import { I } from './components/ui/Icons';
-import { Avatar, Switch, Toasts, EmptyHint } from './components/ui/Primitives';
+import { THEMES, nextTheme, themeLabel } from './theme';
+import { permits } from './policy/model';
+import { Switch, Toasts, EmptyHint } from './components/ui/Primitives';
 import { DashboardPage } from './pages/Dashboard';
-import { SimulatorPage } from './pages/Simulator';
 import { UsersPage, UserDrawer } from './pages/Users';
 import { OrgAdminPage } from './pages/OrgAdmin';
-import { GroupsPage, GroupDrawer } from './pages/Groups';
-import { ServicesPage, ServiceDrawer } from './pages/Services';
+import { GroupsPage } from './pages/Groups';
 import { OrganizationsPage } from './pages/Organizations';
+import { ApisPage } from './pages/Apis';
 import { GrantAccess } from './pages/GrantAccess';
 import { AuditPage } from './pages/Audit';
 import { AccessReviewPage } from './pages/AccessReview';
@@ -18,6 +20,8 @@ import { RecertificationPage } from './pages/Recertification';
 import { SettingsPage } from './pages/Settings';
 import { BackupPage } from './pages/Backup';
 import type { PageId } from './api/types';
+import { UserMenu } from './components/UserMenu';
+import * as Dialog from '@radix-ui/react-dialog';
 
 type NavItem = {
   id: PageId
@@ -30,10 +34,11 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { id: "dashboard", name: "Overview",  ico: I.grid,    section: "Platform", perms: [] },
-  { id: "simulator", name: "Simulator", ico: I.sparkle, section: "Platform", perms: ["admin:read"] },
   { id: "users",     name: "Users",     ico: I.users,   section: "Platform", perms: ["admin:read"] },
   { id: "groups",    name: "Groups",    ico: I.group,   section: "Platform", perms: ["admin:read"] },
-  { id: "services",  name: "Services",  ico: I.service, section: "Policy",   perms: ["admin:read"] },
+  // What protects each API and who can reach it, read from the objects the engines load. It replaced
+  // a "Services" workspace that edited a registry nothing reads — so it shows and does not offer.
+  { id: "apis",      name: "APIs",      ico: I.service, section: "Policy",   perms: ["admin:read"] },
   { id: "organizations", name: "Organizations", ico: I.globe, section: "Policy", perms: ["admin:read"] },
   { id: "audit",     name: "Audit log", ico: I.audit,   section: "Changes",  perms: ["admin:read"] },
   { id: "accessreview", name: "Access review", ico: I.shield, section: "Changes", perms: ["admin:read"] },
@@ -61,6 +66,17 @@ function simulatingForbidden(tweaks: { simulateForbidden?: boolean } | undefined
  * "still valid" session and bounce straight back, looping.
  */
 function redirectToLogin(metaAuthDomain: string | undefined, opts?: { refresh?: boolean }) {
+  // An authority, when the deployment named one: it answers with a token the API can verify on its
+  // own, where the cookie below asks the API to look a session up. Tried first because a deployment
+  // that configured an authority meant it; falls through when none is configured, which is what
+  // every deployment did before this was a choice.
+  void signIn().then((sent) => {
+    if (sent) return;
+    redirectToCookieLogin(metaAuthDomain, opts);
+  });
+}
+
+function redirectToCookieLogin(metaAuthDomain: string | undefined, opts?: { refresh?: boolean }) {
   const authDomain = metaAuthDomain || (window as any).__AUTH_DOMAIN__;
   if (!authDomain) {
     // No runtime config and no API metadata — surface the misconfig instead of
@@ -75,30 +91,80 @@ function redirectToLogin(metaAuthDomain: string | undefined, opts?: { refresh?: 
 }
 
 /** True if user has any of the required permissions or holds the wildcard "*". */
+/**
+ * Whether this session admits any of the permissions a screen asks for.
+ *
+ * Through the model's own coverage rule rather than an exact match, so `admin:write` admits
+ * `admin.membership:write` here exactly as it does at the engine. The `*` shortcut is gone with the
+ * wildcard: no role carries one, and treating it as a pass let the console open screens on a
+ * permission the model does not define.
+ */
 function hasAnyPerm(userPerms: string[] | undefined, required: string[]): boolean {
   if (required.length === 0) return true
-  if (!userPerms || userPerms.length === 0) return false
-  if (userPerms.includes("*")) return true
-  return required.some((r) => userPerms.includes(r))
+  return required.some((r) => permits(userPerms, r))
 }
 
+/**
+ * The rail, on a screen wide enough to give it a column of its own. Hidden below the breakpoint,
+ * where the same content is served by the sheet instead.
+ */
 function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
+  return (
+    <aside className="sidebar">
+      <RailContent onOpenTweaks={onOpenTweaks} />
+    </aside>
+  );
+}
+
+/**
+ * The rail as a sheet, for a screen too narrow to spare 244 pixels.
+ *
+ * On a dialog primitive rather than by hand: a scrim that closes on click, focus trapped inside
+ * while it is open and returned to the button afterwards, Escape, the page behind locked against
+ * scrolling, and `aria-modal` for anybody not looking at it. Every one of those is a thing people
+ * notice only when it is missing.
+ *
+ * Closes on navigation, because a menu that stays open over the page you just asked for makes you
+ * dismiss it before you can read it.
+ */
+function RailDrawer({ onOpenTweaks }: { onOpenTweaks: () => void }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger className="burger" aria-label="Menu">
+        <span aria-hidden="true" style={{ width: 16, height: 16, display: 'grid', placeItems: 'center' }}>{I.menu}</span>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="rail-scrim" />
+        <Dialog.Content className="rail-sheet" aria-label="Navigation">
+          <Dialog.Title className="sr-only">Navigation</Dialog.Title>
+          <RailContent onNavigate={() => setOpen(false)} onOpenTweaks={onOpenTweaks} />
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+/**
+ * What the rail contains. Rendered twice — once in the fixed rail, once inside the sheet a narrow
+ * screen opens — because two copies of a navigation is how the two stop agreeing.
+ */
+function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; onOpenTweaks: () => void }) {
   const { page, setPage, state, tweaks, apiError } = useApp();
   const showCounts = tweaks?.showCounts !== false;
   const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
 
   const { data: session } = useSession();
   const { data: stats } = useStats();
-  const email = session?.email || "you@console";
-  const role  = session?.roles?.[0] || "";
-  const [localPart, domain] = email.includes("@") ? [email.split("@")[0], "@" + email.split("@")[1]] : [email, ""];
+  const { theme, cycleTheme } = useApp();
 
   // Filter nav by user permissions — non-admins only see Overview + Settings.
   const visibleNav = NAV.filter((n) => hasAnyPerm(session?.permissions, n.perms))
   const sections = [...new Set(visibleNav.map((n) => n.section))]
 
   return (
-    <aside className="sidebar">
+    <>
       <div className="sidebar-header">
         <div className="logo-mark">K</div>
         <div className="logo-text">
@@ -120,10 +186,9 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
               const count =
                 n.id === "users" ? (stats?.total ?? state.users.length) :
                 n.id === "groups" ? Object.keys(state.groups).length :
-                n.id === "services" ? state.services.length :
                 null;
               return (
-                <button key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => setPage(n.id)}>
+                <button key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => { setPage(n.id); onNavigate?.(); }}>
                   <span className="ico">{n.ico}</span>
                   {n.name}
                   {count != null && showCounts && <span className="count">{count}</span>}
@@ -133,78 +198,43 @@ function Sidebar({ onOpenTweaks }: { onOpenTweaks: () => void }) {
           </Fragment>
         ))}
       </nav>
-      <div className="sidebar-foot" style={{ cursor: "pointer" }} onClick={() => {
-        // Account settings live on the auth domain — open in a new tab so
-        // the kuma session stays put (no return_to round-trip needed). The
-        // window-level __AUTH_DOMAIN__ is injected by the chart at runtime.
-        const authDomain = (window as any).__AUTH_DOMAIN__;
-        if (authDomain) {
-          window.open(`https://${authDomain}/settings`, '_blank', 'noopener,noreferrer');
-        } else {
-          // Fallback to in-app settings (admin-only RBAC management) if no
-          // auth domain configured.
-          setPage("settings");
-        }
-      }} title="Account settings · opens in new tab">
-        <Avatar name={localPart} />
-        <div className="who">
-          <span className="n">
-            <span className="user-local">{localPart}</span>
-            {domain && <span className="user-domain">{domain}</span>}
-          </span>
-          <span className="e">{role}</span>
-          <button
-            type="button"
-            className="logout-link"
-            onClick={async (e) => {
-              e.stopPropagation();
-              const authDomain = (window as any).__AUTH_DOMAIN__;
-              if (!authDomain) return;
-              const returnTo = `https://${authDomain}/login`;
-              // Kratos logout is TWO steps: /self-service/logout/browser CREATES
-              // the flow and returns JSON { logout_url } (carrying the CSRF
-              // token); you must then navigate to logout_url. Navigating
-              // straight to the browser endpoint just renders that JSON — the
-              // bug this fixes. kuma and auth are served from the same parent
-              // domain, so the session cookie is sent, and Kratos CORS allows
-              // the app's subdomain with credentials, so this fetch is reliable.
-              try {
-                const res = await fetch(
-                  `https://${authDomain}/self-service/logout/browser?return_to=${encodeURIComponent(returnTo)}`,
-                  { credentials: 'include', headers: { Accept: 'application/json' } },
-                );
-                const data = await res.json();
-                if (data?.logout_url) { window.location.href = data.logout_url; return; }
-              } catch { /* fall through to a best-effort redirect */ }
-              window.location.href = returnTo;
-            }}
-            title="Sign out"
-            style={{
-              fontSize: 11,
-              color: 'var(--ink-3)',
-              textDecoration: 'none',
-              marginTop: 2,
-              display: 'inline-block',
-              background: 'none',
-              border: 0,
-              padding: 0,
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
-          >
-            ↩ Sign out
-          </button>
-        </div>
-        <button className="btn ghost sm" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); onOpenTweaks(); }} title="Tweaks">
-          <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.cog}</span>
+      <div className="sidebar-theme">
+        <button
+          type="button"
+          className="theme-btn"
+          title={themeLabel(theme)}
+          aria-label={themeLabel(theme)}
+          onClick={cycleTheme}
+        >
+          <span className="ico">{theme === "dark" ? I.moon : theme === "light" ? I.sun : I.contrast}</span>
+          <span className="lbl">{theme === "system" ? "System theme" : theme === "light" ? "Light" : "Dark"}</span>
         </button>
       </div>
-    </aside>
+      <div className="sidebar-foot">
+        <UserMenu
+          email={session?.email || "you@console"}
+          /* Every role, not the first one alphabetically: holding two, the rail named the weaker. */
+          role={(session?.roles ?? []).join(" · ")}
+          onOpenTweaks={onOpenTweaks}
+          onOpenSettings={() => {
+            // Account settings live on the auth domain — opened in a new tab so this session stays
+            // put. __AUTH_DOMAIN__ is injected by the chart at runtime; without one, the in-app
+            // settings are the nearest thing that exists.
+            const authDomain = (window as unknown as Record<string, string>).__AUTH_DOMAIN__;
+            if (authDomain) {
+              window.open(`https://${authDomain}/settings`, '_blank', 'noopener,noreferrer');
+            } else {
+              setPage("settings");
+            }
+          }}
+        />
+      </div>
+    </>
   );
 }
 
 function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
-  const { page, pipeline, theme, setTheme, persona, tweaks, isLive, isLoading, apiError, state } = useApp();
+  const { page, pipeline, theme, cycleTheme, persona, tweaks, isLive, isLoading, apiError, state } = useApp();
   const title = NAV.find(n => n.id === page)?.name || "Console";
   const showPipe = tweaks?.showPipeline !== false;
   const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
@@ -258,8 +288,8 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
           <span>Search or jump to…</span>
           <span className="kbd">⌘K</span>
         </button>
-        <button className="icon-btn" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-          {theme === "dark" ? I.sun : I.moon}
+        <button className="icon-btn" title={themeLabel(theme)} aria-label={themeLabel(theme)} onClick={cycleTheme}>
+          {theme === "dark" ? I.moon : theme === "light" ? I.sun : I.contrast}
         </button>
       </div>
       {isForbidden && (
@@ -279,7 +309,7 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
 }
 
 function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { setPage, state, setGroupDrawer, setServiceDrawer, setActiveService, setGrant, setTheme, theme } = useApp();
+  const { setPage, state, setGrant, cycleTheme, theme } = useApp();
   const [q, setQ] = useState("");
   const [idx, setIdx] = useState(0);
   useEffect(() => { if (open) { setQ(""); setIdx(0); } }, [open]);
@@ -297,23 +327,17 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
       kind: "user", label: u.name, sub: u.email, run: () => { setGrant({ user: u }); }
     }));
     const grps = Object.keys(state.groups).filter(match).slice(0, 6).map(g => ({
-      kind: "group", label: `Edit group · ${g}`, sub: "groups.json", run: () => { setPage("groups"); setGroupDrawer({ mode: "edit", name: g }); }
-    }));
-    const svcs = state.services.filter(s => match(s.name)).map(s => ({
-      kind: "service", label: `Service · ${s.name}`, sub: s.upstreamUrl || "virtual", run: () => { setActiveService(s.name); setPage("services"); }
+      kind: "group", label: `Group · ${g}`, sub: "groups.json", run: () => { setPage("groups"); }
     }));
     const actions = [
       { kind: "action", label: "Grant access to a user", sub: "guided", run: () => { setGrant({}); } },
-      { kind: "action", label: "New group", sub: "groups.json", run: () => { setGroupDrawer({ mode: "create" }); } },
-      { kind: "action", label: "Register service", sub: "creates roles + route_map + rule", run: () => { setServiceDrawer({ mode: "create" }); } },
-      { kind: "action", label: `Toggle ${theme === "dark" ? "light" : "dark"} theme`, sub: "ui", run: () => setTheme(theme === "dark" ? "light" : "dark") },
+      { kind: "action", label: `Theme · ${nextTheme(theme)}`, sub: "system · light · dark", run: () => cycleTheme() },
     ].filter(a => match(a.label));
     return [
       { name: "Actions", items: actions },
       { name: "Navigate", items: nav },
       { name: "Users", items: users },
       { name: "Groups", items: grps },
-      { name: "Services", items: svcs },
     ].filter(g => g.items.length > 0);
     // Context setters are stable; results recompute on q/state/theme/search only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -343,7 +367,7 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <div className="cmdk-wrap" onClick={onClose}>
       <div className="cmdk" onClick={e => e.stopPropagation()}>
-        <input autoFocus className="cmdk-input" placeholder="Search users, groups, services, actions…" value={q} onChange={e => { setQ(e.target.value); setIdx(0); }} />
+        <input autoFocus className="cmdk-input" placeholder="Search users, groups, actions…" value={q} onChange={e => { setQ(e.target.value); setIdx(0); }} />
         <div className="cmdk-list">
           {groups.length === 0 && <EmptyHint>No matches.</EmptyHint>}
           {groups.map(g => (
@@ -390,7 +414,14 @@ function TweaksPanel({ open, onClose }: { open: boolean; onClose: () => void }) 
       </div>
       <div className="tweaks-body">
         <div className="tweak-section">Appearance</div>
-        <div className="tweak-row"><span className="lbl">Dark mode</span><Switch on={theme === "dark"} onChange={v => setTheme(v ? "dark" : "light")} /></div>
+        <div className="tweak-row">
+          <span className="lbl">Theme</span>
+          <div className="persona-segs">
+            {THEMES.map(t => (
+              <button key={t} className={theme === t ? "on" : ""} onClick={() => setTheme(t)}>{t}</button>
+            ))}
+          </div>
+        </div>
         <div className="tweak-row"><span className="lbl">Accent</span><Seg value={tweaks.accent} onChange={v => setTweak("accent", v)} options={[{ v: "terracotta", l: "Terracotta" }, { v: "indigo", l: "Indigo" }, { v: "slate", l: "Slate" }]} /></div>
         <div className="tweak-row"><span className="lbl">Density</span><Seg value={tweaks.density} onChange={v => setTweak("density", v)} options={[{ v: "compact", l: "Compact" }, { v: "comfortable", l: "Comfy" }, { v: "cozy", l: "Cozy" }]} /></div>
         <div className="tweak-section">Console</div>
@@ -451,9 +482,9 @@ function AppShell() {
   // dashboard. A failed/401 session is handled by the Topbar redirect, not here.
   useEffect(() => {
     if (!sessionReady) return
-    // roles/routes/rules are aliases that render the Services workspace but have
+    // `enforced` is the old id of this screen, kept so a bookmark still opens it. It has
     // no NAV entry — resolve to the canonical id so they inherit the same gate.
-    const canonical = (page === 'roles' || page === 'routes' || page === 'rules') ? 'services' : page
+    const canonical = page === 'enforced' ? 'apis' : page
     const nav = NAV.find((n) => n.id === canonical)
     if (!nav) return
     if (!hasAnyPerm(session?.permissions, nav.perms)) {
@@ -476,15 +507,17 @@ function AppShell() {
   return (
     <div className="app">
       <Sidebar onOpenTweaks={() => setTweaksOpen(true)} />
+      <RailDrawer onOpenTweaks={() => setTweaksOpen(true)} />
       <div className="main">
         <Topbar onOpenCmdk={() => setCmdkOpen(true)} />
-        <div className="content">
+        {/* Keyed on the page so React remounts the subtree and the entrance plays on every
+            navigation. Without the key the class is already applied and nothing animates. */}
+        <div className="content page-enter" key={page}>
           {(simulatingForbidden(tweaks) || (apiError as any)?.status === 403) ? <ForbiddenPage /> : <>
             {page === "dashboard" && <DashboardPage />}
-            {page === "simulator" && <SimulatorPage />}
             {page === "users" && <UsersPage />}
             {page === "groups" && <GroupsPage />}
-            {(page === "services" || page === "roles" || page === "routes" || page === "rules") && <ServicesPage />}
+            {(page === "apis" || page === "enforced") && <ApisPage />}
             {page === "organizations" && <OrganizationsPage />}
             {page === "audit" && <AuditPage />}
             {page === "accessreview" && <AccessReviewPage />}
@@ -496,8 +529,6 @@ function AppShell() {
         </div>
       </div>
       <UserDrawer />
-      <GroupDrawer />
-      <ServiceDrawer />
       <GrantAccess />
       <CmdK open={cmdkOpen} onClose={() => setCmdkOpen(false)} />
       <TweaksPanel open={tweaksOpen} onClose={() => setTweaksOpen(false)} />

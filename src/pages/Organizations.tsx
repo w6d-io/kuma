@@ -1,13 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
-import { Chip, Avatar, Drawer, EmptyHint, MultiSelectPills, ConfirmDialog } from '../components/ui/Primitives';
+import { Chip, Avatar, Drawer, EmptyHint, MultiSelectPills } from '../components/ui/Primitives';
 import { kratosToUser } from '../api/transforms';
 import {
-  useMyOrganizations,
-  useOrgServiceMap,
-  useSetOrgServiceBundle,
-  useDeleteOrgServiceMapping,
+  useAllOrganizations,
   useOrgUsers,
   useAssignableGroups,
   useOrgAdminMap,
@@ -15,12 +12,15 @@ import {
   useSession,
 } from '../api/hooks';
 import { InviteDrawer } from './OrgAdmin';
+import { PRIVILEGED_MUTATION, permits } from '../policy/model';
+import { bounceToStepUp } from '../lib/stepUp';
+import { SkeletonRows } from '../components/ui/Skeleton';
 
-// The Organizations hub — the super_admin's platform-level view of EVERY
+// The Organizations hub — the platform-level view of EVERY
 // tenant, as opposed to the delegated "Org Admin" tab (a member's self-service
 // view of only the orgs they administer). Organizations aren't a first-class
 // entity in jinbe; they're implied by the org→service BUNDLE map + the org ids
-// identities carry, and /me/organizations returns that union for a super_admin.
+// identities carry; /admin/organizations answers the platform-wide question.
 //
 // Each org bundles a SET of services (J14 org-service entitlement model): its
 // people can be granted roles from any service in the bundle. Setup used to be
@@ -29,13 +29,28 @@ import { InviteDrawer } from './OrgAdmin';
 // its bundle + people, bundle/invite/grant from one place.
 
 export function OrganizationsPage() {
-  const orgsQ = useMyOrganizations();
-  const { data: orgServiceMap = {} } = useOrgServiceMap();
-  const orgs = useMemo(() => (orgsQ.isError ? [] : orgsQ.data ?? null), [orgsQ.isError, orgsQ.data]);
+  // EVERY organisation, from the route that answers that question and refuses when the caller may
+  // not ask it. This page used to call `/me/organizations`, which widened to everything for an
+  // administrator and returned only theirs otherwise — the same call meaning two different things.
+  const orgsQ = useAllOrganizations();
+  const names = useMemo(
+    () => Object.fromEntries((orgsQ.data?.organizations ?? []).map((o) => [o.id, o.name])),
+    [orgsQ.data],
+  );
+  // Which applications each organisation actually has, from the directory that records them. This
+  // page read a map from Redis that nothing populates any more, so it reported "no services bundled"
+  // for all eight — while `organisation_deployments` held the answer the whole time.
+  const applications = useMemo(
+    () => Object.fromEntries((orgsQ.data?.organizations ?? []).map((o) => [o.id, o.applications ?? []])),
+    [orgsQ.data],
+  );
+  const orgs = useMemo(
+    () => (orgsQ.isError ? [] : orgsQ.data ? orgsQ.data.organizations.map((o) => o.id) : null),
+    [orgsQ.isError, orgsQ.data],
+  );
 
   const [sel, setSel] = useState('');
   const [q, setQ] = useState('');
-  const [newOrgOpen, setNewOrgOpen] = useState(false);
 
   const activeOrg = sel && (orgs ?? []).includes(sel) ? sel : (orgs?.[0] ?? '');
   const filtered = useMemo(
@@ -47,12 +62,7 @@ export function OrganizationsPage() {
     <div className="page-head">
       <div>
         <h1>Organizations</h1>
-        <div className="sub">Every tenant, its service bundle and its people — in one place{orgs ? ` · ${orgs.length} org${orgs.length === 1 ? '' : 's'}` : ''}</div>
-      </div>
-      <div className="page-actions">
-        <button className="btn primary" onClick={() => setNewOrgOpen(true)}>
-          <span style={{ width: 14, height: 14, display: 'grid', placeItems: 'center' }}>{I.plus}</span> New organization
-        </button>
+        <div className="sub">Every tenant, what it runs and its people — in one place{orgs ? ` · ${orgs.length} org${orgs.length === 1 ? '' : 's'}` : ''}</div>
       </div>
     </div>
   );
@@ -67,10 +77,9 @@ export function OrganizationsPage() {
         {header}
         <div className="panel" style={{ padding: 40 }}>
           <EmptyHint>
-            No organizations yet. Create one to bundle services for a tenant and invite its first admin.
+            The directory records no organization. They are provisioned elsewhere, not created here.
           </EmptyHint>
         </div>
-        {newOrgOpen && <NewOrgDrawer onClose={() => setNewOrgOpen(false)} onDone={(o) => { setNewOrgOpen(false); orgsQ.refetch(); setSel(o); }} />}
       </>
     );
   }
@@ -78,24 +87,37 @@ export function OrganizationsPage() {
   return (
     <>
       {header}
-      <div className="grid" style={{ gridTemplateColumns: '280px 1fr', gap: 14, alignItems: 'start' }}>
+      <div className="list-detail">
         {/* Left rail — one row per org, with a bundle summary */}
         <div className="panel" style={{ padding: 0 }}>
           <div style={{ padding: 8, borderBottom: '1px solid var(--line)' }}>
             <input className="input" placeholder="Search organizations…" value={q} onChange={e => setQ(e.target.value)} style={{ width: '100%' }} />
           </div>
           {filtered.map((o, i) => {
-            const svcs = orgServiceMap[o] ?? [];
+            const svcs = applications[o] ?? [];
             const on = o === activeOrg;
             return (
               <button key={o} onClick={() => setSel(o)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderBottom: i < filtered.length - 1 ? '1px solid var(--line)' : 'none', background: on ? 'var(--panel-2)' : 'transparent', color: 'var(--ink)', cursor: 'pointer', display: 'flex', gap: 9, alignItems: 'center' }}>
-                <span style={{ color: svcs.length ? 'var(--ink-3)' : 'var(--warn)', flexShrink: 0, display: 'grid', placeItems: 'center', width: 15, height: 15 }}>{svcs.length ? I.globe : I.alert}</span>
+                <span style={{ color: 'var(--ink-3)', flexShrink: 0, display: 'grid', placeItems: 'center', width: 15, height: 15 }}>{I.globe}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="mono" style={{ fontWeight: on ? 600 : 500, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis' }}>{o}</div>
+                  {/* The name when the directory knows it, the identifier when it does not — worse to
+                      read, still correct, and never a guess. A list of raw UUIDs is unreadable, and
+                      three of the eight here do carry a name nobody was showing. */}
+                  <div
+                    className={names[o] ? '' : 'mono'}
+                    style={{ fontWeight: on ? 600 : 500, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis' }}
+                  >
+                    {names[o] ?? o}
+                  </div>
+                  {names[o] && (
+                    <div className="small muted mono" style={{ overflowWrap: 'anywhere' }}>{o}</div>
+                  )}
                   <div className="small muted mt-4">
-                    {svcs.length
-                      ? <>{svcs.length} service{svcs.length === 1 ? '' : 's'} bundled</>
-                      : <span style={{ color: 'var(--warn)' }}>no services bundled</span>}
+                    {svcs.length > 0
+                      ? <>{svcs.join(' · ')}</>
+                      /* Not a warning: an organisation running nothing is a fact about a tenant,
+                         not a setup step somebody forgot. */
+                      : <span className="muted">no applications</span>}
                   </div>
                 </div>
               </button>
@@ -106,11 +128,10 @@ export function OrganizationsPage() {
 
         {/* Right — selected org */}
         <div style={{ minWidth: 0 }}>
-          {activeOrg && <OrgDetail key={activeOrg} org={activeOrg} services={orgServiceMap[activeOrg] ?? []} />}
+          {activeOrg && <OrgDetail key={activeOrg} org={activeOrg} services={applications[activeOrg] ?? []} />}
         </div>
       </div>
 
-      {newOrgOpen && <NewOrgDrawer onClose={() => setNewOrgOpen(false)} onDone={(o) => { setNewOrgOpen(false); orgsQ.refetch(); setSel(o); }} />}
     </>
   );
 }
@@ -118,29 +139,21 @@ export function OrganizationsPage() {
 function OrgDetail({ org, services }: { org: string; services: string[] }) {
   const { setGrant, pushToast } = useApp();
   const { data: session } = useSession();
-  const actorIsSuperAdmin = (session?.roles || []).includes('super_admin');
+  // The permission the mutation checks, not a role NAME. `super_admin` is not a role this model
+  // defines, so this test was false for everybody and greyed the control for its only holders.
+  const mayAdminister = permits(session?.permissions, PRIVILEGED_MUTATION);
   const usersQ = useOrgUsers(org);
   const assignableQ = useAssignableGroups(org);
   const assignable = useMemo(() => assignableQ.data ?? [], [assignableQ.data]);
   const { data: orgAdminMap = {} } = useOrgAdminMap();
   const roster = orgAdminMap[org] ?? [];
-  const delBundle = useDeleteOrgServiceMapping();
   const [invite, setInvite] = useState(false);
-  const [editBundle, setEditBundle] = useState(false);
   const [editAdmins, setEditAdmins] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
 
   const users = usersQ.data?.data ?? [];
   const total = usersQ.data?.total ?? users.length;
   const hasBundle = services.length > 0;
   const memberEmails = users.map(u => u.traits?.email).filter((e): e is string => !!e);
-
-  const clearBundle = () => {
-    delBundle.mutate(org, {
-      onSuccess: () => { pushToast(`Cleared services for ${org}`); setConfirmClear(false); },
-      onError: (e: unknown) => pushToast((e as Error).message || 'Failed to clear bundle', { err: true }),
-    });
-  };
 
   return (
     <>
@@ -157,35 +170,33 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
         </button>
       </div>
 
-      {/* Service bundle — the setup step that makes an org administrable */}
+      {/* What this organisation runs. A record of the directory, not a setting of this console: it
+          changes when a deployment is provisioned or turned off, which is not something to edit here. */}
       <div className="panel mb-12" style={{ padding: 14 }}>
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontWeight: 500, fontSize: 12.5 }}>Service bundle</div>
-            <div className="small muted" style={{ marginTop: 2 }}>
-              {hasBundle
-                ? <>This org's people can be granted roles from the services below.</>
-                : <>Bundle one or more services to make their roles assignable to this org's people.</>}
-            </div>
-            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {hasBundle
-                ? services.map(s => <Chip key={s} tone="ok">{s}</Chip>)
-                : <span className="small" style={{ color: 'var(--warn)' }}>no services bundled</span>}
-            </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 500, fontSize: 12.5 }}>Applications</div>
+          <div className="small muted" style={{ marginTop: 2 }}>
+            {hasBundle
+              ? <>What this organisation runs, from <span className="mono">organisation_deployments</span>. Only what is enabled.</>
+              : <>This organisation runs nothing that the directory records.</>}
           </div>
-          <button className="btn ghost sm" onClick={() => setEditBundle(true)}>{hasBundle ? 'Edit services' : 'Bundle services'}</button>
+          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {hasBundle
+              ? services.map(s => <Chip key={s} tone="ok">{s}</Chip>)
+              : <span className="small muted">none</span>}
+          </div>
         </div>
       </div>
 
       {/* Administrators — the org's per-org admin roster (data.org_admin_map). An
           admin manages this org's members, scoped to its bundle. Assigning is
-          super_admin-only + step-up gated (enforced by jinbe). */}
+          Gated on admin.membership:write plus a recent second factor, enforced by jinbe. */}
       <div className="panel mb-12" style={{ padding: 14 }}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontWeight: 500, fontSize: 12.5 }}>Administrators</div>
             <div className="small muted" style={{ marginTop: 2 }}>
-              People who can manage this org's members (scoped to its bundle). Only super_admins can change this.
+              People who can manage this org's members (scoped to its bundle). Changing it needs admin.membership:write.
             </div>
             <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {roster.length === 0
@@ -193,7 +204,7 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
                 : roster.map(a => <Chip key={a} tone="accent">{a}</Chip>)}
             </div>
           </div>
-          {actorIsSuperAdmin && (
+          {mayAdminister && (
             <button className="btn ghost sm" onClick={() => setEditAdmins(true)}>{roster.length ? 'Edit admins' : 'Add admins'}</button>
           )}
         </div>
@@ -205,7 +216,7 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
         <table className="table">
           <thead><tr><th>Identity</th><th>Groups</th><th></th></tr></thead>
           <tbody>
-            {usersQ.isLoading && <tr><td colSpan={3} className="small muted" style={{ padding: 16 }}>loading…</td></tr>}
+            {usersQ.isLoading && <SkeletonRows rows={4} cols={3} />}
             {!usersQ.isLoading && users.length === 0 && <tr><td colSpan={3}><EmptyHint>No people in this organization yet — invite someone.</EmptyHint></td></tr>}
             {!usersQ.isLoading && users.map(u => {
               const groups = u.metadata_admin?.groups ?? [];
@@ -243,15 +254,6 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
         />
       )}
 
-      {editBundle && (
-        <BundleDrawer
-          org={org}
-          current={services}
-          onClose={() => setEditBundle(false)}
-          onRequestClear={() => { setEditBundle(false); setConfirmClear(true); }}
-        />
-      )}
-
       {editAdmins && (
         <AdminsDrawer
           org={org}
@@ -261,96 +263,13 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
         />
       )}
 
-      <ConfirmDialog
-        open={confirmClear}
-        title="Clear service bundle?"
-        danger
-        confirmLabel="Clear bundle"
-        busy={delBundle.isPending}
-        body={<>Org admins for <span className="mono">{org.slice(0, 8)}…</span> will lose the ability to grant service roles here, and delegated group assignment will stop working for this organization until you bundle a service again.</>}
-        onCancel={() => setConfirmClear(false)}
-        onConfirm={clearBundle}
-      />
     </>
-  );
-}
-
-// The org→service bundle editor. A PUT replaces the org's ENTIRE bundle with the
-// selected set (jinbe requires >=1), seeded from the current bundle so a save is
-// a deliberate replace, never an accidental clobber. Clearing the bundle is a
-// separate DELETE (handled by the caller's ConfirmDialog) so an empty PUT — which
-// jinbe would reject — is never attempted.
-function BundleDrawer({ org, current, onClose, onRequestClear }: {
-  org: string; current: string[]; onClose: () => void; onRequestClear: () => void;
-}) {
-  const { state, pushToast } = useApp();
-  const setBundle = useSetOrgServiceBundle();
-  // Mapping an org to the virtual "global" service is meaningless — exclude it.
-  const svcOptions = state.services.map(s => s.name).filter(n => n !== 'global');
-  const [selected, setSelected] = useState<string[]>(current);
-  const busy = setBundle.isPending;
-  const valid = selected.length > 0;
-  const dirty = selected.length !== current.length || selected.some(s => !current.includes(s));
-
-  const toggle = (svc: string) =>
-    setSelected(prev => (prev.includes(svc) ? prev.filter(s => s !== svc) : [...prev, svc]));
-
-  const save = () => {
-    if (!valid || !dirty || busy) return;
-    setBundle.mutate({ organizationId: org, services: selected }, {
-      onSuccess: () => { pushToast(`Updated services for ${org}`, { sub: `${selected.length} service${selected.length === 1 ? '' : 's'} bundled` }); onClose(); },
-      onError: (e: unknown) => pushToast((e as Error).message || 'Failed to update bundle', { err: true }),
-    });
-  };
-
-  return (
-    <Drawer
-      open
-      onClose={onClose}
-      size="lg"
-      eyebrow="PUT /api/admin/rbac/org-service-map"
-      title="Edit service bundle"
-      footer={
-        <>
-          {current.length > 0
-            ? <button className="btn danger sm" onClick={onRequestClear} disabled={busy}><span style={{ width: 14, height: 14, display: 'grid', placeItems: 'center' }}>{I.trash}</span> Clear bundle</button>
-            : <div />}
-          <div className="row">
-            <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
-            <button className="btn primary" onClick={save} disabled={!valid || !dirty || busy}>{busy ? 'Saving…' : 'Save bundle'}</button>
-          </div>
-        </>
-      }
-    >
-      <div className="mb-12">
-        <div className="input-label">Organization</div>
-        <div className="mono" style={{ fontSize: 12.5 }}>{org}</div>
-      </div>
-      {selected.length === 0 && (
-        <div className="panel mb-12" style={{ padding: 10, background: 'var(--warn-soft, #422)', border: '1px solid var(--warn, #d97706)', color: 'var(--warn, #d97706)' }}>
-          <div style={{ fontWeight: 500, fontSize: 12.5 }}>No services selected</div>
-          <div className="small" style={{ marginTop: 4 }}>
-            Pick at least one service to save. To remove the org's entire bundle, use <strong>Clear bundle</strong> instead.
-          </div>
-        </div>
-      )}
-      <label className="input-label">Services in this bundle</label>
-      <div className="panel" style={{ padding: 12 }}>
-        <MultiSelectPills
-          options={svcOptions}
-          selected={selected}
-          onToggle={toggle}
-          empty="No services defined yet — create one under Services first."
-        />
-      </div>
-      <div className="input-hint" style={{ marginTop: 8 }}>Saving replaces the org's entire bundle with the selected services.</div>
-    </Drawer>
   );
 }
 
 // The org admin ROSTER editor (data.org_admin_map). A PUT replaces the org's
 // ENTIRE roster with the selected emails; an empty roster is allowed (it clears
-// the org's admins). super_admin + a recent second factor are enforced by jinbe;
+// the org's admins). admin.membership:write + a recent second factor are enforced by jinbe;
 // a stale factor returns 422 reauth_required, handled here with a step-up bounce.
 // The picker offers the org's members (you can't administer an org you don't
 // belong to — jinbe's manageable_orgs also enforces this), unioned with any
@@ -376,12 +295,8 @@ function AdminsDrawer({ org, current, members, onClose }: {
         const err = e as Error & { code?: string; details?: { hint?: string } };
         // Step-up (R2): re-verify a recent second factor, then return to retry.
         if (err.code === 'reauth_required') {
-          pushToast('Two-factor re-verification required · redirecting to step-up', { err: true, sub: err.details?.hint || err.message });
-          const authDomain = (window as any).__AUTH_DOMAIN__;
-          if (authDomain) {
-            const returnTo = window.location.href;
-            setTimeout(() => { window.location.href = `https://${authDomain}/login?aal=aal2&refresh=true&return_to=${encodeURIComponent(returnTo)}`; }, 1500);
-          }
+          pushToast('Two-factor re-verification required', { err: true, sub: 'You will be sent to re-verify your second factor, then back here to retry. This is not a sign-out.' });
+          bounceToStepUp();
           return;
         }
         if (err.code === 'privilege_escalation_blocked' || err.code === 'mfa_required') {
@@ -402,7 +317,7 @@ function AdminsDrawer({ org, current, members, onClose }: {
       title="Edit administrators"
       footer={
         <>
-          <span className="small muted">super_admin + recent 2FA required.</span>
+          <span className="small muted">Needs admin.membership:write and a recent second factor.</span>
           <div className="row">
             <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
             <button className="btn primary" onClick={save} disabled={!dirty || busy}>{busy ? 'Saving…' : 'Save admins'}</button>
@@ -430,64 +345,3 @@ function AdminsDrawer({ org, current, members, onClose }: {
   );
 }
 
-// "Creating" an org = registering an org id → service bundle (the step that
-// makes it show up + administrable). People then join by being invited into it
-// (their identity gets this organization_id).
-function NewOrgDrawer({ onClose, onDone }: { onClose: () => void; onDone: (org: string) => void }) {
-  const { state, pushToast } = useApp();
-  const setBundle = useSetOrgServiceBundle();
-  const [org, setOrg] = useState('');
-  const [selected, setSelected] = useState<string[]>([]);
-  const svcOptions = state.services.map(s => s.name).filter(n => n !== 'global');
-  const busy = setBundle.isPending;
-  const valid = org.trim().length > 0 && selected.length > 0;
-
-  const toggle = (svc: string) =>
-    setSelected(prev => (prev.includes(svc) ? prev.filter(s => s !== svc) : [...prev, svc]));
-
-  const submit = () => {
-    if (!valid || busy) return;
-    const id = org.trim();
-    setBundle.mutate({ organizationId: id, services: selected }, {
-      onSuccess: () => { pushToast(`Created organization ${id}`, { sub: `${selected.length} service${selected.length === 1 ? '' : 's'} bundled` }); onDone(id); },
-      onError: (e: unknown) => pushToast((e as Error).message || 'Failed to create organization', { err: true }),
-    });
-  };
-
-  return (
-    <Drawer
-      open
-      onClose={onClose}
-      size="lg"
-      eyebrow="New organization"
-      title="Create organization"
-      footer={
-        <>
-          <span className="small muted">Bundles services to a tenant. Invite its people next.</span>
-          <div className="row">
-            <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
-            <button className="btn primary" onClick={submit} disabled={!valid || busy}>{busy ? 'Creating…' : 'Create'}</button>
-          </div>
-        </>
-      }
-    >
-      <div className="mb-12">
-        <label className="input-label">Organization ID *</label>
-        <input className="input mono" value={org} onChange={e => setOrg(e.target.value)} placeholder="tenant UUID or slug" autoFocus />
-        <div className="input-hint">The <span className="mono">organization_id</span> its members carry in Kratos.</div>
-      </div>
-      <div className="mb-12">
-        <label className="input-label">Services *</label>
-        <div className="panel" style={{ padding: 12 }}>
-          <MultiSelectPills
-            options={svcOptions}
-            selected={selected}
-            onToggle={toggle}
-            empty="No services defined yet — create one under Services first."
-          />
-        </div>
-        <div className="input-hint">Which apps this tenant bundles — their roles become assignable to the org's people.</div>
-      </div>
-    </Drawer>
-  );
-}

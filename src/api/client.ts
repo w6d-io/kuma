@@ -2,6 +2,7 @@
 // Falls back to relative /api when Oathkeeper proxies /api on the same domain.
 // Detect un-substituted envsubst placeholder (e.g. "${API_BASE}") and treat as empty.
 import type { AuditSummary, AccessReview } from './types';
+import { bearerToken } from '../auth/session';
 
 const _rawBase: string = (window as any).__API_BASE__ ?? '';
 const BASE = (_rawBase.startsWith('${') ? '' : _rawBase).replace(/\/$/, '') || '/api';
@@ -10,12 +11,20 @@ const BASE = (_rawBase.startsWith('${') ? '' : _rawBase).replace(/\/$/, '') || '
 export const API_BASE = BASE;
 
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
+  // A token when the deployment signs in against an authority, the session cookie otherwise. Sent
+  // together rather than exclusively: which one the API accepts is its decision, and a console that
+  // guessed would break the moment the API changed its mind.
+  const token = await bearerToken();
   const res = await fetch(`${BASE}${path}`, {
     credentials: 'include',
     // Only claim a JSON body when there IS one — Fastify 400s a body-less
     // POST carrying Content-Type: application/json (bit the rollback and
     // backup-now endpoints).
-    headers: { ...(opts?.body != null ? { 'Content-Type': 'application/json' } : {}), ...opts?.headers },
+    headers: {
+      ...(opts?.body != null ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...opts?.headers,
+    },
     ...opts,
   });
   if (!res.ok) {
@@ -28,6 +37,10 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
     throw Object.assign(new Error(msg), {
       status: res.status,
       code: body.error,
+      // Carried onto the error so a refusal can say it changed nothing. The service sets it on every
+      // gate refusal, and without it here the console can only show the previous state and leave the
+      // reader to guess whether part of the change went through.
+      applied: body.applied,
       details: body,
     });
   }
@@ -129,21 +142,6 @@ export const api = {
   getServices: () =>
     request<{ services: JinbeService[] }>(`/admin/rbac/services`).then(r => r.services),
 
-  createService: (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string; signIn?: SignInMethod[] }) =>
-    request<{ commitId: string }>(`/admin/rbac/services`, {
-      method: 'POST',
-      body: JSON.stringify(svc),
-    }),
-
-  updateService: (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null; signIn?: SignInMethod[] }) =>
-    request<{ commitId: string }>(`/admin/rbac/services/${name}`, {
-      method: 'PATCH',
-      body: JSON.stringify(payload),
-    }),
-
-  deleteService: (name: string) =>
-    request<void>(`/admin/rbac/services/${name}`, { method: 'DELETE' }),
-
   getServicePermissions: (name: string) =>
     request<{ permissions: string[] }>(`/admin/rbac/services/${name}/permissions`),
 
@@ -151,47 +149,52 @@ export const api = {
   getRoles: (serviceName: string) =>
     request<{ service: string; roles: JinbeRole[]; meta: { fileSha: string } }>(`/admin/rbac/services/${serviceName}/roles`),
 
-  updateServiceRoles: (serviceName: string, roles: Record<string, string[]>) =>
-    request<{ success: boolean; message: string }>(`/admin/rbac/services/${serviceName}/roles`, {
-      method: 'PUT',
-      body: JSON.stringify({ roles }),
-    }),
-
   // ─── Routes / Route map (per service) ───
   getServiceRoutes: (serviceName: string) =>
     request<{ service: string; rules: JinbeRouteRule[] }>(`/admin/rbac/services/${serviceName}/routes`),
 
-  updateServiceRoutes: (serviceName: string, rules: JinbeRouteRule[]) =>
-    request<{ commitId: string }>(`/admin/rbac/services/${serviceName}/routes`, {
-      method: 'PUT',
-      body: JSON.stringify({ rules }),
-    }),
+  /**
+   * The groups the caller may hand out, and whether they may at all — from the model the engine
+   * decides against, not from the previous one.
+   */
+  /**
+   * Every organisation, for the screen that administers them.
+   *
+   * Not `/me/organizations`: that one answers with MINE, whoever asks. It used to widen to every
+   * organisation for an administrator, so the same URL meant two things and a `scope` field existed
+   * to say which — a screen asking for everything could not tell a short answer from a complete one.
+   */
+  allOrganizations: () =>
+    request<{
+      organizations: {
+        id: string;
+        name: string;
+        tenant: string;
+        /** What this organisation runs, from the directory — only what is enabled. */
+        applications?: string[];
+      }[];
+    }>('/admin/organizations'),
 
-  // Dry-run: parse an OpenAPI/Swagger spec and preview the routes + diff.
-  importPreviewRoutes: (serviceName: string, source: ImportSource, options?: ImportOptions) =>
-    request<ImportPreview>(`/admin/rbac/services/${serviceName}/routes/import/preview`, {
-      method: 'POST',
-      body: JSON.stringify({ source, options }),
-    }),
+  assignableGroups: () =>
+    request<{ groups: string[]; mayAssign: boolean }>('/admin/assignable-groups'),
+
+  /**
+   * The model the engine decides against: what each group grants, per organisation, and what each
+   * role carries. Read-only — it lives in Git and changes at a release.
+   */
+  authorizationModel: () =>
+    request<AuthorizationModel>('/admin/authorization-model'),
+
+  // ─── Enforced configuration (read-only) ───
+  // What actually decides, read from the cluster objects the engines load. There is no writer and
+  // there must not be one: the source of truth is a repository synced by Argo, so a write here
+  // would be reverted by the next sync without telling anybody.
+  getEnforcedConfig: () =>
+    request<{ documents: EnforcedDocument[] }>(`/admin/enforced-config`).then(r => r.documents),
 
   // ─── Access Rules (Oathkeeper) ───
   getAccessRules: () =>
     request<{ rules: JinbeAccessRule[] }>(`/admin/rbac/access-rules`).then(r => r.rules),
-
-  createAccessRule: (rule: Partial<JinbeAccessRule>) =>
-    request<{ commitId: string }>(`/admin/rbac/access-rules`, {
-      method: 'POST',
-      body: JSON.stringify(rule),
-    }),
-
-  updateAccessRule: (id: string, rule: Partial<JinbeAccessRule>) =>
-    request<{ commitId: string }>(`/admin/rbac/access-rules/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(rule),
-    }),
-
-  deleteAccessRule: (id: string) =>
-    request<void>(`/admin/rbac/access-rules/${id}`, { method: 'DELETE' }),
 
   // ─── Oathkeeper handler catalog (enabled handlers + field descriptors) ───
   // Returns ONLY the handlers actually registered/enabled in the Oathkeeper
@@ -410,28 +413,22 @@ export const api = {
     }),
 
   // ─── Impact preview — who gains/loses access if this change is applied ───
-  previewImpact: (proposed: {
-    groups?: Record<string, Record<string, string[]>>;
-    roles?: Record<string, Record<string, string[]>>;
-    routeMaps?: Record<string, unknown>;
-    groupMembership?: Record<string, string[]>;
-  }) =>
-    request<ImpactPreviewResult>('/admin/rbac/impact-preview', {
-      method: 'POST',
-      body: JSON.stringify(proposed),
-    }),
 
-  // ─── Permission simulator (live OPA query) ───
-  simulate: (input: { email: string; service: string; method: string; path: string }) =>
-    request<SimulateResponse>('/admin/rbac/simulate', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
 
   // ─── Delegated org-admin (self-service; scoped to the caller's orgs) ───
   // The organizations the caller may administer (delegation manageable_orgs).
+  // The scope is kept, not dropped: it says WHICH authority answered. `claim` means the deployment
+  // reads organisations from the verified token, so nobody administers them here and a screen that
+  // advised asking an administrator would be advising the impossible.
+  // `names` is what to call each one on screen, keyed by identifier — served by the API because
+  // that is where they are known. Absent, a screen shows the identifier: worse to read, still
+  // correct, and never a guess.
   myOrganizations: () =>
-    request<{ organizations: string[] }>('/me/organizations').then(r => r.organizations),
+    request<{
+      organizations: string[]
+      names?: Record<string, string>
+      scope?: 'delegated' | 'claim' | 'all'
+    }>('/me/organizations'),
 
   // Groups the caller may assign within an org — already narrowed by jinbe to the
   // org's service + containment (never the full catalog).
@@ -550,7 +547,13 @@ export interface WhoamiResponse {
   error: string | null;
   groups: string[];
   roles: string[];
-  permissions: string[];
+  permissions: string[];  /**
+   * Where the rules are enforced from — `service` (this console is the source) or `gitops` (Rule
+   * resources and labelled ConfigMaps, synced from a repository). Absent on an older service, which
+   * reads as `service`: see policy/source.ts.
+   */
+  rules_source?: 'service' | 'gitops';
+
 }
 
 export interface SetUserGroupsResponse {
@@ -592,6 +595,15 @@ export interface KratosIdentity {
     [key: string]: unknown;
   };
   organization_id?: string;
+  /**
+   * The organisations this identity belongs to, as the service that OWNS membership answers them —
+   * the primary one included. This is the truth now: `metadata_admin.organizations` is what somebody
+   * once wrote on the identity, kept as the fallback for a backend that does not own membership yet.
+   *
+   * Absent and empty are different answers. `[]` means "belongs to nothing"; absent means nobody
+   * could say, and the fallback applies.
+   */
+  organizations?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -650,6 +662,71 @@ export interface ImportPreview {
   derived: DerivedRoute[];
   diff: { add: DerivedRoute[]; changed: ChangedRoute[]; unchanged: DerivedRoute[]; stale: StaleRoute[]; };
   warnings: { kind: string; message: string; detail?: string }[];
+}
+
+/** One object that decides something, as the service that reads the cluster answers it. */
+export interface EnforcedDocument {
+  /** The Kubernetes kind — `Rule` for the edge, `ConfigMap` for the policy data. */
+  kind: string;
+  name: string;
+  namespace: string;
+  /** What it decides, in the reader's terms rather than the cluster's. */
+  decides: string;
+  /** The object as YAML, pruned of what the API server adds. */
+  yaml: string;
+  /** The route table as rows, when this document holds one. Parsed by the service, not here. */
+  routes?: EnforcedRoute[];
+  /** What each role carries, when this document holds that instead. */
+  roles?: EnforcedRole[];
+  edge?: EnforcedEdge;
+  /** Who holds which role, and in which organisation. */
+  grants?: EnforcedGrant[];
+}
+
+/** For a `Rule`: what it lets in, where it goes, and which route table decides it. */
+export interface EnforcedEdge {
+  methods: string[];
+  url: string;
+  upstream?: string;
+  authenticators: string[];
+  authorizer: string;
+  /** The service the engine's payload names — the route table it looks up. Not carried by the rule. */
+  authorizesAs?: string;
+  tableDeclared?: boolean;
+}
+
+export interface EnforcedRoute {
+  method: string;
+  path: string;
+  /** `public` | `authenticated` | `authorized` — what the edge requires before forwarding. */
+  class: string;
+  /** Only for `authorized`: the permission the caller must hold. */
+  permission?: string;
+}
+
+export interface EnforcedRole {
+  role: string;
+  permissions: string[];
+}
+
+/** Who holds which role, and where — the last link of the chain a reader follows. */
+export interface EnforcedGrant {
+  /** The immutable identity the grant is keyed on. */
+  subject: string;
+  /** The address that identity carries today. Absent when the directory could not name it. */
+  email?: string;
+  held: {
+    organisation: string;
+    organisationName?: string;
+    roles: string[];
+    /**
+     * The group the roles came through — the hop that explains the rest.
+     *
+     * Optional because a deployment answering the previous shape omits it, and a screen must degrade
+     * to "who holds what" rather than break on the missing "why".
+     */
+    viaGroups?: string[];
+  }[];
 }
 
 export interface JinbeAccessRule {
@@ -830,3 +907,10 @@ export interface AuditStreamEvent {
   severity?:      string;
   changes?:       import('./types').AuditChanges;
 }
+
+
+/** A group grants roles per organisation; `*` means every organisation the caller is in. */
+export type AuthorizationModel = {
+  groups: Record<string, Record<string, string[]>>;
+  roles: Record<string, string[]>;
+};
