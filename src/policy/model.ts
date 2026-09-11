@@ -91,3 +91,114 @@ export function permits(held: readonly string[] | undefined, required: string): 
  * this splits with them.
  */
 export const PRIVILEGED_MUTATION = 'admin.membership:write';
+
+/** One thing a group gives: a permission, in an organisation or in every one. */
+type Grant = { organisation: string; permission: string };
+
+/** Everything a group gives, before any comparison. */
+function reachOf(definition: GroupDefinition | undefined, catalogue: RoleCatalogue): Grant[] {
+  const reach: Grant[] = [];
+  for (const [organisation, roles] of Object.entries(definition ?? {})) {
+    for (const role of roles ?? []) {
+      for (const permission of catalogue[role] ?? []) reach.push({ organisation, permission });
+    }
+  }
+  return reach;
+}
+
+/**
+ * Whether a reach already gives this grant.
+ *
+ * Through the model's OWN implication on both axes: `*` covers any organisation, and `covers`
+ * decides the permission. Comparing the sets literally — which is what this first did — put
+ * `membership-admin` outside `platform-admin` because `admin:write` and `admin.membership:write` are
+ * different strings, and put `premium-operator` outside `platform-operator` because one names an
+ * organisation the other does not.
+ */
+function gives(reach: readonly Grant[], grant: Grant): boolean {
+  return reach.some(
+    held =>
+      (held.organisation === EVERY_ORGANISATION || held.organisation === grant.organisation) &&
+      covers(held.permission, grant.permission),
+  );
+}
+
+/**
+ * Whether one group gives everything another gives, and strictly more.
+ *
+ * DERIVED, never declared. A hierarchy somebody writes down drifts from the model the moment a role
+ * changes; this is a reading of the model itself, so it cannot disagree with what the engine
+ * decides.
+ *
+ * Strict on purpose: two groups giving exactly the same thing stand side by side rather than one
+ * under the other. And a group giving NOTHING is outside the relation entirely — otherwise every
+ * group would claim to stand above the base group, which says nothing about either.
+ */
+export function dominates(
+  above: GroupDefinition | undefined,
+  below: GroupDefinition | undefined,
+  catalogue: RoleCatalogue,
+): boolean {
+  const mine = reachOf(above, catalogue);
+  const theirs = reachOf(below, catalogue);
+  if (theirs.length === 0 || mine.length === 0) return false;
+  if (!theirs.every(grant => gives(mine, grant))) return false;
+  // Strictly more: otherwise they give the same thing and neither is above.
+  return !mine.every(grant => gives(theirs, grant));
+}
+
+/** Each group, and the groups it stands strictly above. */
+export function hierarchyOf(
+  groups: Record<string, GroupDefinition>,
+  catalogue: RoleCatalogue,
+): Record<string, string[]> {
+  const under: Record<string, string[]> = {};
+  for (const above of Object.keys(groups)) {
+    under[above] = Object.keys(groups)
+      .filter(below => below !== above && dominates(groups[above], groups[below], catalogue))
+      .sort();
+  }
+  return under;
+}
+
+/**
+ * What a group gives, in a sentence — read off the model rather than written beside it.
+ *
+ * A description somebody maintains says what a group was FOR; this says what it currently gives, so
+ * it cannot flatter a group whose roles have changed underneath it. It names the permissions rather
+ * than paraphrasing them: `admin.membership:write` is the thing that will be checked, and a reader
+ * deciding whether to hand a group out is better served by the string the engine matches than by a
+ * friendlier one that might not mean the same.
+ */
+export function summarise(
+  definition: GroupDefinition | undefined,
+  catalogue: RoleCatalogue,
+): string {
+  const reach = reachOf(definition, catalogue);
+  if (reach.length === 0) return 'Gives nothing.';
+
+  const everywhere = reach.filter(g => g.organisation === EVERY_ORGANISATION);
+  const scoped = reach.filter(g => g.organisation !== EVERY_ORGANISATION);
+  const parts: string[] = [];
+
+  if (everywhere.length > 0) {
+    parts.push(`${listed(everywhere)} in every organisation`);
+  }
+  if (scoped.length > 0) {
+    const organisations = new Set(scoped.map(g => g.organisation));
+    const where =
+      organisations.size === 1
+        ? 'in one organisation'
+        : `in ${organisations.size} organisations`;
+    parts.push(`${listed(scoped)} ${where}`);
+  }
+  return `${parts.join('; ')}.`;
+}
+
+/** The permissions of a set of grants, deduplicated and ordered, as a phrase. */
+function listed(grants: readonly Grant[]): string {
+  const permissions = [...new Set(grants.map(g => g.permission))].sort();
+  if (permissions.length === 1) return `Gives ${permissions[0]}`;
+  const last = permissions[permissions.length - 1];
+  return `Gives ${permissions.slice(0, -1).join(', ')} and ${last}`;
+}

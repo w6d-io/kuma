@@ -24,20 +24,26 @@ export function useApplyChange() {
           pipeline.run(target);
           refreshAudit();
         })
-        .catch((err: Error & { code?: string; status?: number; details?: { hint?: string } }) => {
+        .catch((err: Error & { code?: string; status?: number; applied?: boolean; details?: { hint?: string } }) => {
+          // A refusal leaves BOTH stores untouched — every gate runs before the first write, and the
+          // service says so in `applied: false`. Without that said out loud, an operator returning
+          // from a step-up sees the previous state and reads it as "some of it went through".
+          const nothingApplied = err.applied === false
+            ? ' Nothing was applied — the change was refused in full.'
+            : '';
           // Special-case the MFA gate so the toast tells the operator what
           // to do instead of dumping the raw error string.
           if (err.code === 'mfa_required') {
             pushToast(
               'MFA required · target user has no second factor',
-              { err: true, sub: err.details?.hint || err.message },
+              { err: true, sub: (err.details?.hint || err.message) + nothingApplied },
             );
             return;
           }
           if (err.code === 'privilege_escalation_blocked') {
             pushToast(
               'Privilege escalation blocked · needs admin.membership:write',
-              { err: true, sub: err.details?.hint || err.message },
+              { err: true, sub: (err.details?.hint || err.message) + nothingApplied },
             );
             return;
           }
@@ -47,7 +53,7 @@ export function useApplyChange() {
           if (err.code === 'reauth_required') {
             pushToast(
               'Two-factor re-verification required · redirecting to step-up',
-              { err: true, sub: err.details?.hint || err.message },
+              { err: true, sub: (err.details?.hint || err.message) + nothingApplied },
             );
             const authDomain = (window as any).__AUTH_DOMAIN__;
             if (authDomain) {

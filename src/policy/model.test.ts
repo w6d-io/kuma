@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scopesOf, grantsEveryOrganisation, resolveRoles, covers, permits } from './model';
+import { scopesOf, grantsEveryOrganisation, resolveRoles, covers, permits, hierarchyOf, summarise } from './model';
 
 // The screen this backs replaced one that read a catalogue from a database and laid it out as a
 // column per SERVICE. These tests pin the shape the model actually has: a scope per ORGANISATION,
@@ -119,5 +119,101 @@ describe('what a set of held permissions admits', () => {
   it('refuses an empty or absent set', () => {
     expect(permits([], 'admin:read')).toBe(false);
     expect(permits(undefined, 'admin:read')).toBe(false);
+  });
+});
+
+describe('which group stands above which', () => {
+  const ROLES = {
+    'platform-admin': ['admin:read', 'admin:write'],
+    'platform-auditor': ['admin:read'],
+    'membership-admin': ['admin:read', 'admin.membership:write'],
+    operator: ['context:read'],
+  };
+  const GROUPS = {
+    'platform-admin': { '*': ['platform-admin'] },
+    'platform-auditor': { '*': ['platform-auditor'] },
+    'membership-admin': { '*': ['membership-admin'] },
+    'platform-operator': { '*': ['operator'] },
+    'premium-operator': { 'org-premium': ['operator'] },
+  };
+
+  it('puts a group above one whose grants it entirely contains', () => {
+    const under = hierarchyOf(GROUPS, ROLES);
+    expect(under['platform-admin']).toContain('platform-auditor');
+    expect(under['membership-admin']).toContain('platform-auditor');
+  });
+
+  it('counts scope, so granting everywhere stands above granting in one organisation', () => {
+    // `platform-operator` gives `context:read` in every organisation; `premium-operator` gives it in
+    // one. The first therefore includes the second.
+    expect(hierarchyOf(GROUPS, ROLES)['platform-operator']).toEqual(['premium-operator']);
+  });
+
+  it('leaves unrelated branches unrelated', () => {
+    // Administering the platform and reading a tenant's context are not comparable, and pretending
+    // otherwise would invent a ranking the engine does not have.
+    const under = hierarchyOf(GROUPS, ROLES);
+    expect(under['platform-admin']).not.toContain('platform-operator');
+    expect(under['platform-operator']).not.toContain('platform-auditor');
+  });
+
+  it('does not put two equal groups above each other', () => {
+    const equal = { a: { '*': ['operator'] }, b: { '*': ['operator'] } };
+    expect(hierarchyOf(equal, ROLES)).toEqual({ a: [], b: [] });
+  });
+
+  it('stands above nothing when the other grants nothing', () => {
+    // A group conferring nothing is not "below" everything — it is outside the relation. Otherwise
+    // every group would claim to dominate the base group, which says nothing about either.
+    const withEmpty = { ...GROUPS, users: {} };
+    expect(hierarchyOf(withEmpty, ROLES)['platform-admin']).not.toContain('users');
+  });
+
+  it('places membership-admin under platform-admin, through the resource path', () => {
+    // `admin:write` covers `admin.membership:write`, so the reach of the first includes the second —
+    // but only because the model says so, not because the names look alike.
+    expect(hierarchyOf(GROUPS, ROLES)['platform-admin']).toContain('membership-admin');
+  });
+});
+
+describe('what a group gives, in a sentence', () => {
+  const ROLES = {
+    'platform-admin': ['admin:read', 'admin:write'],
+    'membership-admin': ['admin:read', 'admin.membership:write'],
+    operator: ['context:read'],
+  };
+
+  it('names the permissions the engine matches, not a friendlier paraphrase', () => {
+    // A reader deciding whether to hand a group out is better served by the string that will be
+    // checked than by prose that might not mean the same thing.
+    const said = summarise({ '*': ['membership-admin'] }, ROLES);
+    expect(said).toContain('admin.membership:write');
+    expect(said).toContain('admin:read');
+  });
+
+  it('says where, and every-organisation is said in words', () => {
+    expect(summarise({ '*': ['operator'] }, ROLES)).toContain('in every organisation');
+    expect(summarise({ 'org-premium': ['operator'] }, ROLES)).toContain('in one organisation');
+  });
+
+  it('counts organisations rather than listing identifiers', () => {
+    const said = summarise({ 'org-a': ['operator'], 'org-b': ['operator'] }, ROLES);
+    expect(said).toContain('in 2 organisations');
+  });
+
+  it('keeps the two scopes apart when a group has both', () => {
+    const said = summarise({ '*': ['operator'], 'org-a': ['membership-admin'] }, ROLES);
+    expect(said).toContain('in every organisation');
+    expect(said).toContain('in one organisation');
+  });
+
+  it('says so plainly when a group gives nothing', () => {
+    // The base group. "Gives nothing" is the fact; an empty sentence would read as unknown.
+    expect(summarise({}, ROLES)).toBe('Gives nothing.');
+    expect(summarise(undefined, ROLES)).toBe('Gives nothing.');
+  });
+
+  it('does not invent a permission for a role the catalogue omits', () => {
+    expect(summarise({ '*': ['ghost'] }, ROLES)).toBe('Gives nothing.');
   });
 });

@@ -37,6 +37,10 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
     throw Object.assign(new Error(msg), {
       status: res.status,
       code: body.error,
+      // Carried onto the error so a refusal can say it changed nothing. The service sets it on every
+      // gate refusal, and without it here the console can only show the previous state and leave the
+      // reader to guess whether part of the change went through.
+      applied: body.applied,
       details: body,
     });
   }
