@@ -9,9 +9,8 @@ import { DashboardPage } from './pages/Dashboard';
 import { UsersPage, UserDrawer } from './pages/Users';
 import { OrgAdminPage } from './pages/OrgAdmin';
 import { GroupsPage } from './pages/Groups';
-import { ServicesPage, ServiceDrawer } from './pages/Services';
 import { OrganizationsPage } from './pages/Organizations';
-import { EnforcedPage } from './pages/Enforced';
+import { ApisPage } from './pages/Apis';
 import { GrantAccess } from './pages/GrantAccess';
 import { AuditPage } from './pages/Audit';
 import { AccessReviewPage } from './pages/AccessReview';
@@ -35,10 +34,9 @@ const NAV: NavItem[] = [
   { id: "dashboard", name: "Overview",  ico: I.grid,    section: "Platform", perms: [] },
   { id: "users",     name: "Users",     ico: I.users,   section: "Platform", perms: ["admin:read"] },
   { id: "groups",    name: "Groups",    ico: I.group,   section: "Platform", perms: ["admin:read"] },
-  { id: "services",  name: "Services",  ico: I.service, section: "Policy",   perms: ["admin:read"] },
-  // What is in force, read from the cluster. Read-only, and the only screen that shows the objects
-  // the engines actually load rather than the model this console keeps.
-  { id: "enforced",  name: "Enforced",  ico: I.shield,  section: "Policy",   perms: ["admin:read"] },
+  // What protects each API and who can reach it, read from the objects the engines load. It replaced
+  // a "Services" workspace that edited a registry nothing reads — so it shows and does not offer.
+  { id: "apis",      name: "APIs",      ico: I.service, section: "Policy",   perms: ["admin:read"] },
   { id: "organizations", name: "Organizations", ico: I.globe, section: "Policy", perms: ["admin:read"] },
   { id: "audit",     name: "Audit log", ico: I.audit,   section: "Changes",  perms: ["admin:read"] },
   { id: "accessreview", name: "Access review", ico: I.shield, section: "Changes", perms: ["admin:read"] },
@@ -179,7 +177,6 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
               const count =
                 n.id === "users" ? (stats?.total ?? state.users.length) :
                 n.id === "groups" ? Object.keys(state.groups).length :
-                n.id === "services" ? state.services.length :
                 null;
               return (
                 <button key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => { setPage(n.id); onNavigate?.(); }}>
@@ -290,7 +287,7 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
 }
 
 function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { setPage, state, setServiceDrawer, setActiveService, setGrant, setTheme, theme } = useApp();
+  const { setPage, state, setGrant, setTheme, theme } = useApp();
   const [q, setQ] = useState("");
   const [idx, setIdx] = useState(0);
   useEffect(() => { if (open) { setQ(""); setIdx(0); } }, [open]);
@@ -310,12 +307,8 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
     const grps = Object.keys(state.groups).filter(match).slice(0, 6).map(g => ({
       kind: "group", label: `Group · ${g}`, sub: "groups.json", run: () => { setPage("groups"); }
     }));
-    const svcs = state.services.filter(s => match(s.name)).map(s => ({
-      kind: "service", label: `Service · ${s.name}`, sub: s.upstreamUrl || "virtual", run: () => { setActiveService(s.name); setPage("services"); }
-    }));
     const actions = [
       { kind: "action", label: "Grant access to a user", sub: "guided", run: () => { setGrant({}); } },
-      { kind: "action", label: "Register service", sub: "creates roles + route_map + rule", run: () => { setServiceDrawer({ mode: "create" }); } },
       { kind: "action", label: `Toggle ${theme === "dark" ? "light" : "dark"} theme`, sub: "ui", run: () => setTheme(theme === "dark" ? "light" : "dark") },
     ].filter(a => match(a.label));
     return [
@@ -323,7 +316,6 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
       { name: "Navigate", items: nav },
       { name: "Users", items: users },
       { name: "Groups", items: grps },
-      { name: "Services", items: svcs },
     ].filter(g => g.items.length > 0);
     // Context setters are stable; results recompute on q/state/theme/search only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -353,7 +345,7 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <div className="cmdk-wrap" onClick={onClose}>
       <div className="cmdk" onClick={e => e.stopPropagation()}>
-        <input autoFocus className="cmdk-input" placeholder="Search users, groups, services, actions…" value={q} onChange={e => { setQ(e.target.value); setIdx(0); }} />
+        <input autoFocus className="cmdk-input" placeholder="Search users, groups, actions…" value={q} onChange={e => { setQ(e.target.value); setIdx(0); }} />
         <div className="cmdk-list">
           {groups.length === 0 && <EmptyHint>No matches.</EmptyHint>}
           {groups.map(g => (
@@ -461,9 +453,9 @@ function AppShell() {
   // dashboard. A failed/401 session is handled by the Topbar redirect, not here.
   useEffect(() => {
     if (!sessionReady) return
-    // roles/routes/rules are aliases that render the Services workspace but have
+    // `enforced` is the old id of this screen, kept so a bookmark still opens it. It has
     // no NAV entry — resolve to the canonical id so they inherit the same gate.
-    const canonical = (page === 'roles' || page === 'routes' || page === 'rules') ? 'services' : page
+    const canonical = page === 'enforced' ? 'apis' : page
     const nav = NAV.find((n) => n.id === canonical)
     if (!nav) return
     if (!hasAnyPerm(session?.permissions, nav.perms)) {
@@ -494,8 +486,7 @@ function AppShell() {
             {page === "dashboard" && <DashboardPage />}
             {page === "users" && <UsersPage />}
             {page === "groups" && <GroupsPage />}
-            {(page === "services" || page === "roles" || page === "routes" || page === "rules") && <ServicesPage />}
-            {page === "enforced" && <EnforcedPage />}
+            {(page === "apis" || page === "enforced") && <ApisPage />}
             {page === "organizations" && <OrganizationsPage />}
             {page === "audit" && <AuditPage />}
             {page === "accessreview" && <AccessReviewPage />}
@@ -507,7 +498,6 @@ function AppShell() {
         </div>
       </div>
       <UserDrawer />
-      <ServiceDrawer />
       <GrantAccess />
       <CmdK open={cmdkOpen} onClose={() => setCmdkOpen(false)} />
       <TweaksPanel open={tweaksOpen} onClose={() => setTweaksOpen(false)} />

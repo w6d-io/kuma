@@ -220,7 +220,8 @@ export interface AppState {
 // from the type again. (It did once: 'recertification' was added to the type
 // but not to pageFromHash's hand-copied list — first click on the nav entry
 // bounced back to the dashboard.)
-export const PAGE_IDS = ['dashboard', 'users', 'groups', 'services', 'roles', 'routes', 'rules', 'audit', 'accessreview', 'recertification', 'settings', 'orgadmin', 'organizations', 'backup', 'enforced'] as const;
+// `enforced` is kept as the old id of `apis`: a bookmark still opens the screen it names.
+export const PAGE_IDS = ['dashboard', 'users', 'groups', 'apis', 'enforced', 'audit', 'accessreview', 'recertification', 'settings', 'orgadmin', 'organizations', 'backup'] as const;
 export type PageId = (typeof PAGE_IDS)[number];
 
 export interface TweakDefaults {
@@ -233,7 +234,6 @@ export interface TweakDefaults {
   showCounts: boolean;
   showMotion: boolean;
   navCollapsed: boolean;
-  matrixColor: boolean;
   levelStyle: string;
   wildcardWarn: boolean;
   simulateForbidden: boolean;

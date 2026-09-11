@@ -2,9 +2,17 @@ import { Fragment, useMemo, useState } from 'react';
 import { useEnforcedConfig } from '../api/hooks';
 import { YamlView, CopyButton } from '../components/YamlView';
 import { Chip, EmptyHint, Method } from '../components/ui/Primitives';
-import type { EnforcedDocument, EnforcedGrant, EnforcedRole } from '../api/client';
+import type { EnforcedDocument, EnforcedEdge, EnforcedGrant, EnforcedRole } from '../api/client';
+import { sharedTables, splitByKind } from '../policy/edges';
 
 /**
+ * What protects each API, and who can reach it.
+ *
+ * This screen replaced a "Services" workspace that kept its own registry of APIs — their roles,
+ * their route tables, their gateway rules — and let an operator edit it. Nothing read that registry
+ * any more, so the edits looked applied and changed nothing. The question the workspace existed to
+ * answer is still a real one; it is answered here, against the objects the engines actually load.
+ *
  * What actually decides, as it reads in the repository.
  *
  * This console used to EDIT these rules, and the engines used to fetch them from the service behind
@@ -115,6 +123,89 @@ function Chain({ permission, roles, grants }: { permission: string; roles: Enfor
   );
 }
 
+
+/**
+ * The rule, in the terms somebody asks in: what gets in, how it is identified, where it goes — and
+ * which route table decides it.
+ *
+ * That last row is not in the rule. The authorizer's payload names a service and the policy selects
+ * the table by that name, so a reader looking only at the rule cannot tell what decides it. Showing
+ * it here is the whole point: a rule can be perfectly formed and point at a table nothing declares.
+ */
+function EdgeSummary({ edge }: { edge: EnforcedEdge }) {
+  return (
+    <dl className="edge-summary">
+      <div>
+        <dt>Matches</dt>
+        <dd className="mono">{edge.url || <span className="muted">anything</span>}</dd>
+      </div>
+      <div>
+        <dt>Methods</dt>
+        <dd>{edge.methods.length > 0 ? edge.methods.join(' · ') : <span className="muted">any</span>}</dd>
+      </div>
+      <div>
+        <dt>Caller identified by</dt>
+        <dd>
+          {edge.authenticators.length > 0
+            ? edge.authenticators.map(a => <Chip key={a} tone="plain">{a}</Chip>)
+            /* An edge that identifies nobody forwards everybody, whatever the table below says. */
+            : <span style={{ color: 'var(--err)' }}>nothing — every caller is anonymous here</span>}
+        </dd>
+      </div>
+      <div>
+        <dt>Forwarded to</dt>
+        <dd className="mono">{edge.upstream ?? <span className="muted">—</span>}</dd>
+      </div>
+      <div>
+        <dt>Decided against</dt>
+        <dd>
+          {!edge.authorizesAs ? (
+            <span className="muted">
+              the edge configuration could not be read, so which table decides this rule is unknown
+            </span>
+          ) : (
+            <>
+              <Chip tone={edge.tableDeclared === false ? 'warn' : 'plain'}>{edge.authorizesAs}</Chip>
+              {edge.tableDeclared === false && (
+                <span className="small" style={{ color: 'var(--err)' }}>
+                  {' '}— no loaded document declares routes for it, so every call here is refused for
+                  a reason nothing on this rule shows.
+                </span>
+              )}
+            </>
+          )}
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
+/**
+ * Two rules decided against the same table.
+ *
+ * The service is named in the engine's payload, not in the rule, so rules that do not carry their
+ * own payload all inherit one value. With one API that is invisible; with two, the second is
+ * authorized against the first one's routes — and it reads as "everything is refused".
+ */
+function SharedTableWarning({ documents }: { documents: EnforcedDocument[] }) {
+  const shared = sharedTables(documents);
+  if (shared.length === 0) return null;
+
+  return (
+    <div className="panel edge-warning">
+      {shared.map(({ table, rules }) => (
+        <p key={table}>
+          <strong>{rules.length} rules are decided against the same route table.</strong>{' '}
+          <span className="mono">{rules.join(', ')}</span> all authorize as{' '}
+          <span className="mono">{table}</span>. The service is named in the engine&apos;s payload
+          rather than in the rule, so a rule that carries no payload of its own inherits that one
+          value — and is matched against another API&apos;s routes.
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function RouteTable({
   routes,
   roles,
@@ -187,7 +278,7 @@ function RouteTable({
   );
 }
 
-export function EnforcedPage() {
+export function ApisPage() {
   const query = useEnforcedConfig();
   const documents = useMemo(() => query.data ?? [], [query.data]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -196,6 +287,7 @@ export function EnforcedPage() {
   // almost never in the same document as the roles that satisfy them.
   const roles = useMemo(() => documents.flatMap(d => d.roles ?? []), [documents]);
   const grants = useMemo(() => documents.flatMap(d => d.grants ?? []), [documents]);
+  const { edges, model } = useMemo(() => splitByKind(documents), [documents]);
 
   const current = documents.find(d => `${d.kind}/${d.name}` === selected) ?? documents[0];
 
@@ -230,29 +322,50 @@ export function EnforcedPage() {
 
   return (
     <div className="enforced">
+      <div className="page-head">
+        <div>
+          <h1>APIs</h1>
+          <div className="sub">
+            What protects each one, and who can reach it — read from the objects the engines load
+          </div>
+        </div>
+      </div>
+
       <div className="enforced-note small muted">
         Read-only. These objects are synced from Git by Argo — change them there, not here. What you
         see is the object each engine loads, not a rendering of it.
       </div>
 
+      <SharedTableWarning documents={edges} />
+
       <div className="enforced-split">
         <aside className="enforced-list" aria-label="Enforced documents">
-          {documents.map(d => {
-            const id = `${d.kind}/${d.name}`;
-            return (
-              <button
-                key={id}
-                className={`enforced-item ${current && id === `${current.kind}/${current.name}` ? 'active' : ''}`}
-                onClick={() => setSelected(id)}
-              >
-                <span className="enforced-item-head">
-                  <span className="mono">{d.name}</span>
-                  <Chip tone="plain">{d.kind}</Chip>
-                </span>
-                <span className="enforced-item-decides small muted">{d.decides}</span>
-              </button>
-            );
-          })}
+          {/* APIs first, the shared model after: a reader comes here for an API, and the model is
+              the thing every one of them is decided against rather than one more entry in the list. */}
+          {[
+            { heading: 'APIs', items: edges },
+            { heading: 'The model they are decided against', items: model },
+          ].map(group => group.items.length === 0 ? null : (
+            <Fragment key={group.heading}>
+              <h2 className="enforced-group">{group.heading}</h2>
+              {group.items.map(d => {
+                const id = `${d.kind}/${d.name}`;
+                return (
+                  <button
+                    key={id}
+                    className={`enforced-item ${current && id === `${current.kind}/${current.name}` ? 'active' : ''}`}
+                    onClick={() => setSelected(id)}
+                  >
+                    <span className="enforced-item-head">
+                      <span className="mono">{d.name}</span>
+                      {d.edge?.tableDeclared === false && <Chip tone="warn">no route table</Chip>}
+                    </span>
+                    <span className="enforced-item-decides small muted">{d.decides}</span>
+                  </button>
+                );
+              })}
+            </Fragment>
+          ))}
         </aside>
 
         {current && (
@@ -271,6 +384,8 @@ export function EnforcedPage() {
                 <CopyButton text={current.yaml} />
               </span>
             </header>
+            {/* For a rule, the summary is what the reader came for; the object stays below it. */}
+            {current.edge && <EdgeSummary edge={current.edge} />}
             {current.routes && current.routes.length > 0 && !asYaml
               ? <RouteTable routes={current.routes} roles={roles} grants={grants} />
               : <YamlView value={current.yaml} ariaLabel={`${current.kind} ${current.name} as YAML`} />}

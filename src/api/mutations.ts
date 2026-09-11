@@ -62,10 +62,6 @@ export async function withOptimism<T>(
 
 type GroupsList = { name: string; services: Record<string, string[]>; system?: boolean; description?: string }[];
 type GroupsMap = Record<string, Record<string, string[]>>;
-type RolesMapCache = Record<string, Record<string, string[]>>;
-type RouteMapsCache = Record<string, { method: string; path: string; permission?: string }[]>;
-type ServicesList = { name: string; [k: string]: unknown }[];
-type AccessRulesList = { id: string; [k: string]: unknown }[];
 // Infinite-query cache shape for the directory (['users', <search>]).
 type UsersInfinite = {
   pages: { users: { id: string; email: string; groups: string[]; active: boolean; organizationId?: string; organizations?: string[] }[]; nextPageToken?: string }[];
@@ -95,25 +91,6 @@ export const cachePatch = {
       delete next[name];
       return next;
     });
-  },
-  setServiceRoles(qc: QueryClient, svc: string, roles: Record<string, string[]>) {
-    patch<RolesMapCache>(qc, ['all-roles'], (m) => ({ ...m, [svc]: roles }));
-  },
-  setServiceRoutes(qc: QueryClient, svc: string, routes: RouteMapsCache[string]) {
-    patch<RouteMapsCache>(qc, ['all-routes'], (m) => ({ ...m, [svc]: routes }));
-  },
-  updateService(qc: QueryClient, name: string, fields: Record<string, unknown>) {
-    patch<ServicesList>(qc, ['services'], (list) =>
-      list.map((s) => (s.name === name ? { ...s, ...fields } : s)),
-    );
-  },
-  removeService(qc: QueryClient, name: string) {
-    patch<ServicesList>(qc, ['services'], (list) => list.filter((s) => s.name !== name));
-  },
-  updateAccessRule(qc: QueryClient, id: string, fields: Record<string, unknown>) {
-    patch<AccessRulesList>(qc, ['access-rules'], (list) =>
-      list.map((r) => (r.id === id ? { ...r, ...fields } : r)),
-    );
   },
   // Directory is an infinite query keyed ['users', <search>]; patch the matching
   // user across whatever pages are loaded. Prefix-matched so it hits every
