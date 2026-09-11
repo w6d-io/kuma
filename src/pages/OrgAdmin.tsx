@@ -4,6 +4,7 @@ import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, EmptyHint, Switch } from '../components/ui/Primitives';
 import { type KratosIdentity } from '../api/client';
+import { bounceToStepUp } from '../lib/stepUp';
 import {
   useMyOrganizations,
   useMyOrganizationNames,
@@ -31,14 +32,8 @@ function makeToastErr(pushToast: PushToast) {
     }
     // R2 step-up: re-verify a recent second factor, then return to retry.
     if (e.code === 'reauth_required') {
-      pushToast('Two-factor re-verification required · redirecting to step-up', { err: true, sub: e.details?.hint || e.message });
-      const authDomain = (window as any).__AUTH_DOMAIN__;
-      if (authDomain) {
-        const returnTo = window.location.href;
-        setTimeout(() => {
-          window.location.href = `https://${authDomain}/login?aal=aal2&refresh=true&return_to=${encodeURIComponent(returnTo)}`;
-        }, 1500);
-      }
+      pushToast('Two-factor re-verification required', { err: true, sub: 'You will be sent to re-verify your second factor, then back here to retry. This is not a sign-out.' });
+      bounceToStepUp();
       return;
     }
     if (e.status === 403) {
