@@ -3,7 +3,6 @@ import type { AppState, User } from '../api/types';
 
 export function accessLevelOf(perms: string[]): string {
   if (!perms || perms.length === 0) return "none";
-  if (perms.includes("*")) return "admin";
   const has = (re: RegExp) => perms.some(p => re.test(p));
   if (has(/:(delete|grant|revoke|admin|manage|destroy)\b/)) return "manage";
   if (has(/:(create|update|write|deploy|publish|edit|apply)\b/)) return "write";
@@ -16,15 +15,7 @@ export const LevelMeta: Record<string, { label: string; order: number; desc: str
   read:   { label: "read",   order: 1, desc: "view-only access" },
   write:  { label: "write",  order: 2, desc: "create / update" },
   manage: { label: "manage", order: 3, desc: "destructive ops" },
-  admin:  { label: "admin",  order: 4, desc: "wildcard \u00b7 full control" },
-};
-
-export const ROLE_LEVEL: Record<string, number> = {
-  super_admin: 4, admin: 4,
-  operator: 3,
-  editor: 2, scheduler: 2,
-  support: 1, auditor: 1, billing_reader: 1,
-  viewer: 0,
+  admin:  { label: "admin",  order: 4, desc: "the whole administration surface" },
 };
 
 export function resolvePerms(user: User, state: AppState) {
