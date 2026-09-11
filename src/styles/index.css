@@ -2011,6 +2011,15 @@ table {
 /* A list beside the thing it selects. On a phone the two cannot share a row: the list gets a column
    too narrow to read and the panel wraps character by character. Stacked below the same breakpoint
    the shell uses, with the list first because it is what you act on. */
+/* A flow of cards, not a master/detail pane. Reusing `.list-detail` here put every other card in
+   its 280px column and the rest in the 1fr one, so they staggered. */
+.group-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
 .list-detail {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);

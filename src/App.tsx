@@ -213,7 +213,8 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
       <div className="sidebar-foot">
         <UserMenu
           email={session?.email || "you@console"}
-          role={session?.roles?.[0] || ""}
+          /* Every role, not the first one alphabetically: holding two, the rail named the weaker. */
+          role={(session?.roles ?? []).join(" · ")}
           onOpenTweaks={onOpenTweaks}
           onOpenSettings={() => {
             // Account settings live on the auth domain — opened in a new tab so this session stays
