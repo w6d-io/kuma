@@ -8,6 +8,11 @@
 /* The palette lives in styles/theme.css, mapped onto the Strada design system, and every name below
    reads from there. Kept out of this file so a design-system change is one diff in one place, and so
    nothing here can quietly disagree with the dark theme. */
+/* Bundled from the package, not fetched from a CDN: the console must not need a third party to be
+   reachable to draw its own controls. */
+@import '@fortawesome/fontawesome-free/css/fontawesome.css';
+@import '@fortawesome/fontawesome-free/css/solid.css';
+
 @import './vendor/strada-tokens.css';
 @import './theme.css';
 
@@ -1906,7 +1911,11 @@ table {
   display: inline-grid; place-items: center;
   flex: none;
 }
-.chip-ico svg { width: 11px; height: 11px; }
+.chip-ico i { font-size: 10px; line-height: 1; }
+
+/* Same idea outside a chip: an icon that sits on the text's baseline rather than on its own. */
+.kv-ico { width: 11px; height: 11px; display: inline-grid; place-items: center; vertical-align: -1px; }
+.kv-ico i { font-size: 10px; line-height: 1; }
 
 .enforced-group {
   font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;

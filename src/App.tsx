@@ -133,7 +133,7 @@ function RailDrawer({ onOpenTweaks }: { onOpenTweaks: () => void }) {
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger className="burger" aria-label="Menu">
-        <span aria-hidden="true">☰</span>
+        <span aria-hidden="true" style={{ width: 16, height: 16, display: 'grid', placeItems: 'center' }}>{I.menu}</span>
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="rail-scrim" />

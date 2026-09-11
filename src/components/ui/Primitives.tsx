@@ -175,7 +175,7 @@ export function MultiSelectPills({ options, selected, onToggle, empty }: {
             onClick={() => onToggle(o)}
             style={{ cursor: "pointer", fontWeight: 500, background: on ? "var(--accent)" : "var(--panel-2)", color: on ? "white" : "var(--ink-2)", borderColor: on ? "var(--accent)" : "var(--line)" }}
           >
-            {on && <span style={{ fontSize: 10 }}>✓</span>} {o}
+            {on && <span className="kv-ico">{I.check}</span>} {o}
           </button>
         );
       })}
@@ -285,7 +285,7 @@ export function StageRow({
         <div className={`vstage-sum${tone ? ` tone-${tone}` : ""}`}>{summary}</div>
       </div>
       {headerAside}
-      {!readOnly && <span className="vstage-chev" aria-hidden="true">{open ? "▾" : "▸"}</span>}
+      {!readOnly && <span className="vstage-chev kv-ico" aria-hidden="true">{open ? I.caret : I.caretRight}</span>}
     </>
   );
   return (
@@ -313,7 +313,7 @@ export function AdvancedDisclosure({ label = "Advanced", note, defaultOpen = fal
   return (
     <div className="advanced">
       <button type="button" className="advanced-toggle" aria-expanded={open} onClick={() => setOpen(o => !o)}>
-        <span aria-hidden="true">{open ? "▾" : "▸"}</span> {label}
+        <span className="kv-ico" aria-hidden="true">{open ? I.caret : I.caretRight}</span> {label}
         {note && <span className="muted small" style={{ fontWeight: 400 }}> · {note}</span>}
       </button>
       {open && <div className="advanced-body">{children}</div>}
