@@ -5,6 +5,7 @@ import { useSession, useStats, useRealtime, useUserSearch } from './api/hooks';
 import { searchedToUser } from './api/transforms';
 import { I } from './components/ui/Icons';
 import { THEMES, nextTheme, themeLabel } from './theme';
+import { permits } from './policy/model';
 import { Switch, Toasts, EmptyHint } from './components/ui/Primitives';
 import { DashboardPage } from './pages/Dashboard';
 import { UsersPage, UserDrawer } from './pages/Users';
@@ -90,11 +91,17 @@ function redirectToCookieLogin(metaAuthDomain: string | undefined, opts?: { refr
 }
 
 /** True if user has any of the required permissions or holds the wildcard "*". */
+/**
+ * Whether this session admits any of the permissions a screen asks for.
+ *
+ * Through the model's own coverage rule rather than an exact match, so `admin:write` admits
+ * `admin.membership:write` here exactly as it does at the engine. The `*` shortcut is gone with the
+ * wildcard: no role carries one, and treating it as a pass let the console open screens on a
+ * permission the model does not define.
+ */
 function hasAnyPerm(userPerms: string[] | undefined, required: string[]): boolean {
   if (required.length === 0) return true
-  if (!userPerms || userPerms.length === 0) return false
-  if (userPerms.includes("*")) return true
-  return required.some((r) => userPerms.includes(r))
+  return required.some((r) => permits(userPerms, r))
 }
 
 /**
