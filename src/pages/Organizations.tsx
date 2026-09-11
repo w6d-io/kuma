@@ -15,12 +15,13 @@ import {
   useSession,
 } from '../api/hooks';
 import { InviteDrawer } from './OrgAdmin';
+import { PRIVILEGED_MUTATION, permits } from '../policy/model';
 
-// The Organizations hub — the super_admin's platform-level view of EVERY
+// The Organizations hub — the platform-level view of EVERY
 // tenant, as opposed to the delegated "Org Admin" tab (a member's self-service
 // view of only the orgs they administer). Organizations aren't a first-class
 // entity in jinbe; they're implied by the org→service BUNDLE map + the org ids
-// identities carry, and /me/organizations returns that union for a super_admin.
+// identities carry; /admin/organizations answers the platform-wide question.
 //
 // Each org bundles a SET of services (J14 org-service entitlement model): its
 // people can be granted roles from any service in the bundle. Setup used to be
@@ -139,7 +140,9 @@ export function OrganizationsPage() {
 function OrgDetail({ org, services }: { org: string; services: string[] }) {
   const { setGrant, pushToast } = useApp();
   const { data: session } = useSession();
-  const actorIsSuperAdmin = (session?.roles || []).includes('super_admin');
+  // The permission the mutation checks, not a role NAME. `super_admin` is not a role this model
+  // defines, so this test was false for everybody and greyed the control for its only holders.
+  const mayAdminister = permits(session?.permissions, PRIVILEGED_MUTATION);
   const usersQ = useOrgUsers(org);
   const assignableQ = useAssignableGroups(org);
   const assignable = useMemo(() => assignableQ.data ?? [], [assignableQ.data]);
@@ -200,13 +203,13 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
 
       {/* Administrators — the org's per-org admin roster (data.org_admin_map). An
           admin manages this org's members, scoped to its bundle. Assigning is
-          super_admin-only + step-up gated (enforced by jinbe). */}
+          Gated on admin.membership:write plus a recent second factor, enforced by jinbe. */}
       <div className="panel mb-12" style={{ padding: 14 }}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontWeight: 500, fontSize: 12.5 }}>Administrators</div>
             <div className="small muted" style={{ marginTop: 2 }}>
-              People who can manage this org's members (scoped to its bundle). Only super_admins can change this.
+              People who can manage this org's members (scoped to its bundle). Changing it needs admin.membership:write.
             </div>
             <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {roster.length === 0
@@ -214,7 +217,7 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
                 : roster.map(a => <Chip key={a} tone="accent">{a}</Chip>)}
             </div>
           </div>
-          {actorIsSuperAdmin && (
+          {mayAdminister && (
             <button className="btn ghost sm" onClick={() => setEditAdmins(true)}>{roster.length ? 'Edit admins' : 'Add admins'}</button>
           )}
         </div>
@@ -371,7 +374,7 @@ function BundleDrawer({ org, current, onClose, onRequestClear }: {
 
 // The org admin ROSTER editor (data.org_admin_map). A PUT replaces the org's
 // ENTIRE roster with the selected emails; an empty roster is allowed (it clears
-// the org's admins). super_admin + a recent second factor are enforced by jinbe;
+// the org's admins). admin.membership:write + a recent second factor are enforced by jinbe;
 // a stale factor returns 422 reauth_required, handled here with a step-up bounce.
 // The picker offers the org's members (you can't administer an org you don't
 // belong to — jinbe's manageable_orgs also enforces this), unioned with any
@@ -423,7 +426,7 @@ function AdminsDrawer({ org, current, members, onClose }: {
       title="Edit administrators"
       footer={
         <>
-          <span className="small muted">super_admin + recent 2FA required.</span>
+          <span className="small muted">Needs admin.membership:write and a recent second factor.</span>
           <div className="row">
             <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
             <button className="btn primary" onClick={save} disabled={!dirty || busy}>{busy ? 'Saving…' : 'Save admins'}</button>

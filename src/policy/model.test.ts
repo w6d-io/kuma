@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scopesOf, grantsEveryOrganisation, resolveRoles } from './model';
+import { scopesOf, grantsEveryOrganisation, resolveRoles, covers, permits } from './model';
 
 // The screen this backs replaced one that read a catalogue from a database and laid it out as a
 // column per SERVICE. These tests pin the shape the model actually has: a scope per ORGANISATION,
@@ -72,5 +72,52 @@ describe('what a set of roles carries', () => {
       permissions: [],
       undefined: [],
     });
+  });
+});
+
+describe('whether a held permission covers a required one', () => {
+  it('admits an ancestor of the required resource', () => {
+    expect(covers('admin:write', 'admin.membership:write')).toBe(true);
+    expect(covers('admin:write', 'admin.membership.bulk:write')).toBe(true);
+  });
+
+  it('admits the exact permission', () => {
+    expect(covers('admin.membership:write', 'admin.membership:write')).toBe(true);
+    expect(covers('context:read', 'context:read')).toBe(true);
+  });
+
+  it('refuses a descendant standing in for its ancestor', () => {
+    expect(covers('admin.membership:write', 'admin:write')).toBe(false);
+  });
+
+  it('refuses a sibling', () => {
+    expect(covers('admin.membership:write', 'admin.organisation:write')).toBe(false);
+  });
+
+  it('does not let one verb imply another', () => {
+    // A role that reads and writes carries both — a line to read rather than a rule to remember.
+    expect(covers('admin:write', 'admin.membership:read')).toBe(false);
+    expect(covers('admin:read', 'admin:write')).toBe(false);
+  });
+
+  it('treats the dot as the boundary, not the string prefix', () => {
+    expect(covers('admin.member:write', 'admin.membership:write')).toBe(false);
+    expect(covers('context:read', 'contexts:read')).toBe(false);
+  });
+
+  it('gives no meaning to a wildcard, because the model defines none', () => {
+    // The console used to pass its own checks on `*`, which no role carries any more.
+    expect(covers('*', 'admin:read')).toBe(false);
+  });
+});
+
+describe('what a set of held permissions admits', () => {
+  it('admits when any one of them covers it', () => {
+    expect(permits(['context:read', 'admin:write'], 'admin.membership:write')).toBe(true);
+  });
+
+  it('refuses an empty or absent set', () => {
+    expect(permits([], 'admin:read')).toBe(false);
+    expect(permits(undefined, 'admin:read')).toBe(false);
   });
 });

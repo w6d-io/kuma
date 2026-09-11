@@ -36,7 +36,7 @@ export function useApplyChange() {
           }
           if (err.code === 'privilege_escalation_blocked') {
             pushToast(
-              'Privilege escalation blocked · super_admin required',
+              'Privilege escalation blocked · needs admin.membership:write',
               { err: true, sub: err.details?.hint || err.message },
             );
             return;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession, useUsers, useGroupsMap, useUserSearch, useStats, useMyOrganizations, useUserIdentity, useAuditEvents } from '../api/hooks';
+import { useSession, useUsers, useGroupsMap, useUserSearch, useStats, useMyOrganizations, useUserIdentity, useAuditEvents, useAuthorizationModel } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, Switch, ConfirmDialog, EmptyHint } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
@@ -11,6 +11,7 @@ import { RiskBadge, riskOf } from './Audit';
 import type { User, AuditEvent } from '../api/types';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { PRIVILEGED_MUTATION, permits } from '../policy/model';
 
 // Small debounce so typing a name doesn't re-filter (and, for emails, re-query
 // the server) on every keystroke.
@@ -172,6 +173,9 @@ export function UserDrawer() {
    * everybody; and the names on offer were not the ones the policy knows, so assigning one wrote a
    * membership that granted nothing while looking like it had worked.
    */
+  // "Privileged" means what it means to the engine: granting in every organisation. Read from the
+  // same model, so the warning on a row and the refusal behind it cannot disagree.
+  const modelGroups = useAuthorizationModel().data?.groups ?? {};
   const assignable = useQuery({
     queryKey: ['assignable-groups'],
     queryFn: () => api.assignableGroups(),
@@ -249,7 +253,7 @@ export function UserDrawer() {
     return rows.map((g, i) => {
       const on = checked.includes(g);
       const known = offered.includes(g);
-      const privileged = isPrivilegedGroup(g, state);
+      const privileged = isPrivilegedGroup(g, modelGroups);
       // MFA gate (frontend mirror of jinbe's backend refusal): a privileged group cannot be picked
       // for a target user without a second factor.
       const blockedByMfa = privileged && targetMfa === false && !on;
@@ -516,7 +520,9 @@ function OrgMembershipTab({ user }: { user: User }) {
   const { apiSetUserOrganization, apiSetUserOrganizations } = useApp();
   const applyChange = useApplyChange();
   const { data: session } = useSession();
-  const actorIsSuperAdmin = (session?.roles || []).includes('super_admin');
+  // Editing somebody's organisations is gated on the permission the mutation checks. A role NAME
+  // this model does not define greyed the whole tab for the very people who may change it.
+  const mayEditMemberships = permits(session?.permissions, PRIVILEGED_MUTATION);
 
   const identityQ = useUserIdentity(user.id);
   const identity = identityQ.data;
@@ -587,7 +593,7 @@ function OrgMembershipTab({ user }: { user: User }) {
   const savePrimary = () =>
     applyChange("organization", user.email, () => apiSetUserOrganization(user.id, primary.trim() || undefined));
   const saveAdditional = () => {
-    if (!actorIsSuperAdmin) return;
+    if (!mayEditMemberships) return;
     applyChange("organizations", user.email, () => apiSetUserOrganizations(user.id, additional));
   };
 
@@ -651,13 +657,13 @@ function OrgMembershipTab({ user }: { user: User }) {
                     style={{
                       display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
                       borderBottom: i < candidates.length - 1 ? "1px solid var(--line)" : "none",
-                      cursor: actorIsSuperAdmin ? "pointer" : "not-allowed",
+                      cursor: mayEditMemberships ? "pointer" : "not-allowed",
                       background: on ? "var(--accent-soft)" : "transparent",
-                      opacity: actorIsSuperAdmin ? 1 : 0.6,
+                      opacity: mayEditMemberships ? 1 : 0.6,
                     }}
                     title={o}
                   >
-                    <input type="checkbox" checked={on} disabled={!actorIsSuperAdmin} onChange={() => toggle(o)} />
+                    <input type="checkbox" checked={on} disabled={!mayEditMemberships} onChange={() => toggle(o)} />
                     <span className="mono small" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{o}</span>
                     {on && <Chip tone="ok">member</Chip>}
                   </label>
@@ -672,24 +678,24 @@ function OrgMembershipTab({ user }: { user: User }) {
             style={{ flex: 1 }}
             placeholder="Add organization by ID…"
             value={addId}
-            disabled={!actorIsSuperAdmin}
+            disabled={!mayEditMemberships}
             onChange={e => setAddId(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addById(); } }}
           />
-          <button className="btn" onClick={addById} disabled={!actorIsSuperAdmin || !addId.trim()}>Add</button>
+          <button className="btn" onClick={addById} disabled={!mayEditMemberships || !addId.trim()}>Add</button>
         </div>
 
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
           <span className="small muted">
-            {actorIsSuperAdmin
+            {mayEditMemberships
               ? "Replaces the additional-org list; the primary org is unaffected."
               : "Multi-org assignment requires super_admin."}
           </span>
           <button
             className="btn primary"
             onClick={saveAdditional}
-            disabled={!actorIsSuperAdmin || !additionalChanged}
-            title={!actorIsSuperAdmin ? "Requires super_admin" : undefined}
+            disabled={!mayEditMemberships || !additionalChanged}
+            title={!mayEditMemberships ? "Needs admin.membership:write" : undefined}
           >
             Apply additional orgs
           </button>

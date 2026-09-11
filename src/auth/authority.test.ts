@@ -24,7 +24,8 @@ describe('emptyOrganisationsHint', () => {
     const hint = emptyOrganisationsHint('delegated', 'UAM');
 
     expect(hint.actionable).toBe(true);
-    expect(hint.message).toContain('org-admin group');
+    // Names a group to be added to, not a role the model no longer defines.
+    expect(hint.message).toContain('group that grants');
     // The name of an external directory has no business here: nothing outside decided this.
     expect(hint.message).not.toContain('UAM');
   });

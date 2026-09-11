@@ -6,9 +6,9 @@ import { useStore } from '../api/store';
 import { withOptimism, cachePatch } from '../api/mutations';
 import { api } from '../api/client';
 import { ConfirmDialog } from '../components/ui/Primitives';
+import { applyTheme, nextTheme, storeTheme, storedTheme, type Theme } from '../theme';
 
 const TWEAK_DEFAULTS: TweakDefaults = {
-  theme: "light",
   persona: "admin",
   density: "comfortable",
   accent: "terracotta",
@@ -78,8 +78,9 @@ interface AppContextType {
   pushToast: (msg: string, opts?: { err?: boolean; sub?: string; ttl?: number }) => void;
   toasts: Toast[];
   pipeline: PipelineState;
-  theme: string;
-  setTheme: (t: string) => void;
+  theme: Theme;
+  setTheme: (t: Theme) => void;
+  cycleTheme: () => void;
   persona: string;
   setPersona: (p: string) => void;
   tweaks: TweakDefaults;
@@ -262,7 +263,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [grant, setGrant] = useState<GrantState | null>(null);
   const [auditFocus, setAuditFocus] = useState<AuditFocus | null>(null);
 
-  const [theme, setThemeRaw] = useState(TWEAK_DEFAULTS.theme);
+  const [theme, setThemeRaw] = useState<Theme>(storedTheme());
   const [persona, setPersonaRaw] = useState(TWEAK_DEFAULTS.persona);
   const [tweaks, setTweaksRaw] = useState<TweakDefaults>(TWEAK_DEFAULTS);
 
@@ -272,12 +273,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setTweak = (key: string, val: unknown) => {
     setTweaksRaw(t => ({ ...t, [key]: val }));
   };
-  const setTheme = (t: string) => { setThemeRaw(t); setTweak("theme", t); };
+  const setTheme = useCallback((t: Theme) => {
+    setThemeRaw(t);
+    storeTheme(t);
+    applyTheme(t);
+  }, []);
+  /** The rail's button: the same setting, reached in one click. */
+  const cycleTheme = useCallback(() => setTheme(nextTheme(theme)), [theme, setTheme]);
   const setPersona = (p: string) => { setPersonaRaw(p); setTweak("persona", p); };
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-  }, [theme]);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -357,7 +360,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     grant, setGrant,
     auditFocus, setAuditFocus,
     pushToast, toasts, pipeline,
-    theme, setTheme, persona, setPersona,
+    theme, setTheme, cycleTheme, persona, setPersona,
     tweaks, setTweak,
     apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata, apiSetUserOrganization, apiSetUserOrganizations, apiSendRecoveryEmail,
   };
