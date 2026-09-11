@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession, useUserSearch } from '../api/hooks';
+import { useSession, useUserSearch, useAuthorizationModel } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, AccessLevel } from '../components/ui/Primitives';
 import { accessLevelOf, resolvePerms, isPrivilegedGroup } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
 import { searchedToUser } from '../api/transforms';
 import type { User } from '../api/types';
+import { PRIVILEGED_MUTATION, permits } from '../policy/model';
 
 // Intent-first "Grant access" wizard. The RBAC data model is service → role →
 // group → user; the old assign drawer made an operator assemble that graph by
@@ -47,9 +48,11 @@ export function GrantAccess() {
   const { grant, setGrant, state, apiSetUserGroups, setUserDrawer } = useApp();
   const applyChange = useApplyChange();
   const { data: session } = useSession();
-  // Privilege-escalation guard mirror: only super_admin actors can grant groups
-  // that confer admin power. jinbe rejects the mutation as 422 either way.
-  const actorIsSuperAdmin = (session?.roles || []).includes('super_admin');
+  // Mirror of jinbe's escalation guard: handing out a group held in every organisation needs the
+  // permission below. jinbe refuses with 422 either way; this only greys the control and says why.
+  const mayGrantPrivileged = permits(session?.permissions, PRIVILEGED_MUTATION);
+  // From the model the engine decides against, so "privileged" here means what it means there.
+  const modelGroups = useAuthorizationModel().data?.groups ?? {};
 
   const [step, setStep] = useState<Step>('who');
   const [selected, setSelected] = useState<User | null>(null);
@@ -95,7 +98,7 @@ export function GrantAccess() {
           services,
           perms: [...new Set(flat)],
           level: flat.length === 0 ? 'none' : accessLevelOf(flat),
-          privileged: isPrivilegedGroup(g, state),
+          privileged: isPrivilegedGroup(g, modelGroups),
         };
       })
       .filter((o) => {
@@ -118,8 +121,8 @@ export function GrantAccess() {
 
   // A newly-added privileged group is what triggers the gates (holding one you
   // already have is fine — this is about escalation, not the status quo).
-  const escalating = groups.filter((g) => !before.has(g) && isPrivilegedGroup(g, state));
-  const actorBlock = escalating.length > 0 && !actorIsSuperAdmin;
+  const escalating = groups.filter((g) => !before.has(g) && isPrivilegedGroup(g, modelGroups));
+  const actorBlock = escalating.length > 0 && !mayGrantPrivileged;
   const mfaBlock = escalating.length > 0 && user?.mfa === false;
 
   const pick = (u: User) => {
@@ -292,11 +295,11 @@ export function GrantAccess() {
             )}
             {outcomes.map((o, i) => {
               const on = groups.includes(o.g);
-              const blockedByActor = o.privileged && !actorIsSuperAdmin && !on;
+              const blockedByActor = o.privileged && !mayGrantPrivileged && !on;
               const blockedByMfa = o.privileged && user.mfa === false && !on;
               const blocked = blockedByActor || blockedByMfa;
               const title = blockedByActor
-                ? `“${o.g}” grants admin privileges. Only super_admins may assign it.`
+                ? `“${o.g}” grants in every organisation. Assigning it needs admin.membership:write.`
                 : blockedByMfa
                 ? `“${o.g}” grants admin privileges. ${user.name} must enroll a second factor (TOTP / security key / backup codes) first.`
                 : undefined;
@@ -316,7 +319,7 @@ export function GrantAccess() {
                     <span style={{ fontWeight: 500, fontSize: 12.5, flex: 1 }}>
                       {o.g}
                       {o.privileged && <Chip tone="warn" title="Grants admin power">🔒 privileged</Chip>}
-                      {blockedByActor && <Chip tone="err">super_admin only</Chip>}
+                      {blockedByActor && <Chip tone="err">needs admin.membership:write</Chip>}
                       {blockedByMfa && !blockedByActor && <Chip tone="err">2FA required</Chip>}
                     </span>
                     <AccessLevel level={o.level} compact />
@@ -344,7 +347,7 @@ export function GrantAccess() {
             <div className="panel mb-12" style={{ padding: 12, border: '1px solid var(--red, #ef4444)', color: 'var(--red, #ef4444)' }}>
               <div style={{ fontWeight: 500, fontSize: 12.5 }}>Can't apply — privileged grant blocked</div>
               <div className="small" style={{ marginTop: 4, color: 'var(--ink-2)' }}>
-                {actorBlock && <>Assigning <b>{escalating.join(', ')}</b> confers admin power; only a super_admin can grant it. </>}
+                {actorBlock && <>Assigning <b>{escalating.join(', ')}</b> grants in every organisation; that needs admin.membership:write. </>}
                 {mfaBlock && <>{user.name} must enroll a second factor before receiving <b>{escalating.join(', ')}</b>. </>}
                 jinbe enforces this regardless (422).
               </div>
@@ -358,7 +361,7 @@ export function GrantAccess() {
                 {added.map((g) => (
                   <div key={g} className="row" style={{ gap: 8, marginBottom: 6 }}>
                     <Chip tone="ok">+ add</Chip><span className="mono small">{g}</span>
-                    {isPrivilegedGroup(g, state) && <Chip tone="warn">🔒</Chip>}
+                    {isPrivilegedGroup(g, modelGroups) && <Chip tone="warn">🔒</Chip>}
                   </div>
                 ))}
                 {removed.map((g) => (

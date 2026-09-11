@@ -225,7 +225,6 @@ export const PAGE_IDS = ['dashboard', 'users', 'groups', 'apis', 'enforced', 'au
 export type PageId = (typeof PAGE_IDS)[number];
 
 export interface TweakDefaults {
-  theme: string;
   persona: string;
   density: string;
   accent: string;

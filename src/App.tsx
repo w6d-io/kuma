@@ -4,6 +4,7 @@ import { AppProvider, useApp } from './contexts/AppContext';
 import { useSession, useStats, useRealtime, useUserSearch } from './api/hooks';
 import { searchedToUser } from './api/transforms';
 import { I } from './components/ui/Icons';
+import { THEMES, nextTheme, themeLabel } from './theme';
 import { Switch, Toasts, EmptyHint } from './components/ui/Primitives';
 import { DashboardPage } from './pages/Dashboard';
 import { UsersPage, UserDrawer } from './pages/Users';
@@ -149,6 +150,7 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
 
   const { data: session } = useSession();
   const { data: stats } = useStats();
+  const { theme, cycleTheme } = useApp();
 
   // Filter nav by user permissions — non-admins only see Overview + Settings.
   const visibleNav = NAV.filter((n) => hasAnyPerm(session?.permissions, n.perms))
@@ -189,6 +191,18 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
           </Fragment>
         ))}
       </nav>
+      <div className="sidebar-theme">
+        <button
+          type="button"
+          className="theme-btn"
+          title={themeLabel(theme)}
+          aria-label={themeLabel(theme)}
+          onClick={cycleTheme}
+        >
+          <span className="ico">{theme === "dark" ? I.moon : theme === "light" ? I.sun : I.contrast}</span>
+          <span className="lbl">{theme === "system" ? "System theme" : theme === "light" ? "Light" : "Dark"}</span>
+        </button>
+      </div>
       <div className="sidebar-foot">
         <UserMenu
           email={session?.email || "you@console"}
@@ -212,7 +226,7 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
 }
 
 function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
-  const { page, pipeline, theme, setTheme, persona, tweaks, isLive, isLoading, apiError, state } = useApp();
+  const { page, pipeline, theme, cycleTheme, persona, tweaks, isLive, isLoading, apiError, state } = useApp();
   const title = NAV.find(n => n.id === page)?.name || "Console";
   const showPipe = tweaks?.showPipeline !== false;
   const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
@@ -266,8 +280,8 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
           <span>Search or jump to…</span>
           <span className="kbd">⌘K</span>
         </button>
-        <button className="icon-btn" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-          {theme === "dark" ? I.sun : I.moon}
+        <button className="icon-btn" title={themeLabel(theme)} aria-label={themeLabel(theme)} onClick={cycleTheme}>
+          {theme === "dark" ? I.moon : theme === "light" ? I.sun : I.contrast}
         </button>
       </div>
       {isForbidden && (
@@ -287,7 +301,7 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
 }
 
 function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { setPage, state, setGrant, setTheme, theme } = useApp();
+  const { setPage, state, setGrant, cycleTheme, theme } = useApp();
   const [q, setQ] = useState("");
   const [idx, setIdx] = useState(0);
   useEffect(() => { if (open) { setQ(""); setIdx(0); } }, [open]);
@@ -309,7 +323,7 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
     }));
     const actions = [
       { kind: "action", label: "Grant access to a user", sub: "guided", run: () => { setGrant({}); } },
-      { kind: "action", label: `Toggle ${theme === "dark" ? "light" : "dark"} theme`, sub: "ui", run: () => setTheme(theme === "dark" ? "light" : "dark") },
+      { kind: "action", label: `Theme · ${nextTheme(theme)}`, sub: "system · light · dark", run: () => cycleTheme() },
     ].filter(a => match(a.label));
     return [
       { name: "Actions", items: actions },
@@ -392,7 +406,14 @@ function TweaksPanel({ open, onClose }: { open: boolean; onClose: () => void }) 
       </div>
       <div className="tweaks-body">
         <div className="tweak-section">Appearance</div>
-        <div className="tweak-row"><span className="lbl">Dark mode</span><Switch on={theme === "dark"} onChange={v => setTheme(v ? "dark" : "light")} /></div>
+        <div className="tweak-row">
+          <span className="lbl">Theme</span>
+          <div className="persona-segs">
+            {THEMES.map(t => (
+              <button key={t} className={theme === t ? "on" : ""} onClick={() => setTheme(t)}>{t}</button>
+            ))}
+          </div>
+        </div>
         <div className="tweak-row"><span className="lbl">Accent</span><Seg value={tweaks.accent} onChange={v => setTweak("accent", v)} options={[{ v: "terracotta", l: "Terracotta" }, { v: "indigo", l: "Indigo" }, { v: "slate", l: "Slate" }]} /></div>
         <div className="tweak-row"><span className="lbl">Density</span><Seg value={tweaks.density} onChange={v => setTweak("density", v)} options={[{ v: "compact", l: "Compact" }, { v: "comfortable", l: "Comfy" }, { v: "cozy", l: "Cozy" }]} /></div>
         <div className="tweak-section">Console</div>

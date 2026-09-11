@@ -56,3 +56,38 @@ export function resolveRoles(
   const permissions = [...new Set(roleNames.flatMap(name => catalogue[name] ?? []))].sort();
   return { permissions, undefined: undefined_ };
 }
+
+/**
+ * Whether a held permission covers a required one.
+ *
+ * The model holds exactly ONE implication, and this mirrors it: equal verbs, and the held resource
+ * is the required one or an ancestor of it. So `admin:write` covers `admin.membership:write`, and
+ * `admin.membership:write` covers nothing else. The dot is the boundary — `admin.member:write` does
+ * not cover `admin.membership:write`.
+ *
+ * Verbs deliberately do not imply one another, and there is no `*`. A console that invented either
+ * would light up a control the mutation then refuses.
+ */
+export function covers(held: string, required: string): boolean {
+  if (held === required) return true;
+  const [heldResource, heldVerb] = held.split(':');
+  const [requiredResource, requiredVerb] = required.split(':');
+  if (heldVerb !== requiredVerb) return false;
+  return requiredResource.startsWith(`${heldResource}.`);
+}
+
+/** Whether this set of held permissions admits the required one. */
+export function permits(held: readonly string[] | undefined, required: string): boolean {
+  return (held ?? []).some(one => covers(one, required));
+}
+
+/**
+ * What jinbe's privileged mutations check today — handing out a group, setting an organisation's
+ * admin roster, restoring a bundle.
+ *
+ * Named rather than inlined because it is one permission standing in for several: the tree declares
+ * `admin.organisation`, `admin.backup` and the rest, and those routes do not require them yet. The
+ * console asks what the API asks, so the two cannot disagree; when the routes declare their own,
+ * this splits with them.
+ */
+export const PRIVILEGED_MUTATION = 'admin.membership:write';

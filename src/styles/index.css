@@ -45,7 +45,7 @@ a { color: inherit; text-decoration: none; }
   border-right: 1px solid var(--line);
   display: flex; flex-direction: column;
   position: sticky; top: 0; height: 100vh; height: 100dvh;
-  padding: 10px 10px 10px;
+  padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
 }
 .sidebar-header {
   padding: 4px 6px 14px;
@@ -131,6 +131,23 @@ a { color: inherit; text-decoration: none; }
 [data-theme="dark"] .nav-item.active .ico { color: var(--accent); }
 [data-theme="dark"] .nav-item.active { box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 1px 2px rgba(0,0,0,0.3); }
 [data-theme="dark"] .nav-item:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+
+.sidebar-theme { margin-top: auto; padding-top: 8px; }
+.theme-btn {
+  width: 100%;
+  display: flex; align-items: center; gap: 9px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid transparent; border-radius: 8px;
+  background: none;
+  color: var(--ink-3);
+  font: inherit; font-size: 12px;
+  text-align: left;
+}
+.theme-btn:hover { border-color: var(--line); background: var(--panel); color: var(--ink); }
+.theme-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.theme-btn .ico { width: 15px; height: 15px; display: grid; place-items: center; flex: none; }
+.theme-btn .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: capitalize; }
 
 .sidebar-foot {
   border: 1px solid var(--line);
@@ -1600,7 +1617,7 @@ html[data-levelstyle="text"] .alevel.l-admin .lbl { background: var(--err-soft);
 }
 .choice .refused {
   margin: 0;
-  color: var(--danger, #b42318);
+  color: var(--err);
 }
 .choice ul {
   list-style: none;
@@ -1617,8 +1634,8 @@ html[data-levelstyle="text"] .alevel.l-admin .lbl { background: var(--err-soft);
   gap: 0.15rem;
   padding: 0.85rem 1rem;
   text-align: left;
-  background: var(--surface-1, #fff);
-  border: 1px solid var(--line, #e4e4e7);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 10px;
   cursor: pointer;
   font: inherit;
@@ -1828,7 +1845,9 @@ html[data-levelstyle="text"] .alevel.l-admin .lbl { background: var(--err-soft);
     width: min(86vw, var(--sidebar-w));
     flex-direction: column;
     overflow-y: auto;
-    padding: var(--space-3) var(--space-2);
+    /* The sheet reaches the bottom of the screen, and on a phone that bottom is under the home
+       indicator — where the theme control now sits. */
+    padding: var(--space-3) var(--space-2) calc(var(--space-3) + env(safe-area-inset-bottom));
     border-right: 1px solid var(--line);
     background: var(--sidebar-bg, var(--panel));
   }

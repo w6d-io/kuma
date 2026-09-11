@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
 import './styles/index.css'
+import { initTheme } from './theme'
 import { chooseOrganisation, signIn, startSession } from './auth/session'
 import { DirectoryUnavailable, OrganisationChoice } from './auth/OrganisationChoice'
 
@@ -16,6 +17,11 @@ for (const k of ['__API_BASE__', '__AUTH_DOMAIN__', '__GRAFANA_URL__', '__BACKUP
     (window as unknown as Record<string, unknown>)[k] = ''
   }
 }
+
+// Before the first render, and outside React on purpose: the organisation chooser below is mounted
+// WITHOUT the app shell, so an effect inside the shell's provider never runs for it. That is why the
+// chooser was decided by the machine's setting while the console was decided by a stored one.
+initTheme()
 
 const queryClient = new QueryClient({
   defaultOptions: {

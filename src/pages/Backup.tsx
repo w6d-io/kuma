@@ -5,6 +5,7 @@ import { api, type BackupList } from '../api/client';
 import { I } from '../components/ui/Icons';
 import { Chip, ConfirmDialog } from '../components/ui/Primitives';
 import { ExportBundleModal } from '../components/ExportBundleModal';
+import { PRIVILEGED_MUTATION, permits } from '../policy/model';
 
 // Deploy-time flag (envsubst → window.__BACKUP_ENABLED__). A stable module
 // constant — the conditional render in BackupPage never flips at runtime, so
@@ -66,7 +67,8 @@ jinbe:
 function BackupEnabled() {
   const { pushToast, refetch } = useApp();
   const { data: session } = useSession();
-  const isSuperAdmin = (session?.roles || []).includes('super_admin');
+  // The permission the restore checks. A role name this model does not define greyed it for all.
+  const mayRestore = permits(session?.permissions, PRIVILEGED_MUTATION);
 
   const [list, setList] = useState<BackupList | null>(null);
   const [loading, setLoading] = useState(true);
@@ -151,7 +153,7 @@ function BackupEnabled() {
 
   const backups = list?.backups ?? [];
   const latest = backups[0];
-  const gate = isSuperAdmin ? undefined : 'Requires super-admin';
+  const gate = mayRestore ? undefined : 'Needs admin.membership:write';
 
   return (
     <>
@@ -171,25 +173,25 @@ function BackupEnabled() {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn primary" onClick={doBackupNow} disabled={busy || !isSuperAdmin} title={gate}>
+          <button className="btn primary" onClick={doBackupNow} disabled={busy || !mayRestore} title={gate}>
             <span style={{ width: 13, height: 13, display: 'inline-grid', placeItems: 'center', marginRight: 6 }}>{I.sync}</span>
             Back up now
           </button>
-          <button className="btn" onClick={() => latest && setConfirmKey(latest.key)} disabled={busy || !latest || !isSuperAdmin} title={gate}>
+          <button className="btn" onClick={() => latest && setConfirmKey(latest.key)} disabled={busy || !latest || !mayRestore} title={gate}>
             Restore latest
           </button>
-          <button className="btn" onClick={() => setExportOpen(true)} disabled={busy || !isSuperAdmin} title={gate}>
+          <button className="btn" onClick={() => setExportOpen(true)} disabled={busy || !mayRestore} title={gate}>
             <span style={{ width: 13, height: 13, display: 'inline-grid', placeItems: 'center', marginRight: 6 }}>{I.download}</span>
             Export…
           </button>
           <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={onFile} />
-          <button className="btn" onClick={() => fileRef.current?.click()} disabled={busy || !isSuperAdmin} title={gate}>
+          <button className="btn" onClick={() => fileRef.current?.click()} disabled={busy || !mayRestore} title={gate}>
             <span style={{ width: 13, height: 13, display: 'inline-grid', placeItems: 'center', marginRight: 6 }}>{I.upload}</span>
             Restore from file
           </button>
           <button className="btn ghost sm" onClick={load} disabled={loading} style={{ marginLeft: 'auto' }}>Refresh</button>
         </div>
-        {!isSuperAdmin && <p className="small muted" style={{ marginTop: 10 }}>Restore and export require super-admin.</p>}
+        {!mayRestore && <p className="small muted" style={{ marginTop: 10 }}>Restore and export need admin.membership:write.</p>}
       </div>
 
       {/* snapshots */}
@@ -206,7 +208,7 @@ function BackupEnabled() {
                 <td className="mono">{fmtBytes(b.size)}</td>
                 <td className="mono small" style={{ wordBreak: 'break-all' }}>{b.key}</td>
                 <td>
-                  <button className="btn ghost sm" onClick={() => setConfirmKey(b.key)} disabled={busy || !isSuperAdmin} title={gate}>Restore</button>
+                  <button className="btn ghost sm" onClick={() => setConfirmKey(b.key)} disabled={busy || !mayRestore} title={gate}>Restore</button>
                 </td>
               </tr>
             ))}

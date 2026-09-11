@@ -42,7 +42,7 @@ export function emptyOrganisationsHint(
   }
   return {
     message:
-      'You don’t administer any organizations. Ask a super_admin to add you to an org-admin group.',
+      'You don’t administer any organizations. Ask a platform administrator to add you to a group that grants here.',
     actionable: true,
   };
 }
