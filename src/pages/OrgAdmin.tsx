@@ -5,6 +5,7 @@ import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, EmptyHint, Switch } from '../components/ui/Primitives';
 import { type KratosIdentity } from '../api/client';
 import { bounceToStepUp } from '../lib/stepUp';
+import { SkeletonPanel } from '../components/ui/Skeleton';
 import {
   useMyOrganizations,
   useMyOrganizationNames,
@@ -238,7 +239,12 @@ export function OrgAdminPage() {
   const runSearch = (term: string) => setSearch(term.trim());
 
   if (orgs === null) {
-    return <div className="page-head"><div><h1>Org Admin</h1><div className="sub">loading…</div></div></div>;
+    return (
+      <>
+        <div className="page-head"><div><h1>Org Admin</h1><div className="sub">Reading the organisations you administer…</div></div></div>
+        <div aria-busy="true"><SkeletonPanel lines={4} /></div>
+      </>
+    );
   }
 
   if (orgs.length === 0) {

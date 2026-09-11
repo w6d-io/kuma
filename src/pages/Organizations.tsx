@@ -14,6 +14,7 @@ import {
 import { InviteDrawer } from './OrgAdmin';
 import { PRIVILEGED_MUTATION, permits } from '../policy/model';
 import { bounceToStepUp } from '../lib/stepUp';
+import { SkeletonRows } from '../components/ui/Skeleton';
 
 // The Organizations hub — the platform-level view of EVERY
 // tenant, as opposed to the delegated "Org Admin" tab (a member's self-service
@@ -215,7 +216,7 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
         <table className="table">
           <thead><tr><th>Identity</th><th>Groups</th><th></th></tr></thead>
           <tbody>
-            {usersQ.isLoading && <tr><td colSpan={3} className="small muted" style={{ padding: 16 }}>loading…</td></tr>}
+            {usersQ.isLoading && <SkeletonRows rows={4} cols={3} />}
             {!usersQ.isLoading && users.length === 0 && <tr><td colSpan={3}><EmptyHint>No people in this organization yet — invite someone.</EmptyHint></td></tr>}
             {!usersQ.isLoading && users.map(u => {
               const groups = u.metadata_admin?.groups ?? [];

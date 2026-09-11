@@ -6,6 +6,7 @@ import { Chip, Avatar, Drawer, PermTree, EmptyHint } from '../components/ui/Prim
 import { timeAgo } from '../api/transforms';
 import { RiskBadge } from './Audit';
 import type { AccessReviewIdentity } from '../api/types';
+import { SkeletonPanel } from '../components/ui/Skeleton';
 
 // Tier catalog — power class an identity resolves to (jinbe Part B resolver).
 const TIER_META: Record<number, { label: string; short: string; tone: string; desc: string }> = {
@@ -64,7 +65,7 @@ export function AccessReviewPage() {
   );
 
   if (isLoading) {
-    return <>{header}<div className="panel" style={{ padding: 40, textAlign: 'center' }}><div className="muted small">Resolving power across all services…</div></div></>;
+    return <>{header}<div aria-busy="true" aria-label="Resolving power across all services"><SkeletonPanel lines={6} /></div></>;
   }
   // Fail-closed: a load error must never read as "nobody has power".
   if (isError) {

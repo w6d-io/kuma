@@ -2066,3 +2066,78 @@ table {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Loading placeholders.
+
+   A page that swaps nothing for a full table moves everything under the reader's eyes at once.
+   These hold the layout at the size of what is coming, so the arrival changes the content and not
+   the shape. Built on --line so they read on both grounds without a colour of their own.
+   --------------------------------------------------------------------------- */
+.skeleton {
+  display: block;
+  background: linear-gradient(90deg, var(--line) 25%, var(--panel) 37%, var(--line) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-sweep {
+  from { background-position: 100% 50%; }
+  to   { background-position: 0 50%; }
+}
+
+.skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton-row td { vertical-align: middle; }
+
+.skeleton-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+}
+
+.skeleton-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3, 12px);
+}
+
+.skeleton-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+/* The sweep is decoration. Stopped, the block stays and still holds the layout — which is the part
+   that does the work. Honoured from the operating system as well as from the console's own switch,
+   because somebody who set it once should not have to set it again here. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; background: var(--line); }
+}
+
+html[data-motion="off"] .skeleton { animation: none; background: var(--line); }
+
+/* A navigation replaces everything at once. A short fade takes the edge off the swap without
+   delaying anything readable — the content is present and hit-testable throughout.
+
+   Opacity ONLY, deliberately: a transform on this element would make it the containing block for
+   every `position: fixed` descendant, and the pages render their own drawers and modals inside it.
+   A drawer would then be positioned against the content column instead of the viewport. */
+.page-enter { animation: page-enter 160ms ease-out both; }
+
+@keyframes page-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter { animation: none; }
+}
+
+html[data-motion="off"] .page-enter { animation: none; }

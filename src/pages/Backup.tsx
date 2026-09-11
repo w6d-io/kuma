@@ -6,6 +6,7 @@ import { I } from '../components/ui/Icons';
 import { Chip, ConfirmDialog } from '../components/ui/Primitives';
 import { ExportBundleModal } from '../components/ExportBundleModal';
 import { PRIVILEGED_MUTATION, permits } from '../policy/model';
+import { SkeletonRows } from '../components/ui/Skeleton';
 
 // Deploy-time flag (envsubst → window.__BACKUP_ENABLED__). A stable module
 // constant — the conditional render in BackupPage never flips at runtime, so
@@ -200,7 +201,7 @@ function BackupEnabled() {
         <table className="table">
           <thead><tr><th>When</th><th>Size</th><th className="mono">Key</th><th style={{ width: 90 }}></th></tr></thead>
           <tbody>
-            {loading && <tr><td colSpan={4}><span className="small muted">Loading…</span></td></tr>}
+            {loading && <SkeletonRows rows={4} cols={4} />}
             {!loading && backups.length === 0 && <tr><td colSpan={4}><span className="small muted">No backups yet — the scheduled job runs daily, or use “Back up now”.</span></td></tr>}
             {backups.map((b, i) => (
               <tr key={b.key}>
