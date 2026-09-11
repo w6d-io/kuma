@@ -6,6 +6,8 @@ import './styles/index.css'
 import { initTheme } from './theme'
 import { chooseOrganisation, signIn, startSession } from './auth/session'
 import { DirectoryUnavailable, OrganisationChoice } from './auth/OrganisationChoice'
+import { rumSettings, startRum } from './telemetry/rum'
+import { API_BASE } from './api/client'
 
 // index.html carries envsubst placeholders ("${AUTH_DOMAIN}") that Docker
 // substitutes at container start. On the vite dev server nothing substitutes
@@ -55,6 +57,12 @@ function opening() {
     </QueryClientProvider>
   )
 }
+
+// Started alongside the first render rather than before it: nothing on this page should wait on a
+// collector, and a deployment that configures none must not pay a round trip to discover it. The
+// cost is that a failure in the first frames goes unreported — the alternative is a console that
+// starts slower for everyone so that it can report the rare load that breaks.
+void rumSettings(API_BASE).then(startRum)
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>{opening()}</React.StrictMode>,
