@@ -510,7 +510,9 @@ function AppShell() {
       <RailDrawer onOpenTweaks={() => setTweaksOpen(true)} />
       <div className="main">
         <Topbar onOpenCmdk={() => setCmdkOpen(true)} />
-        <div className="content">
+        {/* Keyed on the page so React remounts the subtree and the entrance plays on every
+            navigation. Without the key the class is already applied and nothing animates. */}
+        <div className="content page-enter" key={page}>
           {(simulatingForbidden(tweaks) || (apiError as any)?.status === 403) ? <ForbiddenPage /> : <>
             {page === "dashboard" && <DashboardPage />}
             {page === "users" && <UsersPage />}

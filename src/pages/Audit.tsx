@@ -5,6 +5,7 @@ import { Pagination, usePagination } from '../components/ui/Pagination';
 import { useApp } from '../contexts/AppContext';
 import { useAudit, useAuditSummary, useAuditEvents } from '../api/hooks';
 import type { AuditEvent, AuditSummary } from '../api/types';
+import { SkeletonText } from '../components/ui/Skeleton';
 
 // Audit timestamps are ISO/UTC. Render + bucket them in the operator's LOCAL
 // time — a UTC string-slice showed the wrong clock time and could file an event
@@ -412,7 +413,7 @@ export function AuditPage() {
         </div>
         <div style={{ padding: 0 }}>
           {riskQ.isLoading && !riskQ.isError ? (
-            <div style={{ padding: 20 }}><EmptyHint>Loading…</EmptyHint></div>
+            <div style={{ padding: 16 }} aria-busy="true" aria-label="Loading signals"><SkeletonText lines={3} /></div>
           ) : heroEvents.length === 0 ? (
             <div style={{ padding: 18, display: 'flex', gap: 10, alignItems: 'center', color: 'var(--ink-3)' }}>
               <span style={{ color: 'var(--ok)' }}>{I.check}</span>
@@ -571,7 +572,9 @@ export function AuditPage() {
           </div>
         )}
         {!auditError && filtered.length === 0 && !(tab === 'signals' && riskQ.isError) && (
-          <div style={{ padding: 28 }}><EmptyHint>{auditLoading || (tab === 'signals' && riskQ.isLoading) ? "Loading…" : "No events match."}</EmptyHint></div>
+          auditLoading || (tab === 'signals' && riskQ.isLoading)
+            ? <div style={{ padding: 16 }} aria-busy="true" aria-label="Loading events"><SkeletonText lines={6} /></div>
+            : <div style={{ padding: 28 }}><EmptyHint>No events match.</EmptyHint></div>
         )}
         {groups.map(g => (
           <div key={g.day} className="audit-day">

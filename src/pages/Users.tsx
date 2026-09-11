@@ -4,6 +4,7 @@ import { useSession, useUsers, useGroupsMap, useUserSearch, useStats, useMyOrgan
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, Switch, ConfirmDialog, EmptyHint } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
+import { SkeletonRows } from '../components/ui/Skeleton';
 import { isPrivilegedGroup } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
 import { membershipsOf, searchedToUser } from '../api/transforms';
@@ -102,7 +103,7 @@ export function UsersPage() {
           <div className="flex-1" />
           <span className="small muted mono">{searching ? `${filtered.length} shown` : `${filtered.length} / ${total}`}</span>
         </div>
-        <table className="table">
+        <table className="table" aria-busy={loading || undefined}>
           <thead><tr><th>Identity</th><th>Groups</th><th>Organizations</th><th>2FA</th><th>Last seen</th><th></th></tr></thead>
           <tbody>
             {paged.map(u => (
@@ -153,6 +154,7 @@ export function UsersPage() {
                 <td style={{ width: 24, textAlign: "right" }}><span style={{ color: "var(--ink-4)" }}>{I.chev}</span></td>
               </tr>
             ))}
+            {loading && paged.length === 0 && <SkeletonRows rows={8} cols={6} />}
             {!loading && filtered.length === 0 && (
               <tr><td colSpan={6} className="small muted" style={{ padding: 16 }}>{searching ? `No users match "${dq}".` : "No users."}</td></tr>
             )}

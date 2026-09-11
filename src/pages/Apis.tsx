@@ -4,6 +4,7 @@ import { YamlView, CopyButton } from '../components/YamlView';
 import { Chip, EmptyHint, Method } from '../components/ui/Primitives';
 import type { EnforcedDocument, EnforcedEdge, EnforcedGrant, EnforcedRole } from '../api/client';
 import { sharedTables, splitByKind } from '../policy/edges';
+import { SkeletonPanel, SkeletonTiles } from '../components/ui/Skeleton';
 
 /**
  * What protects each API, and who can reach it.
@@ -293,8 +294,10 @@ export function ApisPage() {
 
   if (query.isLoading) {
     return (
-      <div className="panel" style={{ padding: 24, textAlign: 'center' }}>
-        <span className="small muted">Reading what is enforced…</span>
+      <div aria-busy="true" aria-label="Reading what is enforced">
+        <SkeletonTiles count={3} />
+        <div style={{ height: 12 }} />
+        <SkeletonPanel lines={5} />
       </div>
     );
   }

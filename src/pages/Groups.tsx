@@ -2,6 +2,7 @@ import { Chip } from '../components/ui/Primitives';
 import { useAuthorizationModel, useStats } from '../api/hooks';
 import { scopesOf, grantsEveryOrganisation, hierarchyOf, resolveRoles, summarise, type RoleCatalogue } from '../policy/model';
 import { I } from '../components/ui/Icons';
+import { SkeletonPanel } from '../components/ui/Skeleton';
 
 /**
  * What each group grants, from the model the engine decides against.
@@ -52,9 +53,7 @@ export function GroupsPage() {
           </div>
         </div>
       ) : isLoading ? (
-        <div className="panel" style={{ padding: 16 }}>
-          <span className="small muted">Reading the model…</span>
-        </div>
+        <div aria-busy="true" aria-label="Reading the model"><SkeletonPanel lines={5} /></div>
       ) : Object.keys(groups).length === 0 ? (
         <div className="panel" style={{ padding: 16 }}>
           <span className="small muted">The model declares no group.</span>
