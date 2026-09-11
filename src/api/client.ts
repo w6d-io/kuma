@@ -138,21 +138,6 @@ export const api = {
   getServices: () =>
     request<{ services: JinbeService[] }>(`/admin/rbac/services`).then(r => r.services),
 
-  createService: (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string; signIn?: SignInMethod[] }) =>
-    request<{ commitId: string }>(`/admin/rbac/services`, {
-      method: 'POST',
-      body: JSON.stringify(svc),
-    }),
-
-  updateService: (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null; signIn?: SignInMethod[] }) =>
-    request<{ commitId: string }>(`/admin/rbac/services/${name}`, {
-      method: 'PATCH',
-      body: JSON.stringify(payload),
-    }),
-
-  deleteService: (name: string) =>
-    request<void>(`/admin/rbac/services/${name}`, { method: 'DELETE' }),
-
   getServicePermissions: (name: string) =>
     request<{ permissions: string[] }>(`/admin/rbac/services/${name}/permissions`),
 
@@ -160,28 +145,9 @@ export const api = {
   getRoles: (serviceName: string) =>
     request<{ service: string; roles: JinbeRole[]; meta: { fileSha: string } }>(`/admin/rbac/services/${serviceName}/roles`),
 
-  updateServiceRoles: (serviceName: string, roles: Record<string, string[]>) =>
-    request<{ success: boolean; message: string }>(`/admin/rbac/services/${serviceName}/roles`, {
-      method: 'PUT',
-      body: JSON.stringify({ roles }),
-    }),
-
   // ─── Routes / Route map (per service) ───
   getServiceRoutes: (serviceName: string) =>
     request<{ service: string; rules: JinbeRouteRule[] }>(`/admin/rbac/services/${serviceName}/routes`),
-
-  updateServiceRoutes: (serviceName: string, rules: JinbeRouteRule[]) =>
-    request<{ commitId: string }>(`/admin/rbac/services/${serviceName}/routes`, {
-      method: 'PUT',
-      body: JSON.stringify({ rules }),
-    }),
-
-  // Dry-run: parse an OpenAPI/Swagger spec and preview the routes + diff.
-  importPreviewRoutes: (serviceName: string, source: ImportSource, options?: ImportOptions) =>
-    request<ImportPreview>(`/admin/rbac/services/${serviceName}/routes/import/preview`, {
-      method: 'POST',
-      body: JSON.stringify({ source, options }),
-    }),
 
   /**
    * The groups the caller may hand out, and whether they may at all — from the model the engine
@@ -217,21 +183,6 @@ export const api = {
   // ─── Access Rules (Oathkeeper) ───
   getAccessRules: () =>
     request<{ rules: JinbeAccessRule[] }>(`/admin/rbac/access-rules`).then(r => r.rules),
-
-  createAccessRule: (rule: Partial<JinbeAccessRule>) =>
-    request<{ commitId: string }>(`/admin/rbac/access-rules`, {
-      method: 'POST',
-      body: JSON.stringify(rule),
-    }),
-
-  updateAccessRule: (id: string, rule: Partial<JinbeAccessRule>) =>
-    request<{ commitId: string }>(`/admin/rbac/access-rules/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(rule),
-    }),
-
-  deleteAccessRule: (id: string) =>
-    request<void>(`/admin/rbac/access-rules/${id}`, { method: 'DELETE' }),
 
   // ─── Oathkeeper handler catalog (enabled handlers + field descriptors) ───
   // Returns ONLY the handlers actually registered/enabled in the Oathkeeper
@@ -715,8 +666,21 @@ export interface EnforcedDocument {
   routes?: EnforcedRoute[];
   /** What each role carries, when this document holds that instead. */
   roles?: EnforcedRole[];
+  edge?: EnforcedEdge;
   /** Who holds which role, and in which organisation. */
   grants?: EnforcedGrant[];
+}
+
+/** For a `Rule`: what it lets in, where it goes, and which route table decides it. */
+export interface EnforcedEdge {
+  methods: string[];
+  url: string;
+  upstream?: string;
+  authenticators: string[];
+  authorizer: string;
+  /** The service the engine's payload names — the route table it looks up. Not carried by the rule. */
+  authorizesAs?: string;
+  tableDeclared?: boolean;
 }
 
 export interface EnforcedRoute {

@@ -18,8 +18,6 @@
   --topbar-h: 48px;
 }
 
-
-
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
@@ -601,68 +599,10 @@ a { color: inherit; text-decoration: none; }
 }
 .persona-segs button.on { background: var(--panel-3); color: var(--ink); }
 
-.matrix {
-  border-collapse: separate;
-  border-spacing: 3px;
-  width: 100%;
-  font-size: 11.5px;
-}
-.matrix-corner { width: 1%; }
-.matrix-col {
-  text-align: left;
-  font-weight: 500;
-  color: var(--ink-3);
-  padding: 4px 6px;
-  font-size: 10.5px;
-  text-transform: lowercase;
-  letter-spacing: 0.02em;
-}
-.matrix-group {
-  text-align: left;
-  font-weight: 500;
-  color: var(--ink);
-  padding: 0 10px 0 2px;
-  white-space: nowrap;
-  font-size: 12px;
-}
-.matrix-row { cursor: pointer; }
-.matrix-row:hover .matrix-group { color: var(--accent); }
-.matrix-row:hover .mx-dot:not(.mx-empty) { transform: scale(1.02); }
-.matrix-cell { padding: 0; }
-
-.mx-dot {
-  display: flex; align-items: center; justify-content: center;
-  height: 28px;
-  min-width: 76px;
-  padding: 0 8px;
-  border-radius: 5px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 500;
-  white-space: nowrap;
-  border: 1px solid transparent;
-  transition: transform 80ms;
-}
-.mx-empty {
-  background: transparent;
-  border: 1px dashed var(--line);
-  min-width: 48px;
-}
-.mx-l0 { background: color-mix(in srgb, var(--info) 12%, var(--panel-2)); color: color-mix(in srgb, var(--info) 85%, var(--ink)); border-color: color-mix(in srgb, var(--info) 20%, transparent); }
-.mx-l1 { background: color-mix(in srgb, var(--info) 22%, var(--panel-2)); color: var(--info); border-color: color-mix(in srgb, var(--info) 30%, transparent); }
-.mx-l2 { background: color-mix(in srgb, var(--accent) 18%, var(--panel-2)); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
-.mx-l3 { background: color-mix(in srgb, var(--warn) 22%, var(--panel-2)); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
-.mx-l4 { background: color-mix(in srgb, var(--err) 24%, var(--panel-2)); color: var(--err); border-color: color-mix(in srgb, var(--err) 38%, transparent); }
-
-.mx-legend {
-  width: 18px; height: 10px;
-  border-radius: 2px;
-  display: inline-block;
-}
-
 .quick-action {
   text-align: left;
   padding: 12px;
+  border-radius: var(--radius);
   display: flex; gap: 10px; align-items: flex-start;
   cursor: pointer;
   background: var(--panel-2);
@@ -820,11 +760,6 @@ a { color: inherit; text-decoration: none; }
   font-size: 10.5px;
 }
 
-html[data-matrixcolor="on"] .matrix-cell.lv-read   { background: color-mix(in oklab, var(--info-soft) 40%, transparent); }
-html[data-matrixcolor="on"] .matrix-cell.lv-write  { background: color-mix(in oklab, var(--ok-soft)   40%, transparent); }
-html[data-matrixcolor="on"] .matrix-cell.lv-manage { background: color-mix(in oklab, var(--warn-soft) 50%, transparent); }
-html[data-matrixcolor="on"] .matrix-cell.lv-admin  { background: color-mix(in oklab, var(--err-soft)  50%, transparent); }
-.matrix-stack { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 
 .drawer-tabs {
   display: flex;
@@ -854,28 +789,6 @@ html[data-matrixcolor="on"] .matrix-cell.lv-admin  { background: color-mix(in ok
   background: var(--panel);
   color: var(--ink);
   box-shadow: var(--shadow-sm);
-}
-
-.impact {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: var(--panel-2);
-}
-.impact-head {
-  padding: 10px 14px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-}
-.impact-rows { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
-.impact-row { display: flex; gap: 10px; align-items: center; }
-.impact-diff { display: flex; flex-wrap: wrap; gap: 4px; }
-.impact-users {
-  padding: 10px 14px;
-  border-top: 1px solid var(--line);
 }
 
 .svc-stats {
@@ -1613,33 +1526,6 @@ html[data-levelstyle="text"] .alevel.l-write .lbl { background: var(--ok-soft); 
 html[data-levelstyle="text"] .alevel.l-manage .lbl { background: var(--warn-soft); color: var(--warn); }
 html[data-levelstyle="text"] .alevel.l-admin .lbl { background: var(--err-soft); color: var(--err); }
 
-/* Group matrix — sticky GROUP/USERS/edit columns; services scroll horizontally */
-.group-matrix-wrap { max-width: 100%; }
-.group-matrix { table-layout: auto; min-width: max-content; }
-.group-matrix .sticky-col,
-.group-matrix .sticky-col-right {
-  position: sticky;
-  background: var(--panel);
-  z-index: 1;
-}
-.group-matrix thead .sticky-col,
-.group-matrix thead .sticky-col-right {
-  background: var(--panel-2);
-  z-index: 2;
-}
-.group-matrix .sticky-col {
-  border-right: 1px solid var(--line);
-}
-.group-matrix .sticky-col-right {
-  border-left: 1px solid var(--line);
-  text-align: center;
-}
-
-/* Matrix coloring */
-html[data-matrixcolor="on"] .matrix-cell.lv-read { background: color-mix(in oklab, var(--info-soft) 40%, transparent); }
-html[data-matrixcolor="on"] .matrix-cell.lv-write { background: color-mix(in oklab, var(--ok-soft) 40%, transparent); }
-html[data-matrixcolor="on"] .matrix-cell.lv-manage { background: color-mix(in oklab, var(--warn-soft) 50%, transparent); }
-html[data-matrixcolor="on"] .matrix-cell.lv-admin { background: color-mix(in oklab, var(--err-soft) 50%, transparent); }
 
 /* Tweak sections */
 .tweak-section {
@@ -1992,6 +1878,32 @@ table {
 }
 
 .enforced-list { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+/* The APIs come before the model they are decided against, so the list is grouped rather than flat. */
+.enforced-group {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink-3); margin: 10px 0 2px; padding: 0 10px;
+}
+.enforced-group:first-child { margin-top: 0; }
+
+/* What a rule lets in, read out of it — above the object rather than instead of it. */
+.edge-summary { display: grid; gap: 8px; margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.edge-summary > div { display: grid; grid-template-columns: minmax(120px, 168px) minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.edge-summary dt { font-size: 12px; color: var(--ink-3); }
+.edge-summary dd { margin: 0; font-size: 12.5px; color: var(--ink); min-width: 0; overflow-wrap: anywhere; display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+
+.edge-warning {
+  border-left: 2px solid var(--warn);
+  padding: 10px 12px; margin-bottom: 10px;
+}
+.edge-warning p { margin: 0; font-size: 12.5px; line-height: 1.55; }
+.edge-warning p + p { margin-top: 8px; }
+
+/* One column on a phone: a 200px rail beside a YAML block leaves neither readable. */
+@media (max-width: 720px) {
+  .enforced-split { grid-template-columns: minmax(0, 1fr); }
+  .edge-summary > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+}
 
 .enforced-item {
   display: flex; flex-direction: column; gap: 2px;

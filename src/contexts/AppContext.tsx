@@ -17,7 +17,6 @@ const TWEAK_DEFAULTS: TweakDefaults = {
   showCounts: true,
   showMotion: true,
   navCollapsed: false,
-  matrixColor: true,
   levelStyle: "bars",
   wildcardWarn: true,
   simulateForbidden: false,
@@ -38,11 +37,6 @@ interface PipelineState {
 export interface UserDrawerState {
   mode: 'edit' | 'create';
   user?: import('../api/types').User;
-}
-
-export interface ServiceDrawerState {
-  mode: 'create' | 'edit';
-  serviceName?: string;
 }
 
 // Grant-access wizard. `user` pre-selects a person (row action); omit to open
@@ -68,19 +62,15 @@ interface AppContextType {
   refreshAudit: () => void;
   page: PageId;
   setPage: (page: PageId) => void;
-  activeService: string;
-  setActiveService: (s: string) => void;
   /**
    * Register (or clear, with `null`) a predicate that reports whether the
-   * current surface has unsaved changes. `setPage`, `setActiveService`, direct
+   * current surface has unsaved changes. `setPage`, direct
    * hash navigation and tab-close all consult it and prompt before discarding.
    * A component registers on mount and clears on unmount.
    */
   registerUnsavedGuard: (fn: (() => boolean) | null) => void;
   userDrawer: UserDrawerState | null;
   setUserDrawer: (d: UserDrawerState | null) => void;
-  serviceDrawer: ServiceDrawerState | null;
-  setServiceDrawer: (d: ServiceDrawerState | null) => void;
   grant: GrantState | null;
   setGrant: (g: GrantState | null) => void;
   auditFocus: AuditFocus | null;
@@ -109,9 +99,6 @@ interface AppContextType {
    * Errors bubble so the drawer can surface why and keep the drafted list.
    */
   apiSetUserOrganizations: (id: string, organizations: string[]) => Promise<void>;
-  apiCreateService: (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string; signIn?: import("../api/client").SignInMethod[] }) => Promise<void>;
-  apiUpdateService: (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null; signIn?: import("../api/client").SignInMethod[] }) => Promise<void>;
-  apiDeleteService: (name: string) => Promise<void>;
 }
 
 const AppCtx = createContext<AppContextType | null>(null);
@@ -202,7 +189,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ─── Unsaved-changes guard (P1-6) ───────────────────────────────────────
   // A single registered predicate reports whether the active surface (today: the
   // gateway rule editor) holds unsaved edits. Every navigation path consults it:
-  // setPage (hash), setActiveService (Services rail), raw hash changes
+  // setPage (hash), raw hash changes
   // (back/forward, typed URL — these bypass setPage) and tab close. When dirty,
   // the navigation is deferred behind one shared ConfirmDialog.
   const unsavedGuard = useRef<(() => boolean) | null>(null);
@@ -271,13 +258,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
 
-  const [activeService, setActiveServiceRaw] = useState("jinbe");
-  const setActiveService = useCallback((s: string) => {
-    if (s === activeService) { setActiveServiceRaw(s); return; }
-    guardedNavigate(() => setActiveServiceRaw(s));
-  }, [activeService, guardedNavigate]);
   const [userDrawer, setUserDrawer] = useState<UserDrawerState | null>(null);
-  const [serviceDrawer, setServiceDrawer] = useState<ServiceDrawerState | null>(null);
   const [grant, setGrant] = useState<GrantState | null>(null);
   const [auditFocus, setAuditFocus] = useState<AuditFocus | null>(null);
 
@@ -304,7 +285,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     html.setAttribute("data-accent", tweaks.accent || "terracotta");
     html.setAttribute("data-monofont", tweaks.monoFont || "jetbrains");
     html.setAttribute("data-motion", tweaks.showMotion ? "on" : "off");
-    html.setAttribute("data-matrixcolor", tweaks.matrixColor ? "on" : "off");
     html.setAttribute("data-levelstyle", tweaks.levelStyle || "bars");
     html.setAttribute("data-navcollapsed", tweaks.navCollapsed ? "on" : "off");
   }, [tweaks]);
@@ -366,41 +346,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     qc.invalidateQueries({ queryKey: ['user-identity', id] });
   }, [qc]);
 
-  const apiCreateService = useCallback(async (svc: { name: string; displayName?: string; upstreamUrl: string; matchUrl: string; matchMethods: string[]; stripPath?: string; signIn?: import("../api/client").SignInMethod[] }) => {
-    // Create spawns roles/routes/rules server-side; invalidate-only.
-    await withOptimism(qc, [['services'], ['access-rules'], ['all-roles'], ['all-routes']],
-      undefined, () => api.createService(svc));
-  }, [qc]);
-
-  const apiUpdateService = useCallback(async (name: string, payload: { upstreamUrl?: string; matchUrl?: string; matchMethods?: string[]; stripPath?: string | null; signIn?: import("../api/client").SignInMethod[] }) => {
-    await withOptimism(qc, [['services'], ['access-rules']],
-      () => { if (payload.upstreamUrl !== undefined) cachePatch.updateService(qc, name, { upstreamUrl: payload.upstreamUrl }); },
-      () => api.updateService(name, payload));
-  }, [qc]);
-
-  const apiDeleteService = useCallback(async (name: string) => {
-    await withOptimism(qc, [['services'], ['access-rules'], ['all-roles'], ['all-routes']],
-      () => cachePatch.removeService(qc, name),
-      () => api.deleteService(name));
-  }, [qc]);
-
   const ctx: AppContextType = {
     state,
     isLive, isLoading, apiError,
     refetch: invalidateAll,
     refreshAudit: invalidateAudit,
     page, setPage,
-    activeService, setActiveService,
     registerUnsavedGuard,
     userDrawer, setUserDrawer,
-    serviceDrawer, setServiceDrawer,
     grant, setGrant,
     auditFocus, setAuditFocus,
     pushToast, toasts, pipeline,
     theme, setTheme, persona, setPersona,
     tweaks, setTweak,
     apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata, apiSetUserOrganization, apiSetUserOrganizations, apiSendRecoveryEmail,
-    apiCreateService, apiUpdateService, apiDeleteService,
   };
 
   return (
