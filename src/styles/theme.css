@@ -20,6 +20,12 @@
  */
 
 :root {
+  /* What the BROWSER paints, as opposed to what this stylesheet paints: form controls, scrollbars,
+     and the system colours a bare button falls back to. Undeclared, every one of them stays light
+     under a dark theme — which is how black text ended up on a dark row. Restated per theme below
+     so an explicit choice moves them too. */
+  color-scheme: light;
+
   --bg: var(--surface);
   --panel: var(--surface);
   --panel-2: var(--surface-2);
@@ -66,6 +72,8 @@
    declared twice so a chosen theme wins over the system preference in both directions. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
     --bg: #1f2023;
     --page: #17181a;
     --panel: #1f2023;
@@ -109,6 +117,8 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
+
   --bg: #1f2023;
   --page: #17181a;
   --panel: #1f2023;

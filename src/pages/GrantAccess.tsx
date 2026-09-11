@@ -3,11 +3,13 @@ import { useApp } from '../contexts/AppContext';
 import { useSession, useUserSearch, useAuthorizationModel } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, AccessLevel } from '../components/ui/Primitives';
-import { accessLevelOf, resolvePerms, isPrivilegedGroup } from '../hooks/useRbac';
+import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
 import { searchedToUser } from '../api/transforms';
 import type { User } from '../api/types';
-import { PRIVILEGED_MUTATION, permits } from '../policy/model';
+import { PRIVILEGED_MUTATION, permits, scopesOf, resolveRoles, summarise, grantsEveryOrganisation, type GroupDefinition, type RoleCatalogue } from '../policy/model';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../api/client';
 
 // Intent-first "Grant access" wizard. The RBAC data model is service → role →
 // group → user; the old assign drawer made an operator assemble that graph by
@@ -37,11 +39,29 @@ function useDebounced<T>(value: T, ms = 250): T {
 
 type Step = 'who' | 'what' | 'review';
 
-/** Resolve the flat permission set a single group would grant. */
-function grantsOf(group: string, state: ReturnType<typeof useApp>['state']) {
-  const { perms } = resolvePerms({ groups: [group] } as User, state);
-  const flat = Object.values(perms).flatMap((s) => [...s]);
-  return { flat, services: Object.keys(perms) };
+/**
+ * What a group grants, read from the model the ENGINE decides against.
+ *
+ * What this replaced walked the old service → role → group tables, which come from Redis and are
+ * not what any decision is made against. An outcome shown from there is a promise the mutation does
+ * not keep: a group offered here could grant nothing, and one the engine knows could be missing.
+ */
+function outcomeOf(group: string, model: { groups: Record<string, GroupDefinition>; roles: RoleCatalogue }) {
+  const definition = model.groups[group];
+  const scopes = scopesOf(definition);
+  const { permissions, undefined: unknownRoles } = resolveRoles(
+    [...new Set(scopes.flatMap((sc) => sc.roles))],
+    model.roles,
+  );
+  return {
+    g: group,
+    perms: permissions,
+    unknownRoles,
+    scopes,
+    summary: summarise(definition, model.roles),
+    level: permissions.length === 0 ? 'none' : accessLevelOf(permissions),
+    privileged: grantsEveryOrganisation(definition),
+  };
 }
 
 export function GrantAccess() {
@@ -51,8 +71,19 @@ export function GrantAccess() {
   // Mirror of jinbe's escalation guard: handing out a group held in every organisation needs the
   // permission below. jinbe refuses with 422 either way; this only greys the control and says why.
   const mayGrantPrivileged = permits(session?.permissions, PRIVILEGED_MUTATION);
-  // From the model the engine decides against, so "privileged" here means what it means there.
-  const modelGroups = useAuthorizationModel().data?.groups ?? {};
+  // From the model the engine decides against, so what is offered — and what "privileged" means —
+  // is what the mutation will be judged on.
+  const modelQ = useAuthorizationModel();
+  const model = useMemo(
+    () => ({ groups: modelQ.data?.groups ?? {}, roles: modelQ.data?.roles ?? {} }),
+    [modelQ.data],
+  );
+  const modelGroups = model.groups;
+  const assignable = useQuery({
+    queryKey: ['assignable-groups'],
+    queryFn: () => api.assignableGroups(),
+    staleTime: 30_000,
+  });
 
   const [step, setStep] = useState<Step>('who');
   const [selected, setSelected] = useState<User | null>(null);
@@ -89,27 +120,22 @@ export function GrantAccess() {
   // "billing" or "delete" surfaces the groups that do that).
   const outcomes = useMemo(() => {
     const low = gq.trim().toLowerCase();
-    return Object.entries(state.groups)
-      .map(([g, map]) => {
-        const { flat, services } = grantsOf(g, state);
-        return {
-          g,
-          map,
-          services,
-          perms: [...new Set(flat)],
-          level: flat.length === 0 ? 'none' : accessLevelOf(flat),
-          privileged: isPrivilegedGroup(g, modelGroups),
-        };
-      })
+    // What this actor may hand out, plus anything the person already holds — a membership that is
+    // no longer offered must stay visible and removable, or it becomes impossible to take away.
+    const offered = assignable.data?.groups ?? Object.keys(model.groups);
+    const names = [...new Set([...offered, ...(selected?.groups ?? [])])].sort();
+    return names
+      .map((g) => outcomeOf(g, model))
       .filter((o) => {
         if (!low) return true;
         return (
           o.g.toLowerCase().includes(low) ||
-          o.services.some((s) => s.toLowerCase().includes(low)) ||
+          o.summary.toLowerCase().includes(low) ||
+          o.scopes.some((sc) => sc.key.toLowerCase().includes(low) || sc.roles.some((r) => r.toLowerCase().includes(low))) ||
           o.perms.some((p) => p.toLowerCase().includes(low))
         );
       });
-  }, [state, gq]);
+  }, [model, assignable.data, selected, gq]);
 
   if (!grant) return null;
 
@@ -121,7 +147,7 @@ export function GrantAccess() {
 
   // A newly-added privileged group is what triggers the gates (holding one you
   // already have is fine — this is about escalation, not the status quo).
-  const escalating = groups.filter((g) => !before.has(g) && isPrivilegedGroup(g, modelGroups));
+  const escalating = groups.filter((g) => !before.has(g) && grantsEveryOrganisation(modelGroups[g]));
   const actorBlock = escalating.length > 0 && !mayGrantPrivileged;
   const mfaBlock = escalating.length > 0 && user?.mfa === false;
 
@@ -137,8 +163,13 @@ export function GrantAccess() {
   const apply = () => {
     if (!user || !changed || actorBlock || mfaBlock) return;
     const summary = `${user.email} → [${groups.join(', ') || 'no groups'}]`;
-    const ok = applyChange('assign', summary, () => apiSetUserGroups(user.email, groups));
-    if (ok) setGrant(null);
+    applyChange(
+      'assign',
+      summary,
+      () => apiSetUserGroups(user.email, groups),
+      { kind: 'user-groups', email: user.email, groups },
+      () => setGrant(null),
+    );
   };
 
   const goStep = (s: Step) => {
@@ -324,14 +355,20 @@ export function GrantAccess() {
                     </span>
                     <AccessLevel level={o.level} compact />
                   </div>
-                  <div style={{ marginTop: 6, marginLeft: 26, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
-                    <span className="small muted">
-                      {o.services.length === 0 ? 'grants nothing' : `on ${o.services.join(', ')} · grants`}
-                    </span>
-                    {o.perms.includes('*')
-                      ? <Chip tone="accent">everything (*)</Chip>
-                      : o.perms.slice(0, 8).map((p) => <Chip key={p}>{p}</Chip>)}
-                    {!o.perms.includes('*') && o.perms.length > 8 && <span className="small muted">+{o.perms.length - 8} more</span>}
+                  <div style={{ marginTop: 6, marginLeft: 26 }}>
+                    <div className="small muted">{o.summary}</div>
+                    <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+                      {o.perms.slice(0, 8).map((p) => <Chip key={p}>{p}</Chip>)}
+                      {o.perms.length > 8 && <span className="small muted">+{o.perms.length - 8} more</span>}
+                      {/* A role the catalogue does not define grants nothing. Saying so is the
+                          difference between "this gives nothing" and "this points at something
+                          that is missing". */}
+                      {o.unknownRoles.length > 0 && (
+                        <Chip tone="err" title="Named by the group but not defined in the model">
+                          undefined role: {o.unknownRoles.join(', ')}
+                        </Chip>
+                      )}
+                    </div>
                   </div>
                 </label>
               );
@@ -361,7 +398,7 @@ export function GrantAccess() {
                 {added.map((g) => (
                   <div key={g} className="row" style={{ gap: 8, marginBottom: 6 }}>
                     <Chip tone="ok">+ add</Chip><span className="mono small">{g}</span>
-                    {isPrivilegedGroup(g, modelGroups) && <Chip tone="warn" title="Grants in every organisation"><span className="chip-ico">{I.lock}</span></Chip>}
+                    {grantsEveryOrganisation(modelGroups[g]) && <Chip tone="warn" title="Grants in every organisation"><span className="chip-ico">{I.lock}</span></Chip>}
                   </div>
                 ))}
                 {removed.map((g) => (
