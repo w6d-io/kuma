@@ -63,6 +63,15 @@ export function useApplyChange() {
           // R2 step-up: the actor's second factor is absent or older than the
           // 15-minute window. Bounce through Kratos AAL2 re-verification and
           // return here so the operator can retry the change.
+          // A refusal no re-verification can lift: the credential in play carries no second factor
+          // this service reads. Offering the bounce here would loop with no exit.
+          if (err.code === 'step_up_unavailable') {
+            pushToast(
+              'Second factor required · not available on this credential',
+              { err: true, sub: `${err.details?.hint || err.message}${nothingApplied}` },
+            );
+            return;
+          }
           if (err.code === 'reauth_required') {
             pushToast(
               'Two-factor re-verification required',
