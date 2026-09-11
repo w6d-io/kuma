@@ -130,7 +130,7 @@ export function UsersPage() {
                 </td>
                 <td>
                   {u.mfa === true && <Chip tone="ok" title="Has second factor (TOTP / WebAuthn / backup codes)">🔐 enabled</Chip>}
-                  {u.mfa === false && <Chip tone="warn" title="No second factor — required before admin / super_admin assignment">⚠️ off</Chip>}
+                  {u.mfa === false && <Chip tone="warn" title="No second factor — required before a group granting in every organisation"><span className="chip-ico">{I.alert}</span>off</Chip>}
                   {u.mfa === undefined && <span className="small muted">—</span>}
                 </td>
                 <td className="small muted nowrap">{u.last}</td>
@@ -292,7 +292,7 @@ export function UserDrawer() {
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               {g}
-              {privileged && <Chip tone="warn">🔒 privileged</Chip>}
+              {privileged && <Chip tone="warn" title="Grants in every organisation"><span className="chip-ico">{I.lock}</span>privileged</Chip>}
               {!known && <Chip tone="err">not in the model</Chip>}
               {blockedByMfa && !blockedByActor && <Chip tone="err">MFA required</Chip>}
             </div>

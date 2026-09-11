@@ -1899,6 +1899,15 @@ table {
 .enforced-list { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 
 /* The APIs come before the model they are decided against, so the list is grouped rather than flat. */
+/* An icon inside a chip: sized to the text beside it rather than to a glyph's own box, which is what
+   made the emoji they replace sit off the baseline at every zoom level. */
+.chip-ico {
+  width: 11px; height: 11px;
+  display: inline-grid; place-items: center;
+  flex: none;
+}
+.chip-ico svg { width: 11px; height: 11px; }
+
 .enforced-group {
   font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
   color: var(--ink-3); margin: 10px 0 2px; padding: 0 10px;

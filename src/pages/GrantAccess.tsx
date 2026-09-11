@@ -208,7 +208,7 @@ export function GrantAccess() {
             <div style={{ fontWeight: 500 }}>{user.name}</div>
             <div className="small muted mono">{user.email}</div>
           </div>
-          {user.mfa === false && <Chip tone="warn" title="No second factor enrolled">⚠️ no 2FA</Chip>}
+          {user.mfa === false && <Chip tone="warn" title="No second factor enrolled"><span className="chip-ico">{I.alert}</span>no 2FA</Chip>}
           {!user.active && <Chip tone="warn">inactive</Chip>}
           <button className="btn ghost sm" onClick={() => setStep('who')}>Change</button>
         </div>
@@ -318,7 +318,7 @@ export function GrantAccess() {
                     <input type="checkbox" checked={on} disabled={blocked} onChange={() => { if (!blocked) toggle(o.g); }} />
                     <span style={{ fontWeight: 500, fontSize: 12.5, flex: 1 }}>
                       {o.g}
-                      {o.privileged && <Chip tone="warn" title="Grants admin power">🔒 privileged</Chip>}
+                      {o.privileged && <Chip tone="warn" title="Grants in every organisation"><span className="chip-ico">{I.lock}</span>privileged</Chip>}
                       {blockedByActor && <Chip tone="err">needs admin.membership:write</Chip>}
                       {blockedByMfa && !blockedByActor && <Chip tone="err">2FA required</Chip>}
                     </span>
@@ -361,7 +361,7 @@ export function GrantAccess() {
                 {added.map((g) => (
                   <div key={g} className="row" style={{ gap: 8, marginBottom: 6 }}>
                     <Chip tone="ok">+ add</Chip><span className="mono small">{g}</span>
-                    {isPrivilegedGroup(g, modelGroups) && <Chip tone="warn">🔒</Chip>}
+                    {isPrivilegedGroup(g, modelGroups) && <Chip tone="warn" title="Grants in every organisation"><span className="chip-ico">{I.lock}</span></Chip>}
                   </div>
                 ))}
                 {removed.map((g) => (
