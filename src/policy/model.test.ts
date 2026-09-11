@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scopesOf, grantsEveryOrganisation, resolveRoles, covers, permits, hierarchyOf, summarise } from './model';
+import { scopesOf, grantsEveryOrganisation, resolveRoles, covers, permits, hierarchyOf, summarise, permissionChain } from './model';
 
 // The screen this backs replaced one that read a catalogue from a database and laid it out as a
 // column per SERVICE. These tests pin the shape the model actually has: a scope per ORGANISATION,
@@ -215,5 +215,71 @@ describe('what a group gives, in a sentence', () => {
 
   it('does not invent a permission for a role the catalogue omits', () => {
     expect(summarise({ '*': ['ghost'] }, ROLES)).toBe('Gives nothing.');
+  });
+});
+
+describe('permissionChain', () => {
+  const model = {
+    groups: {
+      'platform-admin': { '*': ['platform-admin'] },
+      'premium-operator': { 'org-1': ['operator'] },
+      'points-nowhere': { '*': ['ghost-role'] },
+      'grants-nothing': {},
+    },
+    roles: { 'platform-admin': ['admin:read', 'admin:write'], operator: ['context:read'] },
+  };
+  const tables = [{
+    name: 'strada-demo-api',
+    routes: [
+      { method: 'GET', path: '/api/v1/context', class: 'authorized', permission: 'context:read' },
+      { method: 'POST', path: '/api/v1/context', class: 'authorized', permission: 'context:read' },
+      { method: 'GET', path: '/health/live', class: 'public' },
+    ],
+  }];
+
+  it('reaches the routes a permission opens — the question the screen exists to answer', () => {
+    const [branch] = permissionChain(['premium-operator'], model, tables);
+    const permission = branch.scopes[0].roles[0].permissions[0];
+    expect(permission.permission).toBe('context:read');
+    expect(permission.routes).toEqual([
+      { api: 'strada-demo-api', method: 'GET', path: '/api/v1/context' },
+      { api: 'strada-demo-api', method: 'POST', path: '/api/v1/context' },
+    ]);
+  });
+
+  it('marks a platform-wide grant as such rather than naming an organisation', () => {
+    const [branch] = permissionChain(['platform-admin'], model, tables);
+    expect(branch.scopes[0].everywhere).toBe(true);
+  });
+
+  it('tells a group the model does not declare from one that grants nothing', () => {
+    // The failure this replaced showed both as the same blank line, so a privileged group and a
+    // missing one were indistinguishable.
+    const [missing] = permissionChain(['gone'], model, tables);
+    expect(missing.declared).toBe(false);
+    const [empty] = permissionChain(['grants-nothing'], model, tables);
+    expect(empty.declared).toBe(true);
+    expect(empty.scopes).toEqual([]);
+  });
+
+  it('names a role the model does not define, instead of rendering it empty', () => {
+    const [branch] = permissionChain(['points-nowhere'], model, tables);
+    expect(branch.scopes[0].roles[0]).toMatchObject({ role: 'ghost-role', known: false, permissions: [] });
+  });
+
+  it('leaves a permission no route declares with an empty list, not a missing one', () => {
+    const [branch] = permissionChain(['platform-admin'], model, tables);
+    expect(branch.scopes[0].roles[0].permissions.map((p) => p.routes)).toEqual([[], []]);
+  });
+
+  it('builds the chain with no route tables at all', () => {
+    const [branch] = permissionChain(['premium-operator'], model);
+    expect(branch.scopes[0].roles[0].permissions[0].routes).toEqual([]);
+  });
+
+  it('ignores a public route, which requires no permission', () => {
+    const [branch] = permissionChain(['premium-operator'], model, tables);
+    const paths = branch.scopes[0].roles[0].permissions.flatMap((p) => p.routes.map((r) => r.path));
+    expect(paths).not.toContain('/health/live');
   });
 });

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession, useUsers, useGroupsMap, useUserSearch, useStats, useMyOrganizations, useUserIdentity, useAuditEvents, useAuthorizationModel } from '../api/hooks';
+import { useSession, useUsers, useGroupsMap, useUserSearch, useStats, useMyOrganizations, useUserIdentity, useAuditEvents, useAuthorizationModel, usePermissionChain } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, Switch, ConfirmDialog, EmptyHint } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
@@ -194,6 +194,7 @@ export function UserDrawer() {
   // "Privileged" means what it means to the engine: granting in every organisation. Read from the
   // same model, so the warning on a row and the refusal behind it cannot disagree.
   const modelGroups = useAuthorizationModel().data?.groups ?? {};
+  const chain = usePermissionChain();
   const assignable = useQuery({
     queryKey: ['assignable-groups'],
     queryFn: () => api.assignableGroups(),
@@ -450,7 +451,7 @@ export function UserDrawer() {
                 </div>
                 <div>
                   <label className="input-label">Resulting access</label>
-                  <div className="panel" style={{ padding: 12 }}><PermTree user={{ ...user, groups }} state={state} /></div>
+                  <div className="panel" style={{ padding: 12 }}><PermTree user={{ ...user, groups }} model={chain.model} routeTables={chain.routeTables} /></div>
                 </div>
               </div>
               <div className="panel" style={{ padding: 14, marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
