@@ -76,7 +76,11 @@ export function kratosToUser(k: KratosIdentity): User {
     id: k.id,
     name: k.traits.name || k.traits.email,
     email: k.traits.email,
-    groups: k.metadata_admin?.groups || (k as any).groups || [],
+    // The ENFORCED memberships first, which jinbe resolves from the store the engine reads, and the
+    // Kratos copy only when it answers none. It was the other way round, so a membership held only
+    // where it decides was invisible — and the drawer that edits it seeds from this, so the screen
+    // offered to remove a group it was not showing.
+    groups: (k as any).groups || k.metadata_admin?.groups || [],
     title: '',
     active: k.state === 'active',
     last: k.updated_at ? timeAgo(k.updated_at) : 'never',
