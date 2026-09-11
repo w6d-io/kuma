@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { I } from './Icons';
-import { accessLevelOf, LevelMeta } from '../../hooks/useRbac';
+import { LevelMeta } from '../../hooks/useRbac';
+import { permissionChain, type RouteTable } from '../../policy/model';
 
 export function Chip({ tone = "", children, mono = true, title }: { tone?: string; children: React.ReactNode; mono?: boolean; title?: string }) {
   return <span className={`chip ${tone}`} style={mono ? undefined : { fontFamily: "var(--font-sans)" }} title={title}>{children}</span>;
@@ -322,18 +323,29 @@ export function AdvancedDisclosure({ label = "Advanced", note, defaultOpen = fal
   );
 }
 
-export function PermTree({ user, state }: { user: { name: string; email: string; groups: string[] }; state: { groups: Record<string, Record<string, string[]>>; roles: Record<string, Record<string, string[]>> } }) {
-  const branches = user.groups.map(g => {
-    const map = state.groups[g] || {};
-    const svcs = Object.entries(map).map(([svc, roles]) => ({
-      svc,
-      roles: roles.map(rName => ({
-        name: rName,
-        perms: (state.roles[svc]?.[rName]) || [],
-      })),
-    }));
-    return { group: g, svcs };
-  });
+/**
+ * What a person can actually do, from the model the ENGINE decides against — down to the routes.
+ *
+ * What this replaced walked `state.groups[group]`, the old service → role tables that come from
+ * Redis. Those are empty now, so every branch read "no service mappings": the screen was telling an
+ * operator that a privileged group grants nothing.
+ *
+ * The chain shown is the one the engine follows, and every hop is there because every hop is
+ * something you could change to take the access away:
+ *
+ *   group → the organisations it grants in → role → permission → the routes that permission opens
+ */
+export function PermTree({ user, model, routeTables }: {
+  user: { name: string; email: string; groups: string[] };
+  model: { groups: Record<string, Record<string, string[]>>; roles: Record<string, string[]> };
+  /** Per API, the routes it declares. Absent while they load — the tree still shows the rest. */
+  routeTables?: RouteTable[];
+}) {
+  // Built by the policy module, so what this draws and what the engine follows are one description.
+  const branches = React.useMemo(
+    () => permissionChain(user.groups, model, routeTables),
+    [user.groups, model, routeTables],
+  );
 
   return (
     <div className="permtree">
@@ -345,40 +357,46 @@ export function PermTree({ user, state }: { user: { name: string; email: string;
         </div>
       </div>
       {branches.length === 0 && <EmptyHint>No groups &rarr; no access.</EmptyHint>}
-      {branches.map(b => (
+      {branches.map((b) => (
         <div key={b.group} className="pt-branch">
           <div className="pt-line v" />
           <div className="pt-group">
             <span className="pt-line h" />
             <span className="mono pt-chip">group &middot; {b.group}</span>
+            {!b.declared && <Chip tone="err" title="Held, but the model declares no such group">not in the model</Chip>}
           </div>
-          <div className="pt-services">
-            {b.svcs.length === 0 && <div className="small muted" style={{ paddingLeft: 32 }}>&mdash; no service mappings &mdash;</div>}
-            {b.svcs.map(sv => (
-              <div key={sv.svc} className="pt-svc">
-                <span className="pt-line h" />
-                <div className="pt-svc-head">
-                  <span className="mono">{sv.svc}</span>
-                  <AccessLevel level={accessLevelOf(sv.roles.flatMap(r => r.perms))} compact />
+          {b.declared && b.scopes.length === 0 && (
+            <div className="pt-svc"><span className="small muted">&mdash; grants nothing &mdash;</span></div>
+          )}
+          {b.scopes.map((scope) => (
+            <div key={scope.organisation} className="pt-svc">
+              <span className="pt-line h" />
+              {scope.everywhere
+                ? <Chip tone="warn" title="Granted in every organisation">in every organisation</Chip>
+                : <span className="mono pt-chip">in {scope.organisation}</span>}
+              {scope.roles.map((r) => (
+                <div key={r.role} className="pt-role">
+                  <span className="mono">{r.role}</span>
+                  <div className="pt-perms">
+                    {!r.known && <Chip tone="err" title="Named by the group, not defined in the model">undefined role</Chip>}
+                    {r.known && r.permissions.length === 0 && <span className="small muted">&mdash; carries nothing &mdash;</span>}
+                    {r.permissions.map((p) => (
+                      <span key={p.permission} className="pt-perm">
+                        <Chip>{p.permission}</Chip>
+                        {p.routes.length === 0
+                          ? <span className="small muted" title="No declared route requires it — it may be enforced by a service that publishes no table">no route declares it</span>
+                          : <span className="small muted" title={p.routes.map((x) => `${x.method} ${x.path}  (${x.api})`).join('\n')}>
+                              {p.routes.length} route{p.routes.length === 1 ? '' : 's'} &middot;{' '}
+                              <span className="mono">{p.routes.slice(0, 2).map((x) => `${x.method} ${x.path}`).join(', ')}</span>
+                              {p.routes.length > 2 && ` +${p.routes.length - 2}`}
+                            </span>}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  {sv.roles.map(r => (
-                    <div key={r.name} className="pt-role">
-                      <span className="mono small">{r.name}</span>
-                      <div className="pt-perms">
-                        {r.perms.includes("*")
-                          ? <Chip tone="accent">wildcard &middot; *</Chip>
-                          : r.perms.length === 0
-                            ? <span className="small muted">&mdash;</span>
-                            : r.perms.slice(0, 8).map(p => <Chip key={p}>{p}</Chip>)}
-                        {r.perms.length > 8 && <span className="small muted">+{r.perms.length - 8} more</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ))}
         </div>
       ))}
     </div>

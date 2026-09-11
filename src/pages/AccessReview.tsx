@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useApp } from '../contexts/AppContext';
-import { useAccessReview, useAuditEvents } from '../api/hooks';
+import { useAccessReview, useAuditEvents, usePermissionChain } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, EmptyHint } from '../components/ui/Primitives';
 import { timeAgo } from '../api/transforms';
@@ -41,7 +40,6 @@ function fmtLast(v?: string | null): string {
 }
 
 export function AccessReviewPage() {
-  const { state } = useApp();
   const { data, isLoading, isError, error } = useAccessReview();
   const [sel, setSel] = useState<AccessReviewIdentity | null>(null);
 
@@ -161,7 +159,7 @@ export function AccessReviewPage() {
         {data?.limits?.note || 'Provenance and "last active" are bounded by the audit stream cap (Redis-only store).'}
       </div>
 
-      <AccessReviewDrawer identity={sel} onClose={() => setSel(null)} state={state} />
+      <AccessReviewDrawer identity={sel} onClose={() => setSel(null)} />
     </>
   );
 }
@@ -175,13 +173,13 @@ function PostureCell({ n, label, tone, first }: { n: number; label: string; tone
   );
 }
 
-function AccessReviewDrawer({ identity, onClose, state }: {
+function AccessReviewDrawer({ identity, onClose }: {
   identity: AccessReviewIdentity | null;
   onClose: () => void;
-  state: ReturnType<typeof useApp>['state'];
 }) {
   // "Are they using it" — recent actions by this actor (fail-closed: empty ≠ error).
   const trailQ = useAuditEvents({ actor: identity?.email || '', limit: 8 }, !!identity);
+  const chain = usePermissionChain();
   if (!identity) return null;
   const tm = tierMeta(identity.tier);
   const trail = trailQ.data ?? [];
@@ -220,7 +218,7 @@ function AccessReviewDrawer({ identity, onClose, state }: {
       <div className="mb-12">
         <label className="input-label">Why they can do this</label>
         <div className="panel" style={{ padding: 12 }}>
-          <PermTree user={{ name: identity.name || identity.email, email: identity.email, groups: identity.groups }} state={state} />
+          <PermTree user={{ name: identity.name || identity.email, email: identity.email, groups: identity.groups }} model={chain.model} routeTables={chain.routeTables} />
         </div>
       </div>
 

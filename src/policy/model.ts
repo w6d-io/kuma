@@ -202,3 +202,72 @@ function listed(grants: readonly Grant[]): string {
   const last = permissions[permissions.length - 1];
   return `Gives ${permissions.slice(0, -1).join(', ')} and ${last}`;
 }
+
+export type RouteTable = {
+  name: string;
+  routes?: Array<{ method: string; path: string; class: string; permission?: string }>;
+};
+
+export type ChainBranch = {
+  group: string;
+  /** False when the model declares no such group: a membership pointing at something missing. */
+  declared: boolean;
+  scopes: Array<{
+    organisation: string;
+    everywhere: boolean;
+    roles: Array<{
+      role: string;
+      known: boolean;
+      permissions: Array<{
+        permission: string;
+        routes: Array<{ api: string; method: string; path: string }>;
+      }>;
+    }>;
+  }>;
+};
+
+/**
+ * The chain from a person's groups to the routes they can call, as the ENGINE follows it:
+ *
+ *   group → the organisations it grants in → role → permission → the routes that permission opens
+ *
+ * Every hop is here because every hop is something you could change to take the access away. And
+ * each one distinguishes "grants nothing" from "points at something missing" — a group the model
+ * does not declare and a group that carries no role are different problems with different fixes,
+ * and the screen this replaced showed both as the same blank line.
+ */
+export function permissionChain(
+  groups: readonly string[],
+  model: { groups: Record<string, GroupDefinition>; roles: RoleCatalogue },
+  routeTables: readonly RouteTable[] = [],
+): ChainBranch[] {
+  const opens = new Map<string, Array<{ api: string; method: string; path: string }>>();
+  for (const table of routeTables) {
+    for (const route of table.routes ?? []) {
+      if (!route.permission) continue;
+      const held = opens.get(route.permission) ?? [];
+      held.push({ api: table.name, method: route.method, path: route.path });
+      opens.set(route.permission, held);
+    }
+  }
+
+  return groups.map((group) => {
+    const definition = model.groups[group];
+    return {
+      group,
+      declared: definition !== undefined,
+      scopes: scopesOf(definition).map((scope) => ({
+        organisation: scope.key,
+        everywhere: scope.everyOrganisation,
+        roles: scope.roles.map((role) => ({
+          role,
+          known: model.roles[role] !== undefined,
+          permissions: (model.roles[role] ?? []).map((permission) => ({
+            permission,
+            routes: opens.get(permission) ?? [],
+          })),
+        })),
+      })),
+    };
+  });
+}

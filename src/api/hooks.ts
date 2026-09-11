@@ -738,3 +738,21 @@ export function useSetOrgUserGroups(orgId: string) {
     onSettled: () => qc.invalidateQueries({ queryKey: ['org-users', orgId] }),
   });
 }
+
+/**
+ * The model the engine decides against, plus the route tables that say which routes each permission
+ * opens. One hook, because three screens show this chain and a second reader is free to disagree
+ * with the engine about what it says.
+ */
+export function usePermissionChain() {
+  const model = useAuthorizationModel();
+  const enforced = useEnforcedConfig();
+  return {
+    model: {
+      groups: model.data?.groups ?? {},
+      roles: model.data?.roles ?? {},
+    },
+    routeTables: (enforced.data ?? []).filter((d) => d.routes?.length),
+    isLoading: model.isLoading,
+  };
+}

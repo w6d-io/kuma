@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession, useUserSearch, useAuthorizationModel } from '../api/hooks';
+import { useSession, useUserSearch, useAuthorizationModel, usePermissionChain } from '../api/hooks';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, AccessLevel } from '../components/ui/Primitives';
 import { accessLevelOf } from '../hooks/useRbac';
@@ -65,7 +65,7 @@ function outcomeOf(group: string, model: { groups: Record<string, GroupDefinitio
 }
 
 export function GrantAccess() {
-  const { grant, setGrant, state, apiSetUserGroups, setUserDrawer } = useApp();
+  const { grant, setGrant, apiSetUserGroups, setUserDrawer } = useApp();
   const applyChange = useApplyChange();
   const { data: session } = useSession();
   // Mirror of jinbe's escalation guard: handing out a group held in every organisation needs the
@@ -79,6 +79,7 @@ export function GrantAccess() {
     [modelQ.data],
   );
   const modelGroups = model.groups;
+  const chain = usePermissionChain();
   const assignable = useQuery({
     queryKey: ['assignable-groups'],
     queryFn: () => api.assignableGroups(),
@@ -416,7 +417,7 @@ export function GrantAccess() {
             <div>
               <label className="input-label">Resulting access</label>
               <div className="panel" style={{ padding: 12 }}>
-                <PermTree user={{ ...user, groups }} state={state} />
+                <PermTree user={{ ...user, groups }} model={chain.model} routeTables={chain.routeTables} />
               </div>
             </div>
           </div>
