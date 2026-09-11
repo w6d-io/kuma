@@ -13,6 +13,7 @@ import {
 } from '../api/hooks';
 import { InviteDrawer } from './OrgAdmin';
 import { PRIVILEGED_MUTATION, permits } from '../policy/model';
+import { bounceToStepUp } from '../lib/stepUp';
 
 // The Organizations hub — the platform-level view of EVERY
 // tenant, as opposed to the delegated "Org Admin" tab (a member's self-service
@@ -293,12 +294,8 @@ function AdminsDrawer({ org, current, members, onClose }: {
         const err = e as Error & { code?: string; details?: { hint?: string } };
         // Step-up (R2): re-verify a recent second factor, then return to retry.
         if (err.code === 'reauth_required') {
-          pushToast('Two-factor re-verification required · redirecting to step-up', { err: true, sub: err.details?.hint || err.message });
-          const authDomain = (window as any).__AUTH_DOMAIN__;
-          if (authDomain) {
-            const returnTo = window.location.href;
-            setTimeout(() => { window.location.href = `https://${authDomain}/login?aal=aal2&refresh=true&return_to=${encodeURIComponent(returnTo)}`; }, 1500);
-          }
+          pushToast('Two-factor re-verification required', { err: true, sub: 'You will be sent to re-verify your second factor, then back here to retry. This is not a sign-out.' });
+          bounceToStepUp();
           return;
         }
         if (err.code === 'privilege_escalation_blocked' || err.code === 'mfa_required') {
