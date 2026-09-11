@@ -161,7 +161,15 @@ export const api = {
    * to say which — a screen asking for everything could not tell a short answer from a complete one.
    */
   allOrganizations: () =>
-    request<{ organizations: { id: string; name: string; tenant: string }[] }>('/admin/organizations'),
+    request<{
+      organizations: {
+        id: string;
+        name: string;
+        tenant: string;
+        /** What this organisation runs, from the directory — only what is enabled. */
+        applications?: string[];
+      }[];
+    }>('/admin/organizations'),
 
   assignableGroups: () =>
     request<{ groups: string[]; mayAssign: boolean }>('/admin/assignable-groups'),
