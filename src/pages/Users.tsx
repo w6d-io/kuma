@@ -12,6 +12,7 @@ import type { User, AuditEvent } from '../api/types';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { PRIVILEGED_MUTATION, permits } from '../policy/model';
+import { takePendingChange, type PendingChange } from '../lib/pendingChange';
 
 // Small debounce so typing a name doesn't re-filter (and, for emails, re-query
 // the server) on every keystroke.
@@ -27,6 +28,9 @@ function useDebounced<T>(value: T, ms = 250): T {
 export function UsersPage() {
   const { setUserDrawer, setGrant } = useApp();
   const [q, setQ] = useState("");
+  // A change that was refused for want of a second factor, waiting to be proposed again. Held
+  // until the person it targets is on screen, because the drawer opens on a row, not on an email.
+  const [resuming, setResuming] = useState<PendingChange | null>(() => takePendingChange());
   const [groupFilter, setGroupFilter] = useState("all");
   const dq = useDebounced(q.trim());
 
@@ -54,6 +58,18 @@ export function UsersPage() {
 
   const loading = searching ? searchQ.isLoading : browseQ.usersLoading;
   const total = stats?.total ?? browseQ.count;
+
+  // Search for the person the interrupted change targets — page one need not hold them — then
+  // reopen their drawer on the selection that was refused. It is re-PROPOSED, never re-applied:
+  // the operator sees it and applies it, and every gate in jinbe runs again on that apply.
+  useEffect(() => {
+    if (!resuming) return;
+    if (q !== resuming.email) { setQ(resuming.email); return; }
+    const target = rows.find(u => u.email === resuming.email);
+    if (!target) return;
+    setUserDrawer({ mode: 'edit', user: target, resumeGroups: resuming.groups });
+    setResuming(null);
+  }, [resuming, rows, q, setUserDrawer]);
 
   return (
     <>
@@ -205,7 +221,7 @@ export function UserDrawer() {
   // on optimistic refetch, and re-seeding would wipe the operator's in-progress
   // edits. eslint-disable is the correct call here, not adding the deps.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { setGroups(user?.groups || []); }, [user?.id]);
+  useEffect(() => { setGroups(userDrawer?.resumeGroups ?? user?.groups ?? []); }, [user?.id]);
   useEffect(() => {
     setDrawerTab("groups");
     setConfirmDelete(false);
@@ -222,8 +238,16 @@ export function UserDrawer() {
     const changed = JSON.stringify(groups.sort()) !== JSON.stringify((user.groups || []).sort());
     if (!changed) { setUserDrawer(null); return; }
     const summary = `${user.email} → [${groups.join(", ") || "no groups"}]`;
-    const ok = applyChange("assign", summary, () => apiSetUserGroups(user.email, groups));
-    if (ok) setUserDrawer(null);
+    applyChange(
+      "assign",
+      summary,
+      () => apiSetUserGroups(user.email, groups),
+      { kind: 'user-groups', email: user.email, groups },
+      // Closed on the WRITE, not on the call. `applyChange` returns before its promise does, so
+      // closing on its return discarded the selection on every refusal — which is what made a
+      // step-up cost the operator their change.
+      () => setUserDrawer(null),
+    );
   };
 
   const create = () => {
@@ -390,6 +414,21 @@ export function UserDrawer() {
           )}
           {drawerTab === "groups" && (
             <>
+              {/* Says why this drawer opened by itself, and that nothing has been written yet. An
+                  operator returning from a step-up to a pre-filled form must be able to tell a
+                  proposal from something already applied on their behalf. */}
+              {userDrawer.resumeGroups && (
+                <div className="resumed-change">
+                  <span className="resumed-change-icon">{I.check}</span>
+                  <div>
+                    <strong>Second factor verified · your change is ready</strong>
+                    <div className="small muted">
+                      Restored from before the re-verification. Nothing has been applied yet —
+                      check it and use Apply change.
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="drawer-split">
                 <div>
                   <label className="input-label">Groups</label>
