@@ -129,7 +129,7 @@ export function UsersPage() {
                   })()}
                 </td>
                 <td>
-                  {u.mfa === true && <Chip tone="ok" title="Has second factor (TOTP / WebAuthn / backup codes)">🔐 enabled</Chip>}
+                  {u.mfa === true && <Chip tone="ok" title="Has second factor (TOTP / WebAuthn / backup codes)"><span className="chip-ico">{I.lock}</span>enabled</Chip>}
                   {u.mfa === false && <Chip tone="warn" title="No second factor — required before a group granting in every organisation"><span className="chip-ico">{I.alert}</span>off</Chip>}
                   {u.mfa === undefined && <span className="small muted">—</span>}
                 </td>
