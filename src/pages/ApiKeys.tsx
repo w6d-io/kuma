@@ -5,8 +5,7 @@ import { accountsApi, type ApiKeySecretView, type ApiKeyView } from '../api/acco
 import { useOrgCatalog } from '../api/orgCatalog';
 import { OrgPicker } from '../components/OrgPicker';
 import { ApiErrorState } from '../components/ApiErrorState';
-import { Chip, Drawer, ConfirmDialog, EmptyHint } from '../components/ui/Primitives';
-import { SkeletonRows } from '../components/ui/Skeleton';
+import { Badge, Button, Card, ConfirmDialog, Drawer, EmptyHint, EmptyRow, Field, Input, LoadingRows, PageHeader, Table } from '../components/ui';
 import { parseScopes, allowedScopesFrom } from '../lib/apiKeys';
 import { orgLabel } from '../lib/orgOptions';
 import { toastFor } from '../lib/apiError';
@@ -24,18 +23,18 @@ export function ApiKeysPage() {
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>API keys</h1>
-          <div className="sub">Keys that let a program call an organization&apos;s sites without a person signing in</div>
-        </div>
-        <div className="page-actions">
-          <OrgPicker value={org} onChange={(id) => setPage('apikeys', id || null)} style={{ minWidth: 240 }} />
-        </div>
-      </div>
+      <PageHeader
+        title="API keys"
+        sub={<>Keys that let a program call an organization&apos;s sites without a person signing in</>}
+        actions={
+          <div className="settings-org-picker">
+            <OrgPicker value={org} onChange={(id) => setPage('apikeys', id || null)} />
+          </div>
+        }
+      />
       {org
         ? <OrgApiKeys key={org} org={org} orgName={orgLabel(org, orgs)} />
-        : <div className="panel" style={{ padding: 40 }}><EmptyHint>Choose an organization to see its API keys.</EmptyHint></div>}
+        : <Card pad="md"><EmptyHint>Choose an organization to see its API keys.</EmptyHint></Card>}
     </>
   );
 }
@@ -67,35 +66,36 @@ function OrgApiKeys({ org, orgName }: { org: string; orgName: string }) {
   const keys = q.data?.data ?? [];
 
   return (
-    <div className="panel">
-      <div className="panel-head">
-        <div><h3>{orgName}</h3><div className="sub">{q.isLoading ? 'Loading…' : `${keys.length} key${keys.length === 1 ? '' : 's'}`}</div></div>
-        <button className="btn primary" onClick={() => setCreating(true)}>Create key</button>
-      </div>
-      <table className="table">
-        <thead><tr><th>Label</th><th>Scopes</th><th>Created</th><th></th></tr></thead>
+    <Card
+      title={orgName}
+      sub={q.isLoading ? 'Loading…' : `${keys.length} key${keys.length === 1 ? '' : 's'}`}
+      actions={<Button variant="primary" size="sm" onClick={() => setCreating(true)}>Create key</Button>}
+      pad="none"
+    >
+      <Table>
+        <thead><tr><th>Label</th><th>Scopes</th><th>Created</th><th /></tr></thead>
         <tbody>
-          {q.isLoading && <SkeletonRows rows={3} cols={4} />}
+          {q.isLoading && <LoadingRows rows={3} cols={4} />}
           {!q.isLoading && keys.length === 0 && (
-            <tr><td colSpan={4}><EmptyHint>No API keys for this organization.</EmptyHint></td></tr>
+            <EmptyRow colSpan={4}>No API keys for this organization.</EmptyRow>
           )}
           {keys.map(k => (
             <tr key={k.client_id}>
               <td>
-                <div style={{ fontWeight: 500 }}>{k.label}</div>
+                <div className="fw-medium">{k.label}</div>
                 <div className="small muted mono">{k.client_id}</div>
               </td>
-              <td><span style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{k.scopes.map(s => <Chip key={s}>{s}</Chip>)}</span></td>
+              <td><span className="row wrap gap-4">{k.scopes.map(s => <Badge key={s}>{s}</Badge>)}</span></td>
               <td className="small muted nowrap">
                 {k.created_at ? timeAgo(k.created_at) : '—'}{k.created_by ? ` · ${k.created_by}` : ''}
               </td>
-              <td style={{ textAlign: 'right' }}>
-                <button className="btn ghost sm" disabled={busy} onClick={() => setRevoking(k)}>Revoke</button>
+              <td className="align-right">
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => setRevoking(k)}>Revoke</Button>
               </td>
             </tr>
           ))}
         </tbody>
-      </table>
+      </Table>
       {creating && (
         <CreateKeyDrawer
           org={org}
@@ -114,7 +114,7 @@ function OrgApiKeys({ org, orgName }: { org: string; orgName: string }) {
         onCancel={() => setRevoking(null)}
         onConfirm={() => { if (revoking) void revoke(revoking); }}
       />
-    </div>
+    </Card>
   );
 }
 
@@ -161,19 +161,21 @@ function CreateKeyDrawer({ org, orgName, onClose, onCreated }: {
         onClose={onClose}
         eyebrow={orgName}
         title="Key created"
-        footer={<><span className="small muted">The secret is not shown again.</span><button className="btn primary" onClick={onClose}>Done</button></>}
+        footer={<><span className="small muted">The secret is not shown again.</span><Button variant="primary" onClick={onClose}>Done</Button></>}
       >
         <div className="small muted mb-12">
           Copy the secret now and store it somewhere safe. It cannot be shown again — if it is lost,
           revoke this key and create a new one.
         </div>
-        <label className="input-label">Client ID</label>
-        <input className="input mono mb-12" readOnly value={created.client_id} onFocus={e => e.currentTarget.select()} />
-        <label className="input-label">Secret</label>
-        <div className="row" style={{ gap: 8 }}>
-          <input className="input mono" style={{ flex: 1 }} readOnly value={created.client_secret} onFocus={e => e.currentTarget.select()} />
-          <button className="btn" onClick={copy}>Copy</button>
-        </div>
+        <Field label="Client ID">
+          <Input mono readOnly value={created.client_id} onFocus={e => e.currentTarget.select()} />
+        </Field>
+        <Field label="Secret">
+          <div className="row gap-8">
+            <Input mono className="flex-1" readOnly value={created.client_secret} onFocus={e => e.currentTarget.select()} />
+            <Button onClick={copy}>Copy</Button>
+          </div>
+        </Field>
       </Drawer>
     );
   }
@@ -188,27 +190,26 @@ function CreateKeyDrawer({ org, orgName, onClose, onCreated }: {
         <>
           <span className="small muted">The secret is shown once, after creating.</span>
           <div className="row">
-            <button className="btn" onClick={onClose}>Cancel</button>
-            <button className="btn primary" onClick={submit} disabled={busy || !label.trim() || scopes.length === 0}>
+            <Button onClick={onClose}>Cancel</Button>
+            <Button variant="primary" onClick={submit} disabled={busy || !label.trim() || scopes.length === 0}>
               {busy ? 'Creating…' : 'Create key'}
-            </button>
+            </Button>
           </div>
         </>
       }
     >
-      <div className="mb-12">
-        <label className="input-label" htmlFor="key-label">Label *</label>
-        <input id="key-label" className="input" placeholder="e.g. Billing sync" value={label} maxLength={200} onChange={e => setLabel(e.target.value)} />
-      </div>
-      <div className="mb-12">
-        <label className="input-label" htmlFor="key-scopes">Scopes *</label>
-        <input id="key-scopes" className="input mono" value={scopesText} onChange={e => setScopesText(e.target.value)} />
-        <div className="small muted" style={{ marginTop: 4 }}>
-          {allowed
-            ? <>Allowed: {allowed.map(s => <Chip key={s}>{s}</Chip>)}</>
-            : 'Separate with commas or spaces. What the key may do on the organization’s sites.'}
-        </div>
-      </div>
+      <Field label="Label" required>
+        <Input id="key-label" placeholder="e.g. Billing sync" value={label} maxLength={200} onChange={e => setLabel(e.target.value)} />
+      </Field>
+      <Field
+        label="Scopes"
+        required
+        hint={allowed
+          ? <>Allowed: {allowed.map(s => <Badge key={s}>{s}</Badge>)}</>
+          : 'Separate with commas or spaces. What the key may do on the organization’s sites.'}
+      >
+        <Input id="key-scopes" mono value={scopesText} onChange={e => setScopesText(e.target.value)} />
+      </Field>
     </Drawer>
   );
 }

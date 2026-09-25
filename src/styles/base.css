@@ -1,0 +1,153 @@
+/* The ground everything stands on: the reset, the body's type, focus, the few bare elements the
+   console styles (kbd, scrollbars), page entrance, and the reader's tweaks from the Tweaks panel. */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.45;
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.005em;
+}
+code, pre, .mono { font-family: var(--font-mono); }
+/* `color` too: without it a bare button inherits the UA's `buttontext`, which is BLACK, and any
+   descendant that does not set its own colour is unreadable on a dark ground. */
+button { font-family: inherit; font-size: inherit; color: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+input, textarea, select { font-family: inherit; font-size: inherit; }
+a { color: inherit; text-decoration: none; }
+a.link, .link { color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; }
+h1, h2, h3, h4 { font-weight: var(--weight-semibold); }
+
+/* One focus ring for everything that takes focus from the keyboard. Solid, in the focus colour,
+   outside the control — 3:1 against the surface in both themes (contrast.test.ts). */
+:where(button, a, [tabindex], summary, .btn-base):focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+kbd {
+  font-family: var(--font-mono); font-size: var(--text-xs);
+  padding: 0 var(--space-1); border-radius: var(--radius-sm);
+  background: var(--color-surface-2); color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-surface-3); border-radius: var(--radius-pill); border: 2px solid var(--color-bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--color-border-strong); }
+
+/* Announced, not drawn: a dialog needs a title for anybody not looking at it. */
+.sr-only {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.content {
+  padding: var(--space-5) var(--space-5) var(--space-7);
+  width: 100%;
+  /* Wide content must scroll inside its own box; the page itself never scrolls sideways. */
+  overflow-x: hidden;
+}
+@media (max-width: 860px) {
+  .content { padding: var(--space-4) var(--space-4) var(--space-7); }
+}
+table { min-width: 0; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* A navigation replaces everything at once. A short fade takes the edge off the swap without
+   delaying anything readable. Opacity ONLY: a transform here would make this element the
+   containing block for every `position: fixed` descendant. */
+.page-enter { animation: page-enter 160ms ease-out both; }
+@keyframes page-enter { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter { animation: none; }
+  *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }
+}
+
+/* ── The reader's tweaks (Tweaks panel → attributes on <html>) ─────────────────────────────── */
+html[data-accent="indigo"] {
+  --color-accent: oklch(55% 0.19 270);
+  --color-accent-soft: oklch(95% 0.04 270);
+  --color-focus-ring: oklch(55% 0.19 270);
+}
+html[data-accent="indigo"][data-theme="dark"] {
+  --color-accent: oklch(72% 0.16 270);
+  --color-accent-soft: oklch(28% 0.07 270);
+}
+html[data-accent="slate"] {
+  --color-accent: oklch(48% 0.04 260);
+  --color-accent-soft: oklch(93% 0.01 260);
+  --color-focus-ring: oklch(48% 0.04 260);
+}
+html[data-accent="slate"][data-theme="dark"] {
+  --color-accent: oklch(74% 0.03 260);
+  --color-accent-soft: oklch(26% 0.02 260);
+}
+
+html[data-density="compact"] .panel-head { padding: 8px 12px; }
+html[data-density="compact"] .panel-body { padding: 10px 12px; }
+html[data-density="compact"] .table th,
+html[data-density="compact"] .table td { padding: 6px 10px; }
+html[data-density="compact"] .nav-item { padding-top: 5px; padding-bottom: 5px; }
+html[data-density="cozy"] .panel-head { padding: 14px 18px; }
+html[data-density="cozy"] .panel-body { padding: 18px; }
+html[data-density="cozy"] .table th,
+html[data-density="cozy"] .table td { padding: 12px 14px; }
+html[data-density="cozy"] .nav-item { padding-top: 9px; padding-bottom: 9px; }
+
+html[data-monofont="iosevka"] { --font-mono: 'Iosevka', 'JetBrains Mono', ui-monospace, monospace; }
+html[data-monofont="system"]  { --font-mono: ui-monospace, 'SF Mono', Menlo, monospace; }
+
+html[data-motion="off"] *,
+html[data-motion="off"] *::before,
+html[data-motion="off"] *::after {
+  animation-duration: 0s !important;
+  transition: none !important;
+}
+
+html[data-navcollapsed="on"] .app { grid-template-columns: 64px 1fr; }
+html[data-navcollapsed="on"] .sidebar { width: 64px; }
+html[data-navcollapsed="on"] .sidebar .logo-text,
+html[data-navcollapsed="on"] .sidebar .nav-section,
+html[data-navcollapsed="on"] .sidebar .nav-item .count,
+html[data-navcollapsed="on"] .sidebar .who,
+html[data-navcollapsed="on"] .sidebar-foot .btn { display: none; }
+html[data-navcollapsed="on"] .sidebar .nav-item { justify-content: center; font-size: 0; padding: 10px 0; }
+html[data-navcollapsed="on"] .sidebar .nav-item .ico { margin: 0; }
+html[data-navcollapsed="on"] .sidebar-foot { justify-content: center; }
+
+html[data-levelstyle="dot"] .alevel .bars { display: none; }
+html[data-levelstyle="dot"] .alevel::before {
+  content: "";
+  width: 8px; height: 8px; border-radius: var(--radius-pill);
+  background: var(--color-text-disabled);
+}
+html[data-levelstyle="dot"] .alevel.l-read::before   { background: var(--color-info); }
+html[data-levelstyle="dot"] .alevel.l-write::before  { background: var(--color-success); }
+html[data-levelstyle="dot"] .alevel.l-manage::before { background: var(--color-warning); }
+html[data-levelstyle="dot"] .alevel.l-admin::before  { background: var(--color-danger); }
+html[data-levelstyle="text"] .alevel .bars { display: none; }
+html[data-levelstyle="text"] .alevel .lbl {
+  font-size: var(--text-xs);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+}
+html[data-levelstyle="text"] .alevel.l-read   .lbl { background: var(--color-info-soft); color: var(--color-info); }
+html[data-levelstyle="text"] .alevel.l-write  .lbl { background: var(--color-success-soft);   color: var(--color-success); }
+html[data-levelstyle="text"] .alevel.l-manage .lbl { background: var(--color-warning-soft); color: var(--color-warning); }
+html[data-levelstyle="text"] .alevel.l-admin  .lbl { background: var(--color-danger-soft);  color: var(--color-danger); }
+

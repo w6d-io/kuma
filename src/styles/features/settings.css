@@ -1,0 +1,40 @@
+/* settings — owned by the settings screens. Tokens only; see styles/index.css. */
+
+/* One setting per line: what it is on the left, its switch on the right (auth methods). The
+   master switch (self-registration) is set apart from the list under it by a heavier rule. */
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.settings-row.master {
+  padding-bottom: var(--space-3);
+  border-bottom-width: 2px;
+  margin-bottom: var(--space-1);
+}
+
+/* A sub-option under a setting (passwordless code): smaller, tucked under the hint. */
+.checkbox.settings-sub-option { margin-top: var(--space-1); font-size: var(--text-sm); }
+
+/* A checklist of sections (export / import dialogs): full-width rows, the "select all" row ruled
+   off and bold, a count flush right. `.checkbox` gives the input its look; these lay out the row. */
+.checkbox.settings-check {
+  display: flex;
+  align-items: center;
+  padding: var(--space-1) 0;
+  font-size: var(--text-sm);
+}
+.checkbox.settings-check input { margin: 0; }
+.checkbox.settings-check .checkbox-text { flex: 1; min-width: 0; }
+.checkbox.settings-check.all {
+  border-bottom: 1px solid var(--color-border);
+  font-weight: var(--weight-semibold);
+}
+
+/* Table cells that hold a wrapping list next to one-line cells: keep the one-liners at the top. */
+.table td.settings-top { vertical-align: top; }
+
+/* The organization picker in the API-keys page header needs room for a name. */
+.settings-org-picker { min-width: calc(var(--space-7) * 5); }

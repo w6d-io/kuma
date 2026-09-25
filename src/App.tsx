@@ -4,9 +4,8 @@ import { NAV, hasAnyPerm } from './nav';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { useSession, useStats, useRealtime, useUserSearch } from './api/hooks';
 import { searchedToUser } from './api/transforms';
-import { I } from './components/ui/Icons';
 import { THEMES, nextTheme, themeLabel } from './theme';
-import { Switch, Toasts, EmptyHint } from './components/ui/Primitives';
+import { Button, ButtonBase, EmptyHint, Segmented, Switch, Toasts, I, cx } from './components/ui';
 import { DashboardPage } from './pages/Dashboard';
 import { UsersPage, UserDrawer } from './pages/Users';
 import { OrgAdminPage } from './pages/OrgAdmin';
@@ -22,6 +21,7 @@ import { AccessReviewPage } from './pages/AccessReview';
 import { RecertificationPage } from './pages/Recertification';
 import { SettingsPage } from './pages/Settings';
 import { BackupPage } from './pages/Backup';
+import { DesignPage } from './pages/design/DesignPage';
 import { UserMenu } from './components/UserMenu';
 import { ApiErrorState } from './components/ApiErrorState';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -63,7 +63,7 @@ function RailDrawer({ onOpenTweaks }: { onOpenTweaks: () => void }) {
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger className="burger" aria-label="Menu">
-        <span aria-hidden="true" style={{ width: 16, height: 16, display: 'grid', placeItems: 'center' }}>{I.menu}</span>
+        <span aria-hidden="true" className="icon">{I.menu}</span>
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="rail-scrim" />
@@ -105,8 +105,8 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
       </div>
       <nav className="nav">
         {isForbidden && (
-          <div style={{ padding: "8px 10px", display: "flex", alignItems: "center", gap: 8, color: "var(--red, #ef4444)", fontSize: 11.5, fontWeight: 500, background: "color-mix(in srgb, var(--red, #ef4444) 8%, transparent)", borderRadius: 6, margin: "0 2px 4px" }}>
-            <span style={{ width: 13, height: 13, display: "grid", placeItems: "center", flexShrink: 0 }}>{I.shield}</span>
+          <div className="nav-forbidden">
+            <span className="icon">{I.shield}</span>
             403 · access denied
           </div>
         )}
@@ -119,19 +119,18 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
                 n.id === "groups" ? Object.keys(state.groups).length :
                 null;
               return (
-                <button key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => { setPage(n.id); onNavigate?.(); }}>
+                <ButtonBase key={n.id} className={cx("nav-item", page === n.id && "active")} aria-current={page === n.id ? "page" : undefined} onClick={() => { setPage(n.id); onNavigate?.(); }}>
                   <span className="ico">{n.ico}</span>
                   {n.name}
                   {count != null && showCounts && <span className="count">{count}</span>}
-                </button>
+                </ButtonBase>
               );
             })}
           </Fragment>
         ))}
       </nav>
       <div className="sidebar-theme">
-        <button
-          type="button"
+        <ButtonBase
           className="theme-btn"
           title={themeLabel(theme)}
           aria-label={themeLabel(theme)}
@@ -139,7 +138,7 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
         >
           <span className="ico">{theme === "dark" ? I.moon : theme === "light" ? I.sun : I.contrast}</span>
           <span className="lbl">{theme === "system" ? "System theme" : theme === "light" ? "Light" : "Dark"}</span>
-        </button>
+        </ButtonBase>
       </div>
       <div className="sidebar-foot">
         <UserMenu
@@ -215,17 +214,23 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
             {pipeline.stage}…
           </span>
         )}
-        <button className="search-trigger" onClick={onOpenCmdk}>
-          <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.search}</span>
+        <ButtonBase className="search-trigger" onClick={onOpenCmdk}>
+          <span className="icon">{I.search}</span>
           <span>Search or jump to…</span>
           <span className="kbd">⌘K</span>
-        </button>
-        <button className="icon-btn" title={themeLabel(theme)} aria-label={themeLabel(theme)} onClick={cycleTheme}>
-          {theme === "dark" ? I.moon : theme === "light" ? I.sun : I.contrast}
-        </button>
+        </ButtonBase>
+        <Button
+          variant="ghost"
+          size="sm"
+          iconOnly
+          icon={theme === "dark" ? I.moon : theme === "light" ? I.sun : I.contrast}
+          title={themeLabel(theme)}
+          aria-label={themeLabel(theme)}
+          onClick={cycleTheme}
+        />
       </div>
       {isForbidden && (
-        <div className="viewer-banner" style={{ background: 'var(--red, #ef4444)', color: '#fff' }}>
+        <div className="viewer-banner danger">
           <span>{I.shield}</span>
           403 Forbidden · access denied
         </div>
@@ -310,7 +315,7 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
                 const me = running;
                 return (
                   <div key={me} className={`cmdk-item ${me === idx ? "on" : ""}`} onMouseEnter={() => setIdx(me)} onClick={() => fire(me)}>
-                    <span className="ico" style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>
+                    <span className="ico">
                       {it.kind === "nav" ? I.chev : it.kind === "user" ? I.users : it.kind === "group" ? I.group : it.kind === "service" ? I.service : I.plus}
                     </span>
                     <span>{it.label}</span>
@@ -330,41 +335,33 @@ function TweaksPanel({ open, onClose }: { open: boolean; onClose: () => void }) 
   const { theme, setTheme, persona, setPersona, tweaks, setTweak } = useApp();
   if (!open) return null;
 
-  const Seg = ({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { v: string; l: string }[] }) => (
-    <div className="persona-segs">
-      {options.map(o => (
-        <button key={o.v} className={value === o.v ? "on" : ""} onClick={() => onChange(o.v)}>{o.l}</button>
-      ))}
-    </div>
+  const Seg = ({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { v: string; l: string }[] }) => (
+    <Segmented label={label} value={value} onChange={onChange} options={options.map(o => ({ value: o.v, label: o.l }))} />
   );
 
   return (
     <div className="tweaks">
       <div className="tweaks-head">
         <span>Tweaks</span>
-        <button className="btn ghost sm" onClick={onClose}><span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.close}</span></button>
+        <Button variant="ghost" size="sm" iconOnly icon={I.close} aria-label="Close tweaks" onClick={onClose} />
       </div>
       <div className="tweaks-body">
         <div className="tweak-section">Appearance</div>
         <div className="tweak-row">
           <span className="lbl">Theme</span>
-          <div className="persona-segs">
-            {THEMES.map(t => (
-              <button key={t} className={theme === t ? "on" : ""} onClick={() => setTheme(t)}>{t}</button>
-            ))}
-          </div>
+          <Segmented label="Theme" value={theme} onChange={setTheme} options={THEMES.map(t => ({ value: t, label: t }))} />
         </div>
-        <div className="tweak-row"><span className="lbl">Accent</span><Seg value={tweaks.accent} onChange={v => setTweak("accent", v)} options={[{ v: "terracotta", l: "Terracotta" }, { v: "indigo", l: "Indigo" }, { v: "slate", l: "Slate" }]} /></div>
-        <div className="tweak-row"><span className="lbl">Density</span><Seg value={tweaks.density} onChange={v => setTweak("density", v)} options={[{ v: "compact", l: "Compact" }, { v: "comfortable", l: "Comfy" }, { v: "cozy", l: "Cozy" }]} /></div>
+        <div className="tweak-row"><span className="lbl">Accent</span><Seg label="Accent" value={tweaks.accent} onChange={v => setTweak("accent", v)} options={[{ v: "terracotta", l: "Terracotta" }, { v: "indigo", l: "Indigo" }, { v: "slate", l: "Slate" }]} /></div>
+        <div className="tweak-row"><span className="lbl">Density</span><Seg label="Density" value={tweaks.density} onChange={v => setTweak("density", v)} options={[{ v: "compact", l: "Compact" }, { v: "comfortable", l: "Comfy" }, { v: "cozy", l: "Cozy" }]} /></div>
         <div className="tweak-section">Console</div>
-        <div className="tweak-row"><span className="lbl">Persona</span><Seg value={persona} onChange={setPersona} options={[{ v: "admin", l: "Admin" }, { v: "viewer", l: "Viewer" }]} /></div>
-        <div className="tweak-row"><span className="lbl">Collapse nav</span><Switch on={!!tweaks.navCollapsed} onChange={v => setTweak("navCollapsed", v)} /></div>
-        <div className="tweak-row"><span className="lbl">Pipeline</span><Switch on={!!tweaks.showPipeline} onChange={v => setTweak("showPipeline", v)} /></div>
-        <div className="tweak-row"><span className="lbl">Counts</span><Switch on={!!tweaks.showCounts} onChange={v => setTweak("showCounts", v)} /></div>
+        <div className="tweak-row"><span className="lbl">Persona</span><Seg label="Persona" value={persona} onChange={setPersona} options={[{ v: "admin", l: "Admin" }, { v: "viewer", l: "Viewer" }]} /></div>
+        <div className="tweak-row"><span className="lbl">Collapse nav</span><Switch label="Collapse nav" on={!!tweaks.navCollapsed} onChange={v => setTweak("navCollapsed", v)} /></div>
+        <div className="tweak-row"><span className="lbl">Pipeline</span><Switch label="Pipeline" on={!!tweaks.showPipeline} onChange={v => setTweak("showPipeline", v)} /></div>
+        <div className="tweak-row"><span className="lbl">Counts</span><Switch label="Counts" on={!!tweaks.showCounts} onChange={v => setTweak("showCounts", v)} /></div>
         {DEV && (
           <div className="tweak-row">
-            <span className="lbl" style={tweaks.simulateForbidden ? { color: "var(--red, #ef4444)" } : {}}>Forbidden <span className="small muted">(dev)</span></span>
-            <Switch on={!!tweaks.simulateForbidden} onChange={v => setTweak("simulateForbidden", v)} />
+            <span className={cx("lbl", tweaks.simulateForbidden && "text-danger")}>Forbidden <span className="small muted">(dev)</span></span>
+            <Switch label="Forbidden (dev)" on={!!tweaks.simulateForbidden} onChange={v => setTweak("simulateForbidden", v)} />
           </div>
         )}
       </div>
@@ -380,7 +377,7 @@ function BlockedPage() {
   const { apiError, refetch, tweaks } = useApp();
   const error = simulatingForbidden(tweaks) ? { status: 403 } : apiError;
   return (
-    <div style={{ maxWidth: 560, margin: "48px auto" }}>
+    <div className="blocked-page">
       <ApiErrorState error={error} onRetry={refetch} />
     </div>
   );
@@ -459,6 +456,7 @@ function AppShell() {
             {page === "settings" && <SettingsPage />}
             {page === "orgadmin" && <OrgAdminPage />}
             {page === "accesscheck" && <AccessCheckPage />}
+            {page === "design" && <DesignPage />}
           </>}
         </div>
       </div>

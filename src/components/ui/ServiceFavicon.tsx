@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { API_BASE } from '../api/client';
+import { API_BASE } from '../../api/client';
 
 /**
  * ServiceFavicon — shows a service's website favicon, fetched & cached
@@ -45,7 +45,7 @@ export const ServiceFavicon = memo(function ServiceFavicon({ name, size = 16 }: 
           placeItems: 'center',
           borderRadius: Math.max(3, Math.round(size * 0.22)),
           background: `linear-gradient(135deg, oklch(62% 0.13 ${hue}), oklch(52% 0.13 ${(hue + 30) % 360}))`,
-          color: '#fff',
+          color: 'white',
           fontWeight: 600,
           fontSize: Math.max(8, Math.round(size * 0.6)),
           lineHeight: 1,

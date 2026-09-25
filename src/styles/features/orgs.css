@@ -1,0 +1,40 @@
+/* orgs — owned by the orgs screens. Tokens only; see styles/index.css. */
+
+/* ── Organizations: the left rail, one row per organization ─────────────── */
+.org-rail-item {
+  display: flex; align-items: center; gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.org-rail-item + .org-rail-item { border-top: 1px solid var(--color-border); }
+.org-rail-item:hover { background: var(--color-hover); }
+.org-rail-item.on { background: var(--color-surface-2); }
+.org-rail-name { overflow: hidden; text-overflow: ellipsis; }
+
+/* The chevron column of the People table: just wide enough for the glyph. */
+.table td.org-chev-cell { width: var(--space-5); }
+
+/* ── My org ───────────────────────────────────────────────────────────── */
+.orgs-picker select { min-width: 240px; }
+.orgs-member-input { flex: 1; min-width: 220px; max-width: 360px; }
+
+/* A grant cell holds a bare checkbox; its label is for screen readers only. */
+.checkbox.orgs-grant { gap: 0; vertical-align: middle; }
+.checkbox.orgs-grant input { margin: 0; }
+.table td.orgs-note { padding: var(--space-3); }
+.table td.orgs-refused { background: var(--color-danger-soft); }
+.orgs-refused-list { margin: var(--space-1) 0 0; padding-left: var(--space-4); }
+
+/* Invite drawer: one row per assignable group, the whole row is the target. */
+.checkbox.orgs-pick {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+}
+.checkbox.orgs-pick + .checkbox.orgs-pick { border-top: 1px solid var(--color-border); }
+.checkbox.orgs-pick.on { background: var(--color-accent-soft); }
+.checkbox.orgs-pick input { margin: 0; }
+
+/* ── Groups: one organisation a group grants in ───────────────────────── */
+.group-scope { border-top: 1px solid var(--color-border); padding-top: var(--space-2); }

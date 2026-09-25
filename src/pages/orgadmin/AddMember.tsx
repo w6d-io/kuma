@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { orgAccessApi } from '../../api/orgAccess';
 import { readMemberInput } from '../../lib/orgGrants';
 import { statusOf } from '../../lib/apiError';
+import { Button, Input } from '../../components/ui';
 import { makeToastErr, type PushToast } from './toastErr';
 
 /**
@@ -52,10 +53,11 @@ export function AddMember({ org, orgName, pushToast }: { org: string; orgName: s
   };
 
   return (
-    <form className="row" style={{ gap: 8, flexWrap: 'wrap' }} onSubmit={(e) => { e.preventDefault(); void add(); }}>
-      <input
-        className="input mono"
-        style={{ flex: 1, minWidth: 220, maxWidth: 360 }}
+    <form className="row gap-8 wrap" onSubmit={(e) => { e.preventDefault(); void add(); }}>
+      <Input
+        mono
+        size="sm"
+        className="orgs-member-input"
         aria-label="Email or user id of an existing account"
         placeholder="Existing account: email or user id"
         autoComplete="off"
@@ -64,8 +66,8 @@ export function AddMember({ org, orgName, pushToast }: { org: string; orgName: s
         value={value}
         onChange={(e) => setValue(e.target.value)}
       />
-      <button className="btn" type="submit" disabled={busy || !value.trim()}>{busy ? 'Adding…' : 'Add member'}</button>
-      {problem && <span className="small" role="alert" style={{ color: 'var(--err)' }}>{problem}</span>}
+      <Button size="sm" type="submit" disabled={busy || !value.trim()}>{busy ? 'Adding…' : 'Add member'}</Button>
+      {problem && <span className="small text-danger" role="alert">{problem}</span>}
     </form>
   );
 }

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useOrgServiceMap, useSetOrgServiceBundle, useDeleteOrgServiceMapping } from '../api/hooks';
 import { useOrgCatalog } from '../api/orgCatalog';
-import { I } from './ui/Icons';
-import { Chip, ConfirmDialog, MultiSelectPills } from './ui/Primitives';
+import { MultiSelectPills } from './ui/Primitives';
+import { I, Badge, Button, Card, ConfirmDialog, Table, cx } from './ui';
 import { OrgPicker } from './OrgPicker';
 import { orgLabel } from '../lib/orgOptions';
 import { toastFor } from '../lib/apiError';
@@ -67,48 +67,45 @@ export function OrgSitesSettings() {
   const editingExisting = !!(newOrgId && mappings[newOrgId]);
 
   return (
-    <div className="panel" style={{ marginBottom: 14, padding: 14 }}>
-      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Organization sites</div>
-      <div className="small muted" style={{ marginBottom: 14 }}>
-        The sites each organization runs. Org admins can manage members only within these sites. Saving replaces an organization&apos;s whole list.
-      </div>
+    <Card
+      title="Organization sites"
+      sub={<>The sites each organization runs. Org admins can manage members only within these sites. Saving replaces an organization&apos;s whole list.</>}
+    >
 
       {mapLoading ? (
         <div className="small muted">Loading…</div>
       ) : (
         <>
           {mapEntries.length > 0 && (
-            <table style={{ width: '100%', fontSize: 12, marginBottom: 14, borderCollapse: 'collapse' }}>
+            <Table className="compact mb-12">
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--line)', textAlign: 'left' }}>
-                  <th style={{ padding: '6px 8px', fontWeight: 500, color: 'var(--ink-2)' }}>Organization</th>
-                  <th style={{ padding: '6px 8px', fontWeight: 500, color: 'var(--ink-2)' }}>Sites</th>
-                  <th style={{ padding: '6px 8px', width: 96 }} />
+                <tr>
+                  <th>Organization</th>
+                  <th>Sites</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
                 {mapEntries.map(([orgId, svcs]) => (
-                  <tr key={orgId} style={{ borderBottom: '1px solid var(--line)' }}>
-                    <td className={name(orgId) === orgId ? 'mono' : ''} style={{ padding: '6px 8px', verticalAlign: 'top' }} title={orgId}>{name(orgId)}</td>
-                    <td style={{ padding: '6px 8px' }}>
+                  <tr key={orgId}>
+                    <td className={cx('settings-top', name(orgId) === orgId && 'mono')} title={orgId}>{name(orgId)}</td>
+                    <td>
                       {svcs.length === 0
                         ? <span className="small muted">— none —</span>
-                        : <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{svcs.map(s => <Chip key={s}>{s}</Chip>)}</span>}
+                        : <span className="row wrap gap-4">{svcs.map(s => <Badge key={s}>{s}</Badge>)}</span>}
                     </td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
-                      <button className="btn ghost sm" onClick={() => setNewOrgId(orgId)} title="Edit sites">Edit</button>
-                      <button className="btn ghost sm" onClick={() => setConfirmOrg(orgId)} title="Remove sites" aria-label="Remove sites">
-                        {I.trash}
-                      </button>
+                    <td className="settings-top shrink align-right">
+                      <Button variant="ghost" size="sm" onClick={() => setNewOrgId(orgId)} title="Edit sites">Edit</Button>
+                      <Button variant="ghost" size="sm" iconOnly icon={I.trash} onClick={() => setConfirmOrg(orgId)} title="Remove sites" aria-label="Remove sites" />
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <OrgPicker value={newOrgId} onChange={setNewOrgId} style={{ maxWidth: 360 }} />
+          <div className="col gap-12">
+            <div className="maxw-sm"><OrgPicker value={newOrgId} onChange={setNewOrgId} /></div>
             <div>
               <div className="input-label">Sites{editingExisting ? ' · replaces the current list' : ''}</div>
               <MultiSelectPills
@@ -119,13 +116,13 @@ export function OrgSitesSettings() {
               />
             </div>
             <div>
-              <button
-                className="btn primary"
+              <Button
+                variant="primary"
                 onClick={handleSetBundle}
                 disabled={mapSaving || !newOrgId || newServices.length === 0}
               >
                 {mapSaving ? 'Saving…' : (editingExisting ? 'Replace sites' : 'Save sites')}
-              </button>
+              </Button>
             </div>
           </div>
         </>
@@ -140,6 +137,6 @@ export function OrgSitesSettings() {
         onCancel={() => setConfirmOrg(null)}
         onConfirm={() => { if (confirmOrg) handleDeleteMapping(confirmOrg); setConfirmOrg(null); }}
       />
-    </div>
+    </Card>
   );
 }

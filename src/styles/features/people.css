@@ -1,0 +1,25 @@
+/* people — owned by the people screens. Tokens only; see styles/index.css. */
+
+/* A list of rows inside a card, each separated from the one before it by a hairline. */
+.people-sep + .people-sep { border-top: 1px solid var(--color-border); }
+.people-row { padding: var(--space-2) var(--space-4); }
+.people-row.roomy { padding: var(--space-3) var(--space-4); }
+
+/* The chevron column at the end of the directory table. */
+.people-chev-col { width: var(--space-5); }
+
+/* A site in the roles-per-site list: names line up in a column. */
+.people-site-name { min-width: calc(var(--space-6) * 3); }
+
+/* One site-access group: the whole row is the checkbox's label, so the whole row is the target. */
+.site-group { display: flex; width: 100%; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
+.site-group.on { background: var(--color-accent-soft); }
+.site-group .checkbox-text { flex: 1; min-width: 0; }
+.site-group .checkbox-hint { font-family: var(--font-mono); font-size: var(--text-sm); overflow-wrap: anywhere; }
+
+/* The first, reversible step of a delete: a secondary button drawn in the danger colour. The kit's
+   danger variant is filled and reserved for the confirming step. */
+.btn.people-danger-outline { border-color: var(--color-danger); color: var(--color-danger); }
+
+/* The directory search keeps a usable width and pushes the filters to the next line on a phone. */
+.people-search { min-width: min(100%, 200px); }

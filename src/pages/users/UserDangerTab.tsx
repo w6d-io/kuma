@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { ConfirmDialog } from '../../components/ui/Primitives';
+import { Button, Card, ConfirmDialog } from '../../components/ui';
 import { useApplyChange } from '../../hooks/useApplyChange';
 import type { User } from '../../api/types';
 
@@ -24,46 +24,38 @@ export function UserDangerTab({ user, onDeleted }: { user: User; onDeleted: () =
 
   return (
     <>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div className="panel" style={{ padding: 14 }}>
-          <div style={{ fontWeight: 500, marginBottom: 4 }}>{user.active ? "Deactivate account" : "Reactivate account"}</div>
-          <div className="small muted" style={{ marginBottom: 10 }}>
+      <div className="stack gap-12">
+        <Card pad="md">
+          <div className="fw-medium mb-4">{user.active ? "Deactivate account" : "Reactivate account"}</div>
+          <div className="small muted mb-12">
             {user.active
               ? "Blocks login. Identity and data are preserved."
               : "Restores login access for this identity."}
           </div>
-          <button className="btn" onClick={user.active ? () => setConfirmDeactivate(true) : toggleActive}>
+          <Button onClick={user.active ? () => setConfirmDeactivate(true) : toggleActive}>
             {user.active ? "Deactivate" : "Reactivate"}
-          </button>
-        </div>
-        <div className="panel" style={{ padding: 14 }}>
-          <div style={{ fontWeight: 500, marginBottom: 4, color: "var(--red, #ef4444)" }}>Delete account</div>
-          <div className="small muted" style={{ marginBottom: 10 }}>
+          </Button>
+        </Card>
+        <Card pad="md">
+          <div className="fw-medium mb-4 text-danger">Delete account</div>
+          <div className="small muted mb-12">
             Permanently removes this account. Cannot be undone.
           </div>
           {!confirmDelete
             ? (
-              <button
-                className="btn"
-                style={{ borderColor: "var(--red, #ef4444)", color: "var(--red, #ef4444)" }}
-                onClick={() => setConfirmDelete(true)}
-              >
+              <Button className="people-danger-outline" onClick={() => setConfirmDelete(true)}>
                 Delete user
-              </button>
+              </Button>
             ) : (
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span className="small" style={{ flex: 1, color: "var(--red, #ef4444)" }}>Delete {user.email}?</span>
-                <button className="btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
-                <button
-                  className="btn primary"
-                  style={{ background: "var(--red, #ef4444)", borderColor: "var(--red, #ef4444)" }}
-                  onClick={doDelete}
-                >
+              <div className="row gap-8">
+                <span className="small flex-1 text-danger">Delete {user.email}?</span>
+                <Button onClick={() => setConfirmDelete(false)}>Cancel</Button>
+                <Button variant="danger" onClick={doDelete}>
                   Delete
-                </button>
+                </Button>
               </div>
             )}
-        </div>
+        </Card>
       </div>
       <ConfirmDialog
         open={confirmDeactivate}

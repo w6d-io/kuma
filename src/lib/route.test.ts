@@ -63,3 +63,10 @@ describe('query on the hash', () => {
     expect(formatHash('accesscheck', null, {})).toBe('/access-check');
   });
 });
+
+describe('the living style guide', () => {
+  it('is addressable as #/design and written back the same way', () => {
+    expect(parseHash('#/design')).toEqual({ page: 'design', param: null });
+    expect(formatHash('design')).toBe('/design');
+  });
+});

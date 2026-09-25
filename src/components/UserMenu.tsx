@@ -1,7 +1,6 @@
 import * as Menu from '@radix-ui/react-dropdown-menu';
 import { useQueryClient } from '@tanstack/react-query';
-import { Avatar } from './ui/Primitives';
-import { I } from './ui/Icons';
+import { Avatar, I } from './ui';
 import { leave } from '../auth/leave';
 
 /**
@@ -42,7 +41,7 @@ export function UserMenu({
           </span>
           <span className="userbtn-role">{role}</span>
         </span>
-        <span className="chev" aria-hidden="true"><span style={{ width: 11, height: 11, display: 'inline-grid', placeItems: 'center' }}>{I.caretUp}</span></span>
+        <span className="chev kv-ico" aria-hidden="true">{I.caretUp}</span>
       </Menu.Trigger>
 
       <Menu.Portal>

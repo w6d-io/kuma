@@ -11,14 +11,13 @@ import {
   useDecideRecertItem,
 } from '../api/hooks';
 import { api, type RecertCampaignSummary, type RecertItem, type RecertOnExpiry, type RecertStatus } from '../api/client';
-import { I } from '../components/ui/Icons';
-import { Chip, ConfirmDialog, EmptyHint, MultiSelectPills } from '../components/ui/Primitives';
-import { SkeletonRows } from '../components/ui/Skeleton';
+import { MultiSelectPills } from '../components/ui/Primitives';
+import { Badge, Button, ButtonBase, Card, ConfirmDialog, EmptyHint, EmptyRow, Field, I, Input, LoadingRows, RadioGroup, PageHeader, Table, Textarea, cx, type BadgeTone } from '../components/ui';
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
 
-const STATUS_TONE: Record<RecertStatus, string> = {
-  draft: '', active: 'info', closing: 'warn', completed: 'ok', archived: '',
+const STATUS_TONE: Record<RecertStatus, BadgeTone> = {
+  draft: 'neutral', active: 'info', closing: 'warning', completed: 'success', archived: 'neutral',
 };
 
 function fmtDate(s: string | undefined): string {
@@ -28,21 +27,19 @@ function fmtDate(s: string | undefined): string {
 function ProgressBar({ decided, total }: { decided: number; total: number }) {
   const pct = total > 0 ? Math.round((decided / total) * 100) : 0;
   return (
-    <div title={`${decided}/${total} decided (${pct}%)`} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 120 }}>
-      <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--line)', overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: pct === 100 ? 'var(--ok, #22c55e)' : 'var(--accent)' }} />
-      </div>
+    <div title={`${decided}/${total} decided (${pct}%)`} className="recert-progress">
+      <progress className={cx(pct === 100 && 'done')} value={pct} max={100} aria-label={`${decided} of ${total} decided`} />
       <span className="small muted mono">{decided}/{total}</span>
     </div>
   );
 }
 
 function decisionChip(item: RecertItem) {
-  if (item.outcome === 'auto-revoked') return <Chip tone="err">auto-revoked</Chip>;
-  if (item.outcome === 'flagged') return <Chip tone="warn">flagged</Chip>;
-  if (item.decision === 'approved') return <Chip tone="ok">approved</Chip>;
-  if (item.decision === 'revoked') return <Chip tone="err">revoked</Chip>;
-  return <Chip>pending</Chip>;
+  if (item.outcome === 'auto-revoked') return <Badge tone="danger">auto-revoked</Badge>;
+  if (item.outcome === 'flagged') return <Badge tone="warning">flagged</Badge>;
+  if (item.decision === 'approved') return <Badge tone="success">approved</Badge>;
+  if (item.decision === 'revoked') return <Badge tone="danger">revoked</Badge>;
+  return <Badge>pending</Badge>;
 }
 
 // ─── Create form (phase 1: explicit reviewers, one-shot schedule) ────────────
@@ -80,17 +77,13 @@ function CreateCampaign({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <div className="panel mb-12" style={{ padding: 16 }}>
-      <div className="panel-head" style={{ padding: 0, marginBottom: 12 }}>
-        <div><h3>New campaign</h3><span className="small muted">One review item per (user, group) in scope · explicit reviewers · one-shot</span></div>
-      </div>
-      <div style={{ display: 'grid', gap: 12, maxWidth: 640 }}>
-        <label className="small">
-          <div className="muted" style={{ marginBottom: 4 }}>Name</div>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Q3 access review" style={{ width: '100%' }} />
-        </label>
-        <div className="small">
-          <div className="muted" style={{ marginBottom: 4 }}>Groups in scope <span className="muted">(none selected = all groups; the default 'users' group is never revocable)</span></div>
+    <Card title="New campaign" sub="One review item per (user, group) in scope · explicit reviewers · one-shot" className="mb-12">
+      <div className="recert-form">
+        <Field label="Name">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Q3 access review" />
+        </Field>
+        <div className="field">
+          <div className="field-label">Groups in scope <span className="muted">(none selected = all groups; the default 'users' group is never revocable)</span></div>
           <MultiSelectPills
             options={groupOptions}
             selected={selectedGroups}
@@ -98,31 +91,34 @@ function CreateCampaign({ onDone }: { onDone: () => void }) {
             empty="No groups defined."
           />
         </div>
-        <label className="small">
-          <div className="muted" style={{ marginBottom: 4 }}>Reviewers (emails, comma-separated)</div>
-          <input className="input" value={reviewers} onChange={(e) => setReviewers(e.target.value)} placeholder="alice@example.com, bob@example.com" style={{ width: '100%' }} />
-        </label>
-        <label className="small">
-          <div className="muted" style={{ marginBottom: 4 }}>Deadline</div>
+        <Field label="Reviewers (emails, comma-separated)">
+          <Input value={reviewers} onChange={(e) => setReviewers(e.target.value)} placeholder="alice@example.com, bob@example.com" />
+        </Field>
+        <Field label="Deadline">
           {/* min = tomorrow: jinbe rejects past deadlines (the hourly sweep would
               close the campaign before anyone could review). */}
-          <input className="input" type="date" min={new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
-        </label>
-        <div className="small">
-          <div className="muted" style={{ marginBottom: 4 }}>On expiry — what happens to items still pending at the deadline</div>
-          <label style={{ marginRight: 16, cursor: 'pointer' }}>
-            <input type="radio" name="onExpiry" checked={onExpiry === 'flag'} onChange={() => setOnExpiry('flag')} /> Flag <span className="muted">(mark for follow-up, membership untouched)</span>
-          </label>
-          <label style={{ cursor: 'pointer' }}>
-            <input type="radio" name="onExpiry" checked={onExpiry === 'revoke'} onChange={() => setOnExpiry('revoke')} /> Revoke <span className="muted">(remove the group membership)</span>
-          </label>
+          <Input type="date" className="w-auto" min={new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+        </Field>
+        <div className="field">
+          <div className="field-label">On expiry — what happens to items still pending at the deadline</div>
+          <RadioGroup
+            label="On expiry"
+            name="onExpiry"
+            className="recert-radios"
+            value={onExpiry}
+            onChange={setOnExpiry}
+            options={[
+              { value: 'flag', label: 'Flag', hint: 'mark for follow-up, membership untouched' },
+              { value: 'revoke', label: 'Revoke', hint: 'remove the group membership' },
+            ]}
+          />
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn primary" disabled={!valid || create.isPending} onClick={submit}>Create draft</button>
-          <button className="btn ghost" onClick={onDone}>Cancel</button>
+        <div className="row">
+          <Button variant="primary" disabled={!valid || create.isPending} onClick={submit}>Create draft</Button>
+          <Button variant="ghost" onClick={onDone}>Cancel</Button>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -190,44 +186,40 @@ function CampaignDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
   return (
     <>
-      <div className="panel mb-12" style={{ padding: 16 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-          <button className="btn ghost sm" onClick={onBack}>← Back</button>
-          <h3 style={{ margin: 0 }}>{campaign.name}</h3>
-          <Chip tone={STATUS_TONE[campaign.status]}>{campaign.status}</Chip>
-          <Chip>{campaign.onExpiry === 'revoke' ? 'auto-revoke at deadline' : 'flag at deadline'}</Chip>
+      <Card pad="md" className="mb-12">
+        <div className="row wrap">
+          <Button variant="ghost" size="sm" onClick={onBack}>← Back</Button>
+          <h3 className="m-0">{campaign.name}</h3>
+          <Badge tone={STATUS_TONE[campaign.status]}>{campaign.status}</Badge>
+          <Badge>{campaign.onExpiry === 'revoke' ? 'auto-revoke at deadline' : 'flag at deadline'}</Badge>
           <span className="small muted">deadline {fmtDate(campaign.deadline)}</span>
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span className="row ml-auto">
             <ProgressBar decided={decided} total={items.length} />
             {campaign.status === 'active' && (
-              <button className="btn sm" onClick={() => setConfirmClose(true)} disabled={close.isPending}>Close now</button>
+              <Button size="sm" onClick={() => setConfirmClose(true)} disabled={close.isPending}>Close now</Button>
             )}
             {campaign.status === 'completed' && (
-              <button className="btn sm" onClick={downloadReport}>
-                <span style={{ width: 13, height: 13, display: 'inline-grid', placeItems: 'center', marginRight: 6 }}>{I.download}</span>
-                Report (JSON)
-              </button>
+              <Button size="sm" icon={I.download} onClick={downloadReport}>Report (JSON)</Button>
             )}
           </span>
         </div>
-        <div className="small muted" style={{ marginTop: 8 }}>
+        <div className="small muted mt-8">
           Scope: {campaign.scope.groups?.length ? campaign.scope.groups.join(', ') : 'all groups'} · Reviewers: {campaign.reviewers.join(', ')}
         </div>
-      </div>
+      </Card>
 
-      <div className="panel">
-        <div className="panel-head"><div><h3>Review items</h3><span className="small muted">approve keeps the membership · revoke removes it immediately (comment required)</span></div></div>
-        <table className="table">
-          <thead><tr><th>Subject</th><th>Group</th><th>Context</th><th>Reviewer</th><th>Decision</th><th style={{ width: 170 }}></th></tr></thead>
+      <Card title="Review items" sub="approve keeps the membership · revoke removes it immediately (comment required)" pad="none">
+        <Table>
+          <thead><tr><th>Subject</th><th>Group</th><th>Context</th><th>Reviewer</th><th>Decision</th><th className="recert-col-decide"></th></tr></thead>
           <tbody>
-            {items.length === 0 && <tr><td colSpan={6}><span className="small muted">No items — activate the campaign to generate them.</span></td></tr>}
+            {items.length === 0 && <EmptyRow colSpan={6}>No items — activate the campaign to generate them.</EmptyRow>}
             {items.map((item) => (
               <tr key={item.id}>
                 <td className="mono small">{item.subject}</td>
-                <td><Chip>{item.entitlement.group}</Chip></td>
+                <td><Badge>{item.entitlement.group}</Badge></td>
                 <td>
-                  {item.context.tier != null && <Chip tone={item.context.tier <= 1 ? 'err' : 'warn'}>T{item.context.tier}</Chip>}
-                  {item.context.flags.map((f) => <Chip key={f} tone={f === 'self-review' ? 'err' : ''}>{f}</Chip>)}
+                  {item.context.tier != null && <Badge tone={item.context.tier <= 1 ? 'danger' : 'warning'}>T{item.context.tier}</Badge>}
+                  {item.context.flags.map((f) => <Badge key={f} tone={f === 'self-review' ? 'danger' : 'neutral'}>{f}</Badge>)}
                 </td>
                 <td className="mono small">{item.reviewer}</td>
                 <td>
@@ -237,17 +229,17 @@ function CampaignDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 </td>
                 <td>
                   {campaign.status === 'active' && item.decision === 'pending' && (
-                    <span style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn ghost sm" onClick={() => approve(item)} disabled={decide.isPending}>Approve</button>
-                      <button className="btn ghost sm danger" onClick={() => { setRevokeTarget(item); setRevokeComment(''); }} disabled={decide.isPending}>Revoke</button>
+                    <span className="row gap-4">
+                      <Button variant="ghost" size="sm" onClick={() => approve(item)} disabled={decide.isPending}>Approve</Button>
+                      <Button variant="ghost" size="sm" className="recert-revoke" onClick={() => { setRevokeTarget(item); setRevokeComment(''); }} disabled={decide.isPending}>Revoke</Button>
                     </span>
                   )}
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+        </Table>
+      </Card>
 
       <ConfirmDialog
         open={!!revokeTarget}
@@ -256,17 +248,14 @@ function CampaignDetail({ id, onBack }: { id: string; onBack: () => void }) {
         confirmLabel="Revoke now"
         blastRadius={<>Removes <b>{revokeTarget?.subject}</b> from <span className="mono">{revokeTarget?.entitlement.group}</span> in Kratos immediately — it does not wait for the deadline.</>}
         body={
-          <label className="small" style={{ display: 'block' }}>
-            <div className="muted" style={{ marginBottom: 4 }}>Comment (required)</div>
-            <textarea
-              className="input"
+          <Field label="Comment (required)">
+            <Textarea
               rows={3}
               value={revokeComment}
               onChange={(e) => setRevokeComment(e.target.value)}
               placeholder="Why this access is being revoked…"
-              style={{ width: '100%' }}
             />
-          </label>
+          </Field>
         }
         busy={decide.isPending}
         onConfirm={confirmRevoke}
@@ -327,10 +316,7 @@ export function RecertificationPage() {
   if (openId) {
     return (
       <>
-        <div className="page-head">
-          <h1>Recertification</h1>
-          <div className="sub">Periodic access reviews — decide who keeps what, with deadline and consequence.</div>
-        </div>
+        <PageHeader title="Recertification" sub="Periodic access reviews — decide who keeps what, with deadline and consequence." />
         <CampaignDetail id={openId} onBack={() => setOpenId(null)} />
       </>
     );
@@ -338,54 +324,49 @@ export function RecertificationPage() {
 
   return (
     <>
-      <div className="page-head">
-        <h1>Recertification</h1>
-        <div className="sub">Periodic access reviews — decide who keeps what, with deadline and consequence (ISO 27001 A.9.2.5 / SOC 2 CC6.2–CC6.3).</div>
-      </div>
+      <PageHeader title="Recertification" sub="Periodic access reviews — decide who keeps what, with deadline and consequence (ISO 27001 A.9.2.5 / SOC 2 CC6.2–CC6.3)." />
 
       {creating
         ? <CreateCampaign onDone={() => setCreating(false)} />
         : (
-          <div className="panel mb-12" style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className="small muted">Campaigns generate one review item per (user, group) in scope; reviewer-approved revokes apply immediately.</span>
-            <button className="btn primary" style={{ marginLeft: 'auto' }} onClick={() => setCreating(true)}>
-              <span style={{ width: 13, height: 13, display: 'inline-grid', placeItems: 'center', marginRight: 6 }}>{I.plus}</span>
-              New campaign
-            </button>
-          </div>
+          <Card pad="sm" className="mb-12">
+            <div className="row">
+              <span className="small muted">Campaigns generate one review item per (user, group) in scope; reviewer-approved revokes apply immediately.</span>
+              <Button variant="primary" className="ml-auto" icon={I.plus} onClick={() => setCreating(true)}>New campaign</Button>
+            </div>
+          </Card>
         )}
 
-      <div className="panel">
-        <div className="panel-head"><div><h3>Campaigns</h3></div></div>
-        <table className="table">
-          <thead><tr><th>Name</th><th>Status</th><th>Scope</th><th>Deadline</th><th>Progress</th><th style={{ width: 220 }}></th></tr></thead>
+      <Card title="Campaigns" pad="none">
+        <Table>
+          <thead><tr><th>Name</th><th>Status</th><th>Scope</th><th>Deadline</th><th>Progress</th><th className="recert-col-actions"></th></tr></thead>
           <tbody>
-            {isLoading && <SkeletonRows rows={5} cols={6} />}
+            {isLoading && <LoadingRows rows={5} cols={6} />}
             {!isLoading && (campaigns ?? []).length === 0 && (
-              <tr><td colSpan={6}><span className="small muted">No campaigns yet — create one to start a review cycle.</span></td></tr>
+              <EmptyRow colSpan={6}>No campaigns yet — create one to start a review cycle.</EmptyRow>
             )}
             {(campaigns ?? []).map((c) => (
               <tr key={c.id}>
-                <td><a style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => setOpenId(c.id)}>{c.name}</a></td>
-                <td><Chip tone={STATUS_TONE[c.status]}>{c.status}</Chip></td>
+                <td><ButtonBase className="fw-medium" onClick={() => setOpenId(c.id)}>{c.name}</ButtonBase></td>
+                <td><Badge tone={STATUS_TONE[c.status]}>{c.status}</Badge></td>
                 <td className="small muted">{c.scope.groups?.length ? c.scope.groups.join(', ') : 'all groups'}</td>
                 <td className="small">{fmtDate(c.deadline)}</td>
                 <td><ProgressBar decided={c.decidedCount} total={c.itemCount} /></td>
                 <td>
-                  <span style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                    {c.status === 'draft' && <button className="btn sm" onClick={() => doActivate(c)} disabled={activate.isPending}>Activate</button>}
-                    {c.status === 'draft' && <button className="btn ghost sm" onClick={() => setDeleteTarget(c)}>Delete</button>}
+                  <span className="row gap-4 justify-end">
+                    {c.status === 'draft' && <Button size="sm" onClick={() => doActivate(c)} disabled={activate.isPending}>Activate</Button>}
+                    {c.status === 'draft' && <Button variant="ghost" size="sm" onClick={() => setDeleteTarget(c)}>Delete</Button>}
                     {c.status === 'completed' && (
-                      <button className="btn ghost sm" onClick={() => api.downloadRecertReport(c.id).catch((e: any) => pushToast(e.message, { err: true }))}>Report</button>
+                      <Button variant="ghost" size="sm" onClick={() => api.downloadRecertReport(c.id).catch((e: any) => pushToast(e.message, { err: true }))}>Report</Button>
                     )}
-                    <button className="btn ghost sm" onClick={() => setOpenId(c.id)}>Open</button>
+                    <Button variant="ghost" size="sm" onClick={() => setOpenId(c.id)}>Open</Button>
                   </span>
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+        </Table>
+      </Card>
 
       <ConfirmDialog
         open={!!deleteTarget}

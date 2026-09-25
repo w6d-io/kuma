@@ -4,7 +4,7 @@ import { useApp } from '../../contexts/AppContext';
 import { useAuthorizationModel, usePermissionChain, useSession } from '../../api/hooks';
 import { api } from '../../api/client';
 import { I } from '../../components/ui/Icons';
-import { Chip, Avatar, Drawer, Switch } from '../../components/ui/Primitives';
+import { Avatar, Badge, Button, Callout, Card, Drawer, Field, Input, Switch, Tabs } from '../../components/ui';
 import { useApplyChange } from '../../hooks/useApplyChange';
 import { formatHash } from '../../lib/route';
 import { permits } from '../../policy/model';
@@ -14,6 +14,15 @@ import { UserTrail } from './UserTrail';
 import { UserProfileTab } from './UserProfileTab';
 import { UserSessionsTab } from './UserSessionsTab';
 import { UserDangerTab } from './UserDangerTab';
+
+type DrawerTab = 'groups' | 'profile' | 'sessions' | 'activity' | 'danger';
+const DRAWER_TABS: { value: DrawerTab; label: string }[] = [
+  { value: 'groups', label: 'Access' },
+  { value: 'profile', label: 'Edit' },
+  { value: 'sessions', label: 'Sessions' },
+  { value: 'activity', label: 'Activity' },
+  { value: 'danger', label: 'Danger' },
+];
 
 export function UserDrawer() {
   const { userDrawer, setUserDrawer, setPage, state, apiSetUserGroups, apiCreateUser } = useApp();
@@ -46,7 +55,7 @@ export function UserDrawer() {
   // edit state
   const user = userDrawer?.user;
   const [groups, setGroups] = useState(user?.groups || []);
-  const [drawerTab, setDrawerTab] = useState("groups");
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>("groups");
 
   // create state
   const [newEmail, setNewEmail] = useState("");
@@ -113,32 +122,30 @@ export function UserDrawer() {
           <>
             <span className="small muted">They can sign in once they set a password.</span>
             <div className="row">
-              <button className="btn" onClick={() => setUserDrawer(null)}>Cancel</button>
-              <button className="btn primary" onClick={create} disabled={!newEmail || !newName}>Create user</button>
+              <Button onClick={() => setUserDrawer(null)}>Cancel</Button>
+              <Button variant="primary" onClick={create} disabled={!newEmail || !newName}>Create user</Button>
             </div>
           </>
         }
       >
-        <div className="mb-12">
-          <label className="input-label">Email *</label>
-          <input className="input mono" type="text" inputMode="email" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="user@example.com" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
-        </div>
-        <div className="mb-12">
-          <label className="input-label">Full name *</label>
-          <input className="input" placeholder="Jane Doe" value={newName} onChange={e => setNewName(e.target.value)} />
-        </div>
+        <Field label="Email" required className="mb-12">
+          <Input mono type="text" inputMode="email" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="user@example.com" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
+        </Field>
+        <Field label="Full name" required className="mb-12">
+          <Input placeholder="Jane Doe" value={newName} onChange={e => setNewName(e.target.value)} />
+        </Field>
         {Object.keys(state.groups).length > 0 && (
           <div className="mb-12">
             <label className="input-label">Groups <span className="muted">(optional)</span></label>
-            <div className="panel" style={{ padding: 0 }}><SiteGroupRows {...siteRows} checked={newGroups} toggle={toggleNewGroup} /></div>
+            <Card><SiteGroupRows {...siteRows} checked={newGroups} toggle={toggleNewGroup} /></Card>
           </div>
         )}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0" }}>
+        <div className="row justify-between py-12">
           <div>
-            <div style={{ fontWeight: 500, fontSize: 13 }}>Send invite email</div>
+            <div className="fw-medium text-base">Send invite email</div>
             <div className="small muted">Emails them a link to set their password</div>
           </div>
-          <Switch on={sendInvite} onChange={setSendInvite} />
+          <Switch on={sendInvite} onChange={setSendInvite} label="Send invite email" />
         </div>
       </Drawer>
     );
@@ -155,50 +162,42 @@ export function UserDrawer() {
         <>
           <span className="small muted">{drawerTab === "groups" ? "Apply saves site access. Org access is saved on each org's page." : "Changes apply immediately."}</span>
           <div className="row">
-            <button className="btn" onClick={() => setUserDrawer(null)}>Cancel</button>
-            {drawerTab === "groups" && <button className="btn primary" onClick={saveGroups} disabled={!user}>Apply change</button>}
+            <Button onClick={() => setUserDrawer(null)}>Cancel</Button>
+            {drawerTab === "groups" && <Button variant="primary" onClick={saveGroups} disabled={!user}>Apply change</Button>}
           </div>
         </>
       }
     >
       {user && (
         <>
-          <div className="panel mb-12" style={{ padding: 14, display: "flex", gap: 12, alignItems: "center" }}>
-            <Avatar name={user.name} size={36} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 500 }}>{user.name}</div>
-              <div className="small muted mono">{user.email}</div>
+          <Card pad="md" className="mb-12">
+            <div className="row gap-12">
+              <Avatar name={user.name} size={36} />
+              <div className="flex-1 min-w-0">
+                <div className="fw-medium">{user.name}</div>
+                <div className="small muted mono">{user.email}</div>
+              </div>
+              {!user.active && <Badge tone="warning">inactive</Badge>}
+              {mayCheck && (
+                <Button size="sm" icon={I.shield} onClick={() => checkAccess(user.email)} title="Ask whether they can call a route, and why">
+                  Check access
+                </Button>
+              )}
             </div>
-            {!user.active && <Chip tone="warn">inactive</Chip>}
-            {mayCheck && (
-              <button className="btn sm" onClick={() => checkAccess(user.email)} title="Ask whether they can call a route, and why">
-                <span style={{ width: 13, height: 13, display: "grid", placeItems: "center" }}>{I.shield}</span> Check access
-              </button>
-            )}
-          </div>
-          <div className="drawer-tabs">
-            <button className={drawerTab === "groups" ? "on" : ""} onClick={() => setDrawerTab("groups")}>Access</button>
-            <button className={drawerTab === "profile" ? "on" : ""} onClick={() => setDrawerTab("profile")}>Edit</button>
-            <button className={drawerTab === "sessions" ? "on" : ""} onClick={() => setDrawerTab("sessions")}>Sessions</button>
-            <button className={drawerTab === "activity" ? "on" : ""} onClick={() => setDrawerTab("activity")}>Activity</button>
-            <button className={drawerTab === "danger" ? "on" : ""} onClick={() => setDrawerTab("danger")}>Danger</button>
-          </div>
+          </Card>
+          <Tabs full label="User sections" items={DRAWER_TABS} value={drawerTab} onChange={setDrawerTab} />
           {drawerTab === "groups" && (
             <>
               {/* Says why this drawer opened by itself, and that nothing has been written yet. An
                   operator returning from a step-up to a pre-filled form must be able to tell a
                   proposal from something already applied on their behalf. */}
               {userDrawer.resumeGroups && (
-                <div className="resumed-change">
-                  <span className="resumed-change-icon">{I.check}</span>
-                  <div>
-                    <strong>Second factor verified · your change is ready</strong>
-                    <div className="small muted">
-                      Restored from before the re-verification. Nothing has been applied yet —
-                      check it and use Apply change.
-                    </div>
+                <Callout tone="success" icon={I.check} title="Second factor verified · your change is ready" className="mb-12">
+                  <div className="small muted">
+                    Restored from before the re-verification. Nothing has been applied yet —
+                    check it and use Apply change.
                   </div>
-                </div>
+                </Callout>
               )}
               <UserAccessTab
                 user={user}

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../contexts/AppContext';
 import { accountsApi } from '../../api/accounts';
 import { ApiErrorState } from '../../components/ApiErrorState';
-import { ConfirmDialog, EmptyHint, Chip } from '../../components/ui/Primitives';
+import { Badge, Button, Card, ConfirmDialog, EmptyHint } from '../../components/ui';
 import { summarizeSession } from '../../lib/sessions';
 import { toastFor } from '../../lib/apiError';
 import { timeAgo } from '../../api/transforms';
@@ -38,36 +38,36 @@ export function UserSessionsTab({ user }: { user: User }) {
   const rows = (q.data ?? []).map(summarizeSession).filter(r => r.active);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="stack gap-12">
+      <div className="row justify-between">
         <span className="small muted">
           {q.isLoading ? 'Loading sessions…' : `${rows.length} active session${rows.length === 1 ? '' : 's'}`}
         </span>
-        <button className="btn sm" disabled={busy || rows.length === 0}
+        <Button size="sm" disabled={busy || rows.length === 0}
           onClick={() => setConfirm({ id: 'all', label: `${rows.length} session${rows.length === 1 ? '' : 's'}` })}>
           Sign out everywhere
-        </button>
+        </Button>
       </div>
-      <div className="panel" style={{ padding: 0 }}>
-        {!q.isLoading && rows.length === 0 && <div style={{ padding: 14 }}><EmptyHint>Not signed in anywhere.</EmptyHint></div>}
-        {rows.map((r, i) => (
-          <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 14px', borderBottom: i < rows.length - 1 ? '1px solid var(--line)' : 'none' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 500, fontSize: 12.5 }}>{r.device}</div>
+      <Card>
+        {!q.isLoading && rows.length === 0 && <div className="p-16"><EmptyHint>Not signed in anywhere.</EmptyHint></div>}
+        {rows.map((r) => (
+          <div key={r.id} className="people-sep people-row roomy row gap-12">
+            <div className="flex-1 min-w-0">
+              <div className="fw-medium text-base">{r.device}</div>
               <div className="small muted">
                 {r.started ? `Signed in ${timeAgo(r.started)}` : 'Sign-in time unknown'}
                 {r.expires ? ` · expires ${new Date(r.expires).toLocaleString()}` : ''}
               </div>
               {r.methods.length > 0 && (
-                <div className="row mt-4" style={{ gap: 4, flexWrap: 'wrap' }}>
-                  {r.methods.map(m => <Chip key={m} mono={false}>{m}</Chip>)}
+                <div className="row wrap gap-4 mt-4">
+                  {r.methods.map(m => <Badge key={m} mono={false}>{m}</Badge>)}
                 </div>
               )}
             </div>
-            <button className="btn ghost sm" disabled={busy} onClick={() => setConfirm({ id: r.id, label: r.device })}>Revoke</button>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirm({ id: r.id, label: r.device })}>Revoke</Button>
           </div>
         ))}
-      </div>
+      </Card>
       <ConfirmDialog
         open={confirm !== null}
         title={confirm?.id === 'all' ? `Sign ${user.email} out everywhere?` : 'Revoke this session?'}

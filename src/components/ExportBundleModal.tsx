@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { api } from '../api/client';
-import { Modal } from './ui/Primitives';
+import { Button, Checkbox, Dialog } from './ui';
 
 const SECTIONS: { id: string; label: string }[] = [
   { id: 'services', label: 'Services' },
@@ -33,37 +33,34 @@ export function ExportBundleModal({ open, onClose }: { open: boolean; onClose: (
   }
 
   return (
-    <Modal
+    <Dialog
       open={open}
       onClose={onClose}
       title="Export bundle"
       footer={<>
-        <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
-        <button className="btn primary" onClick={doExport} disabled={busy || selected.length === 0}>
+        <Button onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button variant="primary" onClick={doExport} disabled={busy || selected.length === 0}>
           {busy ? 'Working…' : `Export ${selected.length}/${SECTIONS.length} sections`}
-        </button>
+        </Button>
       </>}
     >
-      <p className="small muted" style={{ marginTop: 0 }}>All sections is a full 1:1 snapshot; deselect to export a subset.</p>
-      <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>
-        <input
-          type="checkbox"
-          checked={selected.length === SECTIONS.length}
-          ref={(el) => { if (el) el.indeterminate = selected.length > 0 && selected.length < SECTIONS.length; }}
-          onChange={(e) => setSelected(e.target.checked ? SECTIONS.map((s) => s.id) : [])}
-        />
-        Select all
-      </label>
+      <p className="small muted mt-0">All sections is a full 1:1 snapshot; deselect to export a subset.</p>
+      <Checkbox
+        className="settings-check all"
+        checked={selected.length === SECTIONS.length}
+        indeterminate={selected.length > 0 && selected.length < SECTIONS.length}
+        onChange={(on) => setSelected(on ? SECTIONS.map((s) => s.id) : [])}
+        label="Select all"
+      />
       {SECTIONS.map((s) => (
-        <label key={s.id} className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
-          <input
-            type="checkbox"
-            checked={selected.includes(s.id)}
-            onChange={(e) => setSelected((cur) => (e.target.checked ? [...cur, s.id] : cur.filter((x) => x !== s.id)))}
-          />
-          {s.label}
-        </label>
+        <Checkbox
+          key={s.id}
+          className="settings-check"
+          checked={selected.includes(s.id)}
+          onChange={(on) => setSelected((cur) => (on ? [...cur, s.id] : cur.filter((x) => x !== s.id)))}
+          label={s.label}
+        />
       ))}
-    </Modal>
+    </Dialog>
   );
 }

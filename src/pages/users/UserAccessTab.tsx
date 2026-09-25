@@ -5,7 +5,8 @@ import { useUserIdentity } from '../../api/hooks';
 import { membershipsOf } from '../../api/transforms';
 import { orgLabel } from '../../lib/orgOptions';
 import { sameGroups } from '../../lib/orgGrants';
-import { Chip, PermTree } from '../../components/ui/Primitives';
+import { PermTree } from '../../components/ui/Primitives';
+import { Badge, Button, Card } from '../../components/ui';
 import { ApiErrorState } from '../../components/ApiErrorState';
 import { I } from '../../components/ui/Icons';
 import type { User } from '../../api/types';
@@ -39,42 +40,42 @@ export function UserAccessTab({ user, groups, toggle, siteRows, assignable, chai
   return (
     <div className="drawer-split">
       <section aria-labelledby="site-access-h">
-        <h3 id="site-access-h" style={{ margin: '0 0 2px', fontSize: 13 }}>Site access <span className="muted" style={{ fontWeight: 400 }}>(everywhere)</span></h3>
-        <div className="small muted" style={{ marginBottom: 8 }}>From their groups. Holds on every site, whatever org they are in.</div>
+        <h3 id="site-access-h" className="mt-0 mb-2 text-base">Site access <span className="muted fw-regular">(everywhere)</span></h3>
+        <div className="small muted mb-8">From their groups. Holds on every site, whatever org they are in.</div>
         {/* "You may not" and "I could not tell" must not look alike: one is an answer, the other a failure. */}
         {assignable.isError ? (
-          <div className="small" style={{ color: 'var(--err)', marginBottom: 8 }}>
+          <div className="small text-danger mb-8">
             The authorization model could not be read, so what you may assign is unknown.
           </div>
         ) : !assignable.isLoading && !siteRows.mayAssign ? (
-          <div className="small muted" style={{ marginBottom: 8 }}>
+          <div className="small muted mb-8">
             You cannot assign groups: your roles do not include managing members. Below is what this person already holds.
           </div>
         ) : null}
-        <div className="panel mb-12" style={{ padding: 0 }}>
+        <Card className="mb-12">
           <SiteGroupRows {...siteRows} checked={groups} toggle={toggle} targetMfa={user.mfa} />
-        </div>
+        </Card>
         <label className="input-label">Roles per site{changed ? ' · after this change' : ''}</label>
         {!changed && accessQ.data && Object.keys(accessQ.data.site.byService).length > 0 ? (
           <SiteRoles byService={accessQ.data.site.byService} />
         ) : (
-          <div className="panel" style={{ padding: 12 }}><PermTree user={{ ...user, groups }} model={chain.model} routeTables={chain.routeTables} /></div>
+          <Card pad="sm"><PermTree user={{ ...user, groups }} model={chain.model} routeTables={chain.routeTables} /></Card>
         )}
       </section>
 
       <section aria-labelledby="org-access-h">
-        <h3 id="org-access-h" style={{ margin: '0 0 2px', fontSize: 13 }}>Org access</h3>
-        <div className="small muted" style={{ marginBottom: 8 }}>Granted by each org&apos;s admin. Counts on that org&apos;s routes only; never removes site access.</div>
+        <h3 id="org-access-h" className="mt-0 mb-2 text-base">Org access</h3>
+        <div className="small muted mb-8">Granted by each org&apos;s admin. Counts on that org&apos;s routes only; never removes site access.</div>
         {missing
           ? <OrgsWithoutGrants user={user} />
           : accessQ.isError
           ? <ApiErrorState compact what="org access" error={accessQ.error} onRetry={() => accessQ.refetch()} />
           : accessQ.isLoading
-          ? <div className="panel small muted" style={{ padding: 14 }}>Loading org access…</div>
+          ? <Card pad="md" className="small muted">Loading org access…</Card>
           : <OrgList orgs={accessQ.data?.orgs ?? []} onOpenOrg={onOpenOrg} />}
-        <details style={{ marginTop: 12 }}>
-          <summary className="small" style={{ cursor: 'pointer' }}>Change which orgs they belong to</summary>
-          <div style={{ marginTop: 10 }}><UserOrgsTab user={user} /></div>
+        <details className="mt-12">
+          <summary className="small cursor-pointer">Change which orgs they belong to</summary>
+          <div className="mt-12"><UserOrgsTab user={user} /></div>
         </details>
       </section>
     </div>
@@ -84,42 +85,42 @@ export function UserAccessTab({ user, groups, toggle, siteRows, assignable, chai
 function SiteRoles({ byService }: { byService: Record<string, string[]> }) {
   const sites = Object.keys(byService).sort();
   return (
-    <div className="panel" style={{ padding: 0 }}>
-      {sites.map((s, i) => (
-        <div key={s} style={{ display: 'flex', gap: 10, padding: '8px 14px', alignItems: 'center', borderBottom: i < sites.length - 1 ? '1px solid var(--line)' : 'none' }}>
-          <span style={{ fontWeight: 500, minWidth: 90 }}>{s}</span>
-          <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {byService[s].length ? byService[s].map((r) => <Chip key={r}>{r}</Chip>) : <span className="small muted">no role</span>}
+    <Card>
+      {sites.map((s) => (
+        <div key={s} className="people-sep people-row row gap-12">
+          <span className="fw-medium people-site-name">{s}</span>
+          <span className="row wrap gap-4">
+            {byService[s].length ? byService[s].map((r) => <Badge key={r}>{r}</Badge>) : <span className="small muted">no role</span>}
           </span>
         </div>
       ))}
-    </div>
+    </Card>
   );
 }
 
 function OrgList({ orgs, onOpenOrg }: { orgs: UserAccess['orgs']; onOpenOrg: (orgId: string) => void }) {
-  if (orgs.length === 0) return <div className="panel small muted" style={{ padding: 14 }}>Not in any org. Their site access is all they have.</div>;
+  if (orgs.length === 0) return <Card pad="md" className="small muted">Not in any org. Their site access is all they have.</Card>;
   return (
-    <div className="panel" style={{ padding: 0 }}>
-      {orgs.map((o, i) => (
-        <div key={o.orgId} style={{ padding: '10px 14px', borderBottom: i < orgs.length - 1 ? '1px solid var(--line)' : 'none' }}>
-          <div className="row" style={{ gap: 8, justifyContent: 'space-between' }}>
-            <span className="row" style={{ gap: 6, minWidth: 0 }}>
-              <span style={{ fontWeight: 500 }} title={o.orgId}>{o.name}</span>
-              <Chip tone={o.admin ? 'accent' : 'plain'} mono={false}>{o.admin ? 'org admin' : 'member'}</Chip>
+    <Card>
+      {orgs.map((o) => (
+        <div key={o.orgId} className="people-sep people-row roomy">
+          <div className="row gap-8 justify-between">
+            <span className="row gap-8 min-w-0">
+              <span className="fw-medium" title={o.orgId}>{o.name}</span>
+              <Badge tone={o.admin ? 'accent' : 'plain'} mono={false}>{o.admin ? 'org admin' : 'member'}</Badge>
             </span>
-            <button className="btn ghost sm" onClick={() => onOpenOrg(o.orgId)} title="Grant or remove groups in this org">
-              Manage <span style={{ width: 12, height: 12, display: 'inline-grid', placeItems: 'center' }}>{I.chev}</span>
-            </button>
+            <Button variant="ghost" size="sm" trailing={I.chev} onClick={() => onOpenOrg(o.orgId)} title="Grant or remove groups in this org">
+              Manage
+            </Button>
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+          <div className="row wrap gap-4 mt-8">
             {o.grants.length
-              ? o.grants.map((g) => <Chip key={g}>{g}</Chip>)
+              ? o.grants.map((g) => <Badge key={g}>{g}</Badge>)
               : <span className="small muted">No groups granted in this org — site access only.</span>}
           </div>
         </div>
       ))}
-    </div>
+    </Card>
   );
 }
 
@@ -129,11 +130,11 @@ function OrgsWithoutGrants({ user }: { user: User }) {
   const { orgs: catalog } = useOrgCatalog();
   const ids = identity ? membershipsOf(identity) : [];
   return (
-    <div className="panel" style={{ padding: 14 }}>
-      <div className="small" style={{ marginBottom: 6 }}>Org grants are not available yet on this server.</div>
+    <Card pad="md">
+      <div className="small mb-8">Org grants are not available yet on this server.</div>
       {ids.length
-        ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{ids.map((o) => <Chip key={o} mono={false} title={o}>{orgLabel(o, catalog)} · member</Chip>)}</div>
+        ? <div className="row wrap gap-4">{ids.map((o) => <Badge key={o} mono={false} title={o}>{orgLabel(o, catalog)} · member</Badge>)}</div>
         : <span className="small muted">Not in any org.</span>}
-    </div>
+    </Card>
   );
 }

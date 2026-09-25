@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Button, I } from './ui';
 
 /**
  * A document, shown the way somebody would read it in the repository.
@@ -33,23 +34,23 @@ export function YamlView({ value, ariaLabel }: { value: string; ariaLabel: strin
         // Colours come from the design-system tokens, so both themes are one definition rather than
         // two palettes to keep in step.
         const highlight = HighlightStyle.define([
-          { tag: tags.keyword, color: 'var(--accent)' },
-          { tag: [tags.propertyName, tags.definition(tags.propertyName)], color: 'var(--accent)' },
-          { tag: [tags.string, tags.special(tags.string)], color: 'var(--ink)' },
-          { tag: [tags.number, tags.bool, tags.null], color: 'var(--ok, var(--ink))' },
-          { tag: tags.comment, color: 'var(--muted)', fontStyle: 'italic' },
-          { tag: tags.meta, color: 'var(--muted)' },
+          { tag: tags.keyword, color: 'var(--color-accent)' },
+          { tag: [tags.propertyName, tags.definition(tags.propertyName)], color: 'var(--color-accent)' },
+          { tag: [tags.string, tags.special(tags.string)], color: 'var(--color-text)' },
+          { tag: [tags.number, tags.bool, tags.null], color: 'var(--color-success)' },
+          { tag: tags.comment, color: 'var(--color-text-subtle)', fontStyle: 'italic' },
+          { tag: tags.meta, color: 'var(--color-text-subtle)' },
         ]);
 
         const theme = EditorView.theme({
-          '&': { backgroundColor: 'transparent', color: 'var(--ink)', fontSize: '12.5px' },
+          '&': { backgroundColor: 'transparent', color: 'var(--color-text)', fontSize: '12.5px' },
           '.cm-scroller': { fontFamily: 'var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace)', lineHeight: '1.65' },
-          '.cm-gutters': { backgroundColor: 'transparent', color: 'var(--muted)', border: 'none' },
-          '.cm-activeLine': { backgroundColor: 'var(--hover, transparent)' },
-          '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--ink)' },
+          '.cm-gutters': { backgroundColor: 'transparent', color: 'var(--color-text-subtle)', border: 'none' },
+          '.cm-activeLine': { backgroundColor: 'var(--color-hover)' },
+          '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--color-text)' },
           '.cm-selectionBackground, ::selection': { backgroundColor: 'var(--sel, rgba(125,125,125,.25))' },
-          '.cm-foldPlaceholder': { backgroundColor: 'transparent', border: '1px solid var(--line)', color: 'var(--muted)' },
-          '.cm-panels': { backgroundColor: 'var(--panel)', color: 'var(--ink)', borderColor: 'var(--line)' },
+          '.cm-foldPlaceholder': { backgroundColor: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text-subtle)' },
+          '.cm-panels': { backgroundColor: 'var(--color-surface)', color: 'var(--color-text)', borderColor: 'var(--color-border)' },
           '.cm-searchMatch': { backgroundColor: 'var(--sel, rgba(125,125,125,.25))' },
           '&.cm-focused': { outline: 'none' },
         });
@@ -105,8 +106,10 @@ export function YamlView({ value, ariaLabel }: { value: string; ariaLabel: strin
 export function CopyButton({ text }: { text: string }) {
   const [done, setDone] = useState(false);
   return (
-    <button
-      className="btn ghost sm"
+    <Button
+      variant="ghost"
+      size="sm"
+      icon={done ? I.check : I.copy}
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(text);
@@ -118,6 +121,6 @@ export function CopyButton({ text }: { text: string }) {
       }}
     >
       {done ? 'Copied' : 'Copy'}
-    </button>
+    </Button>
   );
 }
