@@ -11,7 +11,7 @@ import {
   useSetOrgAdmins,
   useSession,
 } from '../api/hooks';
-import { InviteDrawer } from './OrgAdmin';
+import { InviteDrawer } from './orgadmin/InviteDrawer';
 import { PRIVILEGED_MUTATION, permits } from '../policy/model';
 import { bounceToStepUp } from '../lib/stepUp';
 import { SkeletonRows } from '../components/ui/Skeleton';
@@ -140,7 +140,7 @@ export function OrganizationsPage() {
 }
 
 function OrgDetail({ org, name, services }: { org: string; name?: string; services: string[] }) {
-  const { setGrant, pushToast, setPage } = useApp();
+  const { setUserDrawer, pushToast, setPage } = useApp();
   const { data: session } = useSession();
   // The permission the mutation checks, not a role NAME. `super_admin` is not a role this model
   // defines, so this test was false for everybody and greyed the control for its only holders.
@@ -221,7 +221,7 @@ function OrgDetail({ org, name, services }: { org: string; name?: string; servic
 
       {/* Members */}
       <div className="panel">
-        <div className="panel-head"><div><h3>People</h3><div className="sub">Click a person to grant or change their access</div></div></div>
+        <div className="panel-head"><div><h3>People</h3><div className="sub">Click a person to see their site and org access</div></div></div>
         <table className="table">
           <thead><tr><th>Identity</th><th>Groups</th><th></th></tr></thead>
           <tbody>
@@ -230,7 +230,7 @@ function OrgDetail({ org, name, services }: { org: string; name?: string; servic
             {!usersQ.isLoading && users.map(u => {
               const groups = u.metadata_admin?.groups ?? [];
               return (
-                <tr key={u.id} className="row-click" onClick={() => setGrant({ user: kratosToUser(u) })}>
+                <tr key={u.id} className="row-click" onClick={() => setUserDrawer({ mode: 'edit', user: kratosToUser(u) })}>
                   <td>
                     <div className="row" style={{ gap: 10 }}>
                       <Avatar name={u.traits?.name || u.traits?.email} />

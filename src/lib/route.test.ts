@@ -39,3 +39,27 @@ describe('formatHash', () => {
     expect(parseHash(`#${h}`)).toEqual({ page: 'organizations', param: 'a/b c' });
   });
 });
+
+describe('query on the hash', () => {
+  it('reads the access checker link with its query', () => {
+    expect(parseHash('#/access-check?email=a%40b.c&method=GET&path=%2Fapi%2Fx')).toEqual({
+      page: 'accesscheck',
+      param: null,
+      query: { email: 'a@b.c', method: 'GET', path: '/api/x' },
+    });
+  });
+
+  it('keeps a param and a query apart', () => {
+    expect(parseHash('#/orgadmin/o1?x=1')).toEqual({ page: 'orgadmin', param: 'o1', query: { x: '1' } });
+  });
+
+  it('writes the public name and the query, dropping empty values', () => {
+    const h = formatHash('accesscheck', null, { email: 'a@b.c', method: 'GET', path: '/api/x', app: '' });
+    expect(h).toBe('/access-check?email=a%40b.c&method=GET&path=%2Fapi%2Fx');
+    expect(parseHash(`#${h}`).query).toEqual({ email: 'a@b.c', method: 'GET', path: '/api/x' });
+  });
+
+  it('writes no query mark when there is nothing to carry', () => {
+    expect(formatHash('accesscheck', null, {})).toBe('/access-check');
+  });
+});
