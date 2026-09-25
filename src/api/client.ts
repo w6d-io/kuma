@@ -10,7 +10,7 @@ const BASE = (_rawBase.startsWith('${') ? '' : _rawBase).replace(/\/$/, '') || '
 /** Resolved API base — exported for EventSource (SSE), which can't use `request`. */
 export const API_BASE = BASE;
 
-async function request<T>(path: string, opts?: RequestInit): Promise<T> {
+export async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   // A token when the deployment signs in against an authority, the session cookie otherwise. Sent
   // together rather than exclusively: which one the API accepts is its decision, and a console that
   // guessed would break the moment the API changed its mind.

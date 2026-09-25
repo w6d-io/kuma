@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AppState, PageId, TweakDefaults } from '../api/types';
-import { PAGE_IDS } from '../api/types';
+import { parseHash, formatHash } from '../lib/route';
 import { useStore } from '../api/store';
 import { withOptimism, cachePatch } from '../api/mutations';
 import { api } from '../api/client';
@@ -67,7 +67,13 @@ interface AppContextType {
   refetch: () => void;
   refreshAudit: () => void;
   page: PageId;
-  setPage: (page: PageId) => void;
+  /**
+   * What the page has open, from the hash's second segment (`#/people/<id>`,
+   * `#/organizations/<id>`), or null. Pages read it to open the addressed thing and write it back
+   * through `setPage(page, param)` so the URL can be shared.
+   */
+  pageParam: string | null;
+  setPage: (page: PageId, param?: string | null) => void;
   /**
    * Register (or clear, with `null`) a predicate that reports whether the
    * current surface has unsaved changes. `setPage`, direct
@@ -172,19 +178,15 @@ const ALL_ENTITY_KEYS = [
 // fillDirectory contract stays visible.
 const DIRECTORY_PAGES: ReadonlySet<PageId> = new Set<PageId>();
 
-const pageFromHash = (): PageId => {
-  const hash = window.location.hash.replace(/^#\/?/, '');
-  // PAGE_IDS is the same array PageId is derived from — a page added to the
-  // type is automatically routable (a hand-copied list here once missed one).
-  return (PAGE_IDS as readonly string[]).includes(hash) ? (hash as PageId) : 'dashboard';
-};
+const routeFromHash = () => parseHash(window.location.hash);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
 
   // Hash-based routing: read initial page from URL hash (#/page). Computed
   // before the store so we can tell it whether this page needs the directory.
-  const [page, setPageRaw] = useState<PageId>(pageFromHash);
+  const [page, setPageRaw] = useState<PageId>(() => routeFromHash().page);
+  const [pageParam, setPageParam] = useState<string | null>(() => routeFromHash().param);
 
   // Single source of truth: the composite store folds the scoped per-entity
   // queries into the AppState shape. No `useState` mirror (STORE-1). The
@@ -219,10 +221,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const internalNav = useRef(false);   // a hash change we initiated (already vetted)
   const suppressRevert = useRef(false); // a hash change that is our own revert
 
-  const commitPage = useCallback((p: PageId) => {
-    internalNav.current = true;
-    window.location.hash = `/${p}`;
+  const commitPage = useCallback((p: PageId, param: string | null = null) => {
+    const next = formatHash(p, param);
+    // Assigning the hash it already holds fires no hashchange, so the flag would outlive this call
+    // and swallow the next real navigation.
+    if (window.location.hash.replace(/^#/, '') !== next) {
+      internalNav.current = true;
+      window.location.hash = next;
+    }
     setPageRaw(p);
+    setPageParam(param);
   }, []);
 
   // Run `action` now, or, if the guard reports unsaved changes, hold it behind
@@ -233,9 +241,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     else action();
   }, []);
 
-  const setPage = useCallback((p: PageId) => {
-    if (p === page) { commitPage(p); return; }
-    guardedNavigate(() => commitPage(p));
+  const setPage = useCallback((p: PageId, param: string | null = null) => {
+    if (p === page) { commitPage(p, param); return; }
+    guardedNavigate(() => commitPage(p, param));
   }, [page, guardedNavigate, commitPage]);
 
   const confirmPendingNav = useCallback(() => {
@@ -251,23 +259,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // or a typed URL) — these bypass setPage, so the guard is enforced here too.
   useEffect(() => {
     const onHashChange = () => {
-      if (internalNav.current) { internalNav.current = false; setPageRaw(pageFromHash()); return; }
+      const next = routeFromHash();
+      if (internalNav.current) { internalNav.current = false; setPageRaw(next.page); setPageParam(next.param); return; }
       if (suppressRevert.current) { suppressRevert.current = false; return; }
-      const next = pageFromHash();
-      if (next === page) return;
+      // Same page, another thing on it: no surface is being left, so no guard.
+      if (next.page === page) { setPageParam(next.param); return; }
       const g = unsavedGuard.current;
       if (g && g()) {
         // Put the URL back where it was, then prompt; navigate only on confirm.
         suppressRevert.current = true;
-        window.location.hash = `/${page}`;
-        setPendingNav({ run: () => commitPage(next) });
+        window.location.hash = formatHash(page, pageParam);
+        setPendingNav({ run: () => commitPage(next.page, next.param) });
       } else {
-        setPageRaw(next);
+        setPageRaw(next.page);
+        setPageParam(next.param);
       }
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
-  }, [page, commitPage]);
+  }, [page, pageParam, commitPage]);
 
   // Native tab-close / reload prompt when there are unsaved changes.
   useEffect(() => {
@@ -279,7 +289,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
 
-  const [userDrawer, setUserDrawer] = useState<UserDrawerState | null>(null);
+  const [userDrawer, setUserDrawerRaw] = useState<UserDrawerState | null>(null);
+  // On the people page the open person IS the address: opening one writes `#/people/<id>`, closing
+  // goes back to `#/users`, so the link in the bar is always the screen being looked at.
+  const setUserDrawer = useCallback((d: UserDrawerState | null) => {
+    setUserDrawerRaw(d);
+    if (page === 'users') commitPage('users', d?.mode === 'edit' && d.user ? d.user.id : null);
+  }, [page, commitPage]);
   const [grant, setGrant] = useState<GrantState | null>(null);
   const [auditFocus, setAuditFocus] = useState<AuditFocus | null>(null);
 
@@ -374,7 +390,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     isLive, isLoading, apiError,
     refetch: invalidateAll,
     refreshAudit: invalidateAudit,
-    page, setPage,
+    page, pageParam, setPage,
     registerUnsavedGuard,
     userDrawer, setUserDrawer,
     grant, setGrant,

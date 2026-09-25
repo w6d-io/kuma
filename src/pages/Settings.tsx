@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useOrgServiceMap, useSetOrgServiceBundle, useDeleteOrgServiceMapping, useAuthMethods, useSetAuthMethods, useImportHistory, useRollbackImport } from '../api/hooks';
+import { useAuthMethods, useSetAuthMethods, useImportHistory, useRollbackImport } from '../api/hooks';
 import { I } from '../components/ui/Icons';
-import { Chip, Modal, ConfirmDialog, MultiSelectPills, Switch } from '../components/ui/Primitives';
+import { Chip, Modal, ConfirmDialog, Switch } from '../components/ui/Primitives';
 import { api } from '../api/client';
 import type { BundleImportResult, AuthMethodName } from '../api/client';
 import { ExportBundleModal } from '../components/ExportBundleModal';
+import { OrgSitesSettings } from '../components/OrgSitesSettings';
 
 // Shape of a bundle we can preview before importing. Counts drive the confirm
 // dialog; the raw parsed object is POSTed on confirm.
@@ -101,53 +102,6 @@ export function SettingsPage() {
     );
   }
 
-  // ─── Org → Service bundle map (cached Query hook, PERF-4; optimistic PUT) ───
-  const { data: fetchedMappings, isLoading: mapLoading } = useOrgServiceMap();
-  const setBundle = useSetOrgServiceBundle();
-  const deleteMapping = useDeleteOrgServiceMapping();
-  const mappings: Record<string, string[]> = fetchedMappings ?? {};
-  const [newOrgId, setNewOrgId] = useState('');
-  const [newServices, setNewServices] = useState<string[]>([]);
-  const [confirmOrg, setConfirmOrg] = useState<string | null>(null);
-  const mapSaving = setBundle.isPending;
-
-  // Seed the editor from the org's current bundle whenever the target org id
-  // changes (e.g. clicking "Edit" on a row), so a save is a deliberate REPLACE
-  // — never an accidental clobber that narrows an existing bundle to a single
-  // freshly-picked service. Keyed on `newOrgId` only so a background refetch
-  // never resets an in-progress edit.
-  useEffect(() => {
-    const key = newOrgId.trim();
-    setNewServices(key && mappings[key] ? [...mappings[key]] : []);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newOrgId]);
-
-  const toggleService = (svc: string) =>
-    setNewServices(prev => (prev.includes(svc) ? prev.filter(s => s !== svc) : [...prev, svc]));
-
-  function handleSetBundle() {
-    const orgId = newOrgId.trim();
-    if (!orgId || newServices.length === 0) return;
-    setBundle.mutate(
-      { organizationId: orgId, services: newServices },
-      {
-        onSuccess: () => {
-          setNewOrgId('');
-          setNewServices([]);
-          pushToast('Bundle saved', { sub: `${orgId.slice(0, 8)}… → ${newServices.length} service${newServices.length === 1 ? '' : 's'}` });
-        },
-        onError: (e: Error) => pushToast(e.message || 'Failed to save bundle', { err: true }),
-      },
-    );
-  }
-
-  function handleDeleteMapping(orgId: string) {
-    deleteMapping.mutate(orgId, {
-      onSuccess: () => pushToast('Bundle removed'),
-      onError: (e: Error) => pushToast(e.message || 'Failed to remove bundle', { err: true }),
-    });
-  }
-
   // ─── Bundle export/import ───
   // Export goes through ExportBundleModal (choose-what-to-export). Import stays inline below.
 
@@ -229,9 +183,6 @@ export function SettingsPage() {
     });
   }
 
-  const serviceNames = state.services.map(s => s.name).filter(n => n !== 'global');
-  const mapEntries = Object.entries(mappings);
-  const editingExisting = !!(newOrgId.trim() && mappings[newOrgId.trim()]);
 
   return (
     <>
@@ -309,77 +260,7 @@ export function SettingsPage() {
         </div>
       )}
 
-      {/* ─── Org → Service bundle map ─── */}
-      <div className="panel" style={{ marginBottom: 14, padding: 14 }}>
-        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Organization → Service bundle</div>
-        <div className="small muted" style={{ marginBottom: 14 }}>
-          Bundles a set of RBAC services to each organization UUID so org-scoped endpoints resolve permissions correctly. Saving replaces an org's entire bundle.
-        </div>
-
-        {mapLoading ? (
-          <div className="small muted">Loading…</div>
-        ) : (
-          <>
-            {mapEntries.length > 0 && (
-              <table style={{ width: '100%', fontSize: 12, marginBottom: 14, borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--line)', textAlign: 'left' }}>
-                    <th style={{ padding: '6px 8px', fontWeight: 500, color: 'var(--ink-2)' }}>Organization ID</th>
-                    <th style={{ padding: '6px 8px', fontWeight: 500, color: 'var(--ink-2)' }}>Services</th>
-                    <th style={{ padding: '6px 8px', width: 96 }} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {mapEntries.map(([orgId, svcs]) => (
-                    <tr key={orgId} style={{ borderBottom: '1px solid var(--line)' }}>
-                      <td className="mono" style={{ padding: '6px 8px', verticalAlign: 'top' }}>{orgId}</td>
-                      <td style={{ padding: '6px 8px' }}>
-                        {svcs.length === 0
-                          ? <span className="small muted">— none —</span>
-                          : <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{svcs.map(s => <Chip key={s}>{s}</Chip>)}</span>}
-                      </td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
-                        <button className="btn ghost sm" onClick={() => setNewOrgId(orgId)} title="Edit bundle">Edit</button>
-                        <button className="btn ghost sm" onClick={() => setConfirmOrg(orgId)} title="Remove bundle">
-                          {I.trash}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <input
-                type="text"
-                placeholder="Organization UUID"
-                value={newOrgId}
-                onChange={e => setNewOrgId(e.target.value)}
-                style={{ maxWidth: 360 }}
-              />
-              <div>
-                <div className="input-label">Services{editingExisting ? ' · replaces current bundle' : ''}</div>
-                <MultiSelectPills
-                  options={serviceNames}
-                  selected={newServices}
-                  onToggle={toggleService}
-                  empty="No services defined yet."
-                />
-              </div>
-              <div>
-                <button
-                  className="btn primary"
-                  onClick={handleSetBundle}
-                  disabled={mapSaving || !newOrgId.trim() || newServices.length === 0}
-                >
-                  {mapSaving ? 'Saving…' : (editingExisting ? 'Replace bundle' : 'Save bundle')}
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+      <OrgSitesSettings />
 
       {/* ─── RBAC bundle ─── */}
       <div className="panel" style={{ marginBottom: 14, padding: 14 }}>
@@ -447,7 +328,7 @@ export function SettingsPage() {
       <Modal
         open={!!pending}
         onClose={() => { if (!importing) setPending(null); }}
-        eyebrow="POST /admin/rbac/bundle/import"
+        eyebrow="Settings"
         title="Import RBAC bundle?"
         footer={
           <>
@@ -514,16 +395,6 @@ export function SettingsPage() {
         body={<>The entire RBAC configuration (services, groups, roles, route maps, Oathkeeper rules) is replaced by this snapshot. A snapshot of the current state is kept, so you can roll forward again.</>}
         onCancel={() => setConfirmRollback(null)}
         onConfirm={() => { if (confirmRollback) doRollback(confirmRollback); setConfirmRollback(null); }}
-      />
-
-      <ConfirmDialog
-        open={!!confirmOrg}
-        title="Remove organization bundle?"
-        danger
-        confirmLabel="Remove bundle"
-        body={<>Org admins for <span className="mono">{confirmOrg?.slice(0, 8)}…</span> will lose the ability to manage its users, and delegated group assignment will stop working for that organization.</>}
-        onCancel={() => setConfirmOrg(null)}
-        onConfirm={() => { if (confirmOrg) handleDeleteMapping(confirmOrg); setConfirmOrg(null); }}
       />
 
       <ExportBundleModal open={exportOpen} onClose={() => setExportOpen(false)} />

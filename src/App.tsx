@@ -12,6 +12,7 @@ import { UsersPage, UserDrawer } from './pages/Users';
 import { OrgAdminPage } from './pages/OrgAdmin';
 import { GroupsPage } from './pages/Groups';
 import { OrganizationsPage } from './pages/Organizations';
+import { ApiKeysPage } from './pages/ApiKeys';
 import { ApisPage } from './pages/Apis';
 import { GrantAccess } from './pages/GrantAccess';
 import { AuditPage } from './pages/Audit';
@@ -21,6 +22,7 @@ import { SettingsPage } from './pages/Settings';
 import { BackupPage } from './pages/Backup';
 import type { PageId } from './api/types';
 import { UserMenu } from './components/UserMenu';
+import { ApiErrorState } from './components/ApiErrorState';
 import * as Dialog from '@radix-ui/react-dialog';
 
 type NavItem = {
@@ -40,6 +42,9 @@ const NAV: NavItem[] = [
   // a "Services" workspace that edited a registry nothing reads — so it shows and does not offer.
   { id: "apis",      name: "APIs",      ico: I.service, section: "Policy",   perms: ["admin:read"] },
   { id: "organizations", name: "Organizations", ico: I.globe, section: "Policy", perms: ["admin:read"] },
+  // Org-scoped: jinbe checks the caller administers the organization, so an org admin without
+  // platform read reaches it too. perms [] — the page says so when an org refuses.
+  { id: "apikeys",   name: "API keys",  ico: I.key,     section: "Policy",   perms: [] },
   { id: "audit",     name: "Audit log", ico: I.audit,   section: "Changes",  perms: ["admin:read"] },
   { id: "accessreview", name: "Access review", ico: I.shield, section: "Changes", perms: ["admin:read"] },
   { id: "recertification", name: "Recertification", ico: I.check, section: "Changes", perms: ["admin:read"] },
@@ -169,7 +174,7 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
         <div className="logo-mark">K</div>
         <div className="logo-text">
           <span className="n">Kuma</span>
-          <span className="s">RBAC Console</span>
+          <span className="s">Access console</span>
         </div>
       </div>
       <nav className="nav">
@@ -274,7 +279,8 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
           <span className="sync-pill err" title={apiError?.message || "simulated 403"}>
             <span className="d" />
             {simulatingForbidden(tweaks) || (apiError as any)?.status === 403 ? "forbidden" :
-             (apiError as any)?.status === 401 ? "session expired" : "offline"}
+             (apiError as any)?.status === 401 ? "session expired" :
+             (apiError as any)?.status === 503 ? "engine unreachable" : "offline"}
           </span>
         )}
         {showPipe && pipeline.stage !== "idle" && (
@@ -327,7 +333,7 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
       kind: "user", label: u.name, sub: u.email, run: () => { setGrant({ user: u }); }
     }));
     const grps = Object.keys(state.groups).filter(match).slice(0, 6).map(g => ({
-      kind: "group", label: `Group · ${g}`, sub: "groups.json", run: () => { setPage("groups"); }
+      kind: "group", label: `Group · ${g}`, sub: "open Groups", run: () => { setPage("groups"); }
     }));
     const actions = [
       { kind: "action", label: "Grant access to a user", sub: "guided", run: () => { setGrant({}); } },
@@ -440,16 +446,16 @@ function TweaksPanel({ open, onClose }: { open: boolean; onClose: () => void }) 
   );
 }
 
-function ForbiddenPage() {
-  const { page } = useApp();
-  const label = NAV.find(n => n.id === page)?.name || "this page";
+/**
+ * The page could not load its data at all: a 403 (a decision) or a 503 (the engine could not be
+ * asked). Worded by the shared helper, so "no groups assigned" appears only when it is true.
+ */
+function BlockedPage() {
+  const { apiError, refetch, tweaks } = useApp();
+  const error = simulatingForbidden(tweaks) ? { status: 403 } : apiError;
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 16 }}>
-      <span style={{ width: 44, height: 44, display: "grid", placeItems: "center", color: "var(--red, #ef4444)", opacity: 0.7 }}>{I.shield}</span>
-      <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>Access denied · {label}</div>
-        <div style={{ fontSize: 13, color: "var(--ink-3)" }}>Your account has no groups assigned — contact an administrator.</div>
-      </div>
+    <div style={{ maxWidth: 560, margin: "48px auto" }}>
+      <ApiErrorState error={error} onRetry={refetch} />
     </div>
   );
 }
@@ -513,12 +519,13 @@ function AppShell() {
         {/* Keyed on the page so React remounts the subtree and the entrance plays on every
             navigation. Without the key the class is already applied and nothing animates. */}
         <div className="content page-enter" key={page}>
-          {(simulatingForbidden(tweaks) || (apiError as any)?.status === 403) ? <ForbiddenPage /> : <>
+          {(simulatingForbidden(tweaks) || [403, 503].includes((apiError as any)?.status)) ? <BlockedPage /> : <>
             {page === "dashboard" && <DashboardPage />}
             {page === "users" && <UsersPage />}
             {page === "groups" && <GroupsPage />}
             {(page === "apis" || page === "enforced") && <ApisPage />}
             {page === "organizations" && <OrganizationsPage />}
+            {page === "apikeys" && <ApiKeysPage />}
             {page === "audit" && <AuditPage />}
             {page === "accessreview" && <AccessReviewPage />}
             {page === "recertification" && <RecertificationPage />}
