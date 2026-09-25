@@ -1,15 +1,17 @@
-import React, { useState, useEffect, useMemo, Fragment } from 'react';
-import { signIn } from './auth/session';
+import { useState, useEffect, useMemo, Fragment } from 'react';
+import { redirectToLogin } from './auth/loginRedirect';
+import { NAV, hasAnyPerm } from './nav';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { useSession, useStats, useRealtime, useUserSearch } from './api/hooks';
 import { searchedToUser } from './api/transforms';
 import { I } from './components/ui/Icons';
 import { THEMES, nextTheme, themeLabel } from './theme';
-import { permits } from './policy/model';
 import { Switch, Toasts, EmptyHint } from './components/ui/Primitives';
 import { DashboardPage } from './pages/Dashboard';
 import { UsersPage, UserDrawer } from './pages/Users';
 import { OrgAdminPage } from './pages/OrgAdmin';
+import { AccessCheckPage } from './pages/AccessCheck';
+import { useMyOrg } from './hooks/useMyOrg';
 import { GroupsPage } from './pages/Groups';
 import { OrganizationsPage } from './pages/Organizations';
 import { ApiKeysPage } from './pages/ApiKeys';
@@ -20,41 +22,9 @@ import { AccessReviewPage } from './pages/AccessReview';
 import { RecertificationPage } from './pages/Recertification';
 import { SettingsPage } from './pages/Settings';
 import { BackupPage } from './pages/Backup';
-import type { PageId } from './api/types';
 import { UserMenu } from './components/UserMenu';
 import { ApiErrorState } from './components/ApiErrorState';
 import * as Dialog from '@radix-ui/react-dialog';
-
-type NavItem = {
-  id: PageId
-  name: string
-  ico: React.ReactNode
-  section: string
-  /** Permissions required to access this page. User needs at least one. Empty = always visible. */
-  perms: string[]
-}
-
-const NAV: NavItem[] = [
-  { id: "dashboard", name: "Overview",  ico: I.grid,    section: "Platform", perms: [] },
-  { id: "users",     name: "Users",     ico: I.users,   section: "Platform", perms: ["admin:read"] },
-  { id: "groups",    name: "Groups",    ico: I.group,   section: "Platform", perms: ["admin:read"] },
-  // What protects each API and who can reach it, read from the objects the engines load. It replaced
-  // a "Services" workspace that edited a registry nothing reads — so it shows and does not offer.
-  { id: "apis",      name: "APIs",      ico: I.service, section: "Policy",   perms: ["admin:read"] },
-  { id: "organizations", name: "Organizations", ico: I.globe, section: "Policy", perms: ["admin:read"] },
-  // Org-scoped: jinbe checks the caller administers the organization, so an org admin without
-  // platform read reaches it too. perms [] — the page says so when an org refuses.
-  { id: "apikeys",   name: "API keys",  ico: I.key,     section: "Policy",   perms: [] },
-  { id: "audit",     name: "Audit log", ico: I.audit,   section: "Changes",  perms: ["admin:read"] },
-  { id: "accessreview", name: "Access review", ico: I.shield, section: "Changes", perms: ["admin:read"] },
-  { id: "recertification", name: "Recertification", ico: I.check, section: "Changes", perms: ["admin:read"] },
-  // Backup tab only appears when the chart enabled backup (see filter below).
-  { id: "backup",    name: "Backup",    ico: I.box,     section: "Changes",  perms: ["admin:read"] },
-  { id: "settings",  name: "Settings",  ico: I.cog,     section: "Changes",  perms: [] },
-  // Delegated org-admin self-service. perms [] = visible to any authenticated
-  // user; the page itself shows an empty state when you administer no orgs.
-  { id: "orgadmin",  name: "Org Admin", ico: I.globe,   section: "My org",   perms: [] },
-]
 
 // The "Forbidden" tweak fakes a 403 across the whole app (blanks the UI). It is
 // a development aid only — never let it take effect in a production build
@@ -62,51 +32,6 @@ const NAV: NavItem[] = [
 const DEV = import.meta.env.DEV;
 function simulatingForbidden(tweaks: { simulateForbidden?: boolean } | undefined): boolean {
   return DEV && !!tweaks?.simulateForbidden;
-}
-
-/**
- * Full-page redirect to the auth-domain login. refresh=true forces Kratos to
- * re-authenticate and mint a NEW session — used when a cookie is present but
- * rejected (expired/revoked/corrupt), where a plain /login could see a
- * "still valid" session and bounce straight back, looping.
- */
-function redirectToLogin(metaAuthDomain: string | undefined, opts?: { refresh?: boolean }) {
-  // An authority, when the deployment named one: it answers with a token the API can verify on its
-  // own, where the cookie below asks the API to look a session up. Tried first because a deployment
-  // that configured an authority meant it; falls through when none is configured, which is what
-  // every deployment did before this was a choice.
-  void signIn().then((sent) => {
-    if (sent) return;
-    redirectToCookieLogin(metaAuthDomain, opts);
-  });
-}
-
-function redirectToCookieLogin(metaAuthDomain: string | undefined, opts?: { refresh?: boolean }) {
-  const authDomain = metaAuthDomain || (window as any).__AUTH_DOMAIN__;
-  if (!authDomain) {
-    // No runtime config and no API metadata — surface the misconfig instead of
-    // silently redirecting somewhere unexpected.
-    console.error('Kuma: AUTH_DOMAIN is not configured. Set the AUTH_DOMAIN env on the container, or have jinbe expose meta.authDomain.');
-    return;
-  }
-  const params = new URLSearchParams();
-  if (opts?.refresh) params.set('refresh', 'true');
-  params.set('return_to', window.location.href);
-  window.location.href = `https://${authDomain}/login?${params.toString()}`;
-}
-
-/** True if user has any of the required permissions or holds the wildcard "*". */
-/**
- * Whether this session admits any of the permissions a screen asks for.
- *
- * Through the model's own coverage rule rather than an exact match, so `admin:write` admits
- * `admin.membership:write` here exactly as it does at the engine. The `*` shortcut is gone with the
- * wildcard: no role carries one, and treating it as a pass let the console open screens on a
- * permission the model does not define.
- */
-function hasAnyPerm(userPerms: string[] | undefined, required: string[]): boolean {
-  if (required.length === 0) return true
-  return required.some((r) => permits(userPerms, r))
 }
 
 /**
@@ -165,7 +90,8 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
   const { theme, cycleTheme } = useApp();
 
   // Filter nav by user permissions — non-admins only see Overview + Settings.
-  const visibleNav = NAV.filter((n) => hasAnyPerm(session?.permissions, n.perms))
+  const myOrg = useMyOrg();
+  const visibleNav = NAV.filter((n) => hasAnyPerm(session?.permissions, n.perms) && (n.id !== "orgadmin" || myOrg.show))
   const sections = [...new Set(visibleNav.map((n) => n.section))]
 
   return (
@@ -315,7 +241,7 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
 }
 
 function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { setPage, state, setGrant, cycleTheme, theme } = useApp();
+  const { setPage, state, setGrant, setUserDrawer, cycleTheme, theme } = useApp();
   const [q, setQ] = useState("");
   const [idx, setIdx] = useState(0);
   useEffect(() => { if (open) { setQ(""); setIdx(0); } }, [open]);
@@ -330,7 +256,7 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
     const match = (s: string) => !low || s.toLowerCase().includes(low);
     const nav = NAV.filter(n => match(n.name)).map(n => ({ kind: "nav", label: `Go to · ${n.name}`, sub: n.id, run: () => setPage(n.id) }));
     const users = userResults.slice(0, 6).map(u => ({
-      kind: "user", label: u.name, sub: u.email, run: () => { setGrant({ user: u }); }
+      kind: "user", label: u.name, sub: u.email, run: () => { setUserDrawer({ mode: "edit", user: u }); }
     }));
     const grps = Object.keys(state.groups).filter(match).slice(0, 6).map(g => ({
       kind: "group", label: `Group · ${g}`, sub: "open Groups", run: () => { setPage("groups"); }
@@ -532,6 +458,7 @@ function AppShell() {
             {page === "backup" && <BackupPage />}
             {page === "settings" && <SettingsPage />}
             {page === "orgadmin" && <OrgAdminPage />}
+            {page === "accesscheck" && <AccessCheckPage />}
           </>}
         </div>
       </div>

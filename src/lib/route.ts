@@ -10,15 +10,21 @@ import { PAGE_IDS, type PageId } from '../api/types';
 export interface Route {
   page: PageId;
   param: string | null;
+  /** `?a=1&b=2` after the page, for a screen whose state is a form (the access checker). */
+  query?: Record<string, string>;
 }
 
 // A public name for a page whose internal id predates it. Both are accepted; links are written with
 // the public one.
-const ALIASES: Record<string, PageId> = { people: 'users' };
-const PUBLIC: Partial<Record<PageId, string>> = { users: 'people' };
+const ALIASES: Record<string, PageId> = { people: 'users', 'access-check': 'accesscheck' };
+const PUBLIC: Partial<Record<PageId, string>> = { users: 'people', accesscheck: 'access-check' };
+// Pages with no older bare link to keep: written with the public name even without a param.
+const ALWAYS_PUBLIC: ReadonlySet<PageId> = new Set<PageId>(['accesscheck']);
 
 export function parseHash(hash: string): Route {
-  const [head = '', rawParam] = hash.replace(/^#\/?/, '').split('/');
+  const raw = hash.replace(/^#\/?/, '');
+  const q = raw.indexOf('?');
+  const [head = '', rawParam] = (q < 0 ? raw : raw.slice(0, q)).split('/');
   const name = ALIASES[head] ?? head;
   // PAGE_IDS is the same array PageId is derived from — a page added to the type is automatically
   // routable (a hand-copied list here once missed one).
@@ -27,10 +33,19 @@ export function parseHash(hash: string): Route {
   if (rawParam) {
     try { param = decodeURIComponent(rawParam); } catch { param = null; }
   }
-  return { page: name as PageId, param: param || null };
+  const route: Route = { page: name as PageId, param: param || null };
+  if (q >= 0) {
+    const query = Object.fromEntries(new URLSearchParams(raw.slice(q + 1)));
+    if (Object.keys(query).length > 0) route.query = query;
+  }
+  return route;
 }
 
-export function formatHash(page: PageId, param?: string | null): string {
-  if (!param) return `/${page}`;
-  return `/${PUBLIC[page] ?? page}/${encodeURIComponent(param)}`;
+export function formatHash(page: PageId, param?: string | null, query?: Record<string, string | undefined>): string {
+  const name = param || ALWAYS_PUBLIC.has(page) ? PUBLIC[page] ?? page : page;
+  const base = param ? `/${name}/${encodeURIComponent(param)}` : `/${name}`;
+  const qs = new URLSearchParams(
+    Object.entries(query ?? {}).filter((e): e is [string, string] => !!e[1]),
+  ).toString();
+  return qs ? `${base}?${qs}` : base;
 }
