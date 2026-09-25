@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useAccessReview, useAuditEvents, usePermissionChain } from '../api/hooks';
+import { ApiErrorState } from '../components/ApiErrorState';
 import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, PermTree, EmptyHint } from '../components/ui/Primitives';
 import { timeAgo } from '../api/transforms';
@@ -40,7 +41,7 @@ function fmtLast(v?: string | null): string {
 }
 
 export function AccessReviewPage() {
-  const { data, isLoading, isError, error } = useAccessReview();
+  const { data, isLoading, isError, error, refetch } = useAccessReview();
   const [sel, setSel] = useState<AccessReviewIdentity | null>(null);
 
   const ranked = useMemo(() => {
@@ -67,14 +68,11 @@ export function AccessReviewPage() {
   }
   // Fail-closed: a load error must never read as "nobody has power".
   if (isError) {
-    const status = (error as { status?: number } | null)?.status;
     return (
       <>{header}
-        <div className="panel" style={{ padding: 28 }}>
-          <span className="small" style={{ color: 'var(--danger, #c0392b)' }}>
-            Couldn&apos;t load the access review{status ? ` (HTTP ${status})` : ''} — this is a load error, not "no privileged users".
-            Reload to retry; do not treat the absence of results as a clean posture.
-          </span>
+        <ApiErrorState what="the access review" error={error} onRetry={() => refetch()} />
+        <div className="small muted" style={{ marginTop: 8 }}>
+          This is a load error, not &ldquo;no privileged users&rdquo; — do not read the absence of results as a clean posture.
         </div>
       </>
     );

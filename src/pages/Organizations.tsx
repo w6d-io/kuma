@@ -29,6 +29,7 @@ import { SkeletonRows } from '../components/ui/Skeleton';
 // its bundle + people, bundle/invite/grant from one place.
 
 export function OrganizationsPage() {
+  const { pageParam, setPage } = useApp();
   // EVERY organisation, from the route that answers that question and refuses when the caller may
   // not ask it. This page used to call `/me/organizations`, which widened to everything for an
   // administrator and returned only theirs otherwise — the same call meaning two different things.
@@ -49,20 +50,22 @@ export function OrganizationsPage() {
     [orgsQ.isError, orgsQ.data],
   );
 
-  const [sel, setSel] = useState('');
+  // The selected organisation is the address (`#/organizations/<id>`), so it can be linked to.
+  const sel = pageParam ?? '';
+  const setSel = (o: string) => setPage('organizations', o);
   const [q, setQ] = useState('');
 
   const activeOrg = sel && (orgs ?? []).includes(sel) ? sel : (orgs?.[0] ?? '');
   const filtered = useMemo(
-    () => (orgs ?? []).filter(o => !q || o.toLowerCase().includes(q.toLowerCase())),
-    [orgs, q],
+    () => (orgs ?? []).filter(o => !q || o.toLowerCase().includes(q.toLowerCase()) || (names[o] ?? '').toLowerCase().includes(q.toLowerCase())),
+    [orgs, q, names],
   );
 
   const header = (
     <div className="page-head">
       <div>
         <h1>Organizations</h1>
-        <div className="sub">Every tenant, what it runs and its people — in one place{orgs ? ` · ${orgs.length} org${orgs.length === 1 ? '' : 's'}` : ''}</div>
+        <div className="sub">Every organization, the sites it runs and its members — in one place{orgs ? ` · ${orgs.length} org${orgs.length === 1 ? '' : 's'}` : ''}</div>
       </div>
     </div>
   );
@@ -128,7 +131,7 @@ export function OrganizationsPage() {
 
         {/* Right — selected org */}
         <div style={{ minWidth: 0 }}>
-          {activeOrg && <OrgDetail key={activeOrg} org={activeOrg} services={applications[activeOrg] ?? []} />}
+          {activeOrg && <OrgDetail key={activeOrg} org={activeOrg} name={names[activeOrg]} services={applications[activeOrg] ?? []} />}
         </div>
       </div>
 
@@ -136,8 +139,8 @@ export function OrganizationsPage() {
   );
 }
 
-function OrgDetail({ org, services }: { org: string; services: string[] }) {
-  const { setGrant, pushToast } = useApp();
+function OrgDetail({ org, name, services }: { org: string; name?: string; services: string[] }) {
+  const { setGrant, pushToast, setPage } = useApp();
   const { data: session } = useSession();
   // The permission the mutation checks, not a role NAME. `super_admin` is not a role this model
   // defines, so this test was false for everybody and greyed the control for its only holders.
@@ -160,14 +163,20 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
       <div className="panel-head" style={{ marginBottom: 12 }}>
         <div style={{ minWidth: 0 }}>
           <h3 className="row" style={{ gap: 8 }}>
-            <span className="mono">{org}</span>
-            {!hasBundle && <Chip tone="warn" title="No services bundled — members can't be granted service roles here yet">unmapped</Chip>}
+            <span className={name ? '' : 'mono'}>{name ?? org}</span>
+            {!hasBundle && <Chip tone="warn" title="Runs no site yet — members can't be given site roles here">no sites</Chip>}
           </h3>
-          <div className="sub">{total} member{total === 1 ? '' : 's'}{hasBundle ? <> · {services.length} service{services.length === 1 ? '' : 's'} bundled</> : ''}</div>
+          <div className="sub">
+            {total} member{total === 1 ? '' : 's'}{hasBundle ? <> · {services.length} site{services.length === 1 ? '' : 's'}</> : ''}
+            {name && <> · <span className="mono">{org}</span></>}
+          </div>
         </div>
-        <button className="btn primary" onClick={() => setInvite(true)}>
-          <span style={{ width: 14, height: 14, display: 'grid', placeItems: 'center' }}>{I.plus}</span> Invite person
-        </button>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn" onClick={() => setPage('apikeys', org)}>API keys</button>
+          <button className="btn primary" onClick={() => setInvite(true)}>
+            <span style={{ width: 14, height: 14, display: 'grid', placeItems: 'center' }}>{I.plus}</span> Invite person
+          </button>
+        </div>
       </div>
 
       {/* What this organisation runs. A record of the directory, not a setting of this console: it
@@ -177,7 +186,7 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
           <div style={{ fontWeight: 500, fontSize: 12.5 }}>Applications</div>
           <div className="small muted" style={{ marginTop: 2 }}>
             {hasBundle
-              ? <>What this organisation runs, from <span className="mono">organisation_deployments</span>. Only what is enabled.</>
+              ? <>The sites this organization runs. Only what is enabled.</>
               : <>This organisation runs nothing that the directory records.</>}
           </div>
           <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -196,7 +205,7 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontWeight: 500, fontSize: 12.5 }}>Administrators</div>
             <div className="small muted" style={{ marginTop: 2 }}>
-              People who can manage this org's members (scoped to its bundle). Changing it needs admin.membership:write.
+              Org admins manage this organization's members, within the sites it runs. Changing them needs permission to manage members.
             </div>
             <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {roster.length === 0
@@ -257,6 +266,7 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
       {editAdmins && (
         <AdminsDrawer
           org={org}
+          name={name}
           current={roster}
           members={memberEmails}
           onClose={() => setEditAdmins(false)}
@@ -274,8 +284,8 @@ function OrgDetail({ org, services }: { org: string; services: string[] }) {
 // The picker offers the org's members (you can't administer an org you don't
 // belong to — jinbe's manageable_orgs also enforces this), unioned with any
 // already-rostered email so a stale entry can still be removed.
-function AdminsDrawer({ org, current, members, onClose }: {
-  org: string; current: string[]; members: string[]; onClose: () => void;
+function AdminsDrawer({ org, name, current, members, onClose }: {
+  org: string; name?: string; current: string[]; members: string[]; onClose: () => void;
 }) {
   const { pushToast } = useApp();
   const setAdmins = useSetOrgAdmins();
@@ -313,11 +323,11 @@ function AdminsDrawer({ org, current, members, onClose }: {
       open
       onClose={onClose}
       size="lg"
-      eyebrow="PUT /api/admin/rbac/org-admin-map"
+      eyebrow="Org admins"
       title="Edit administrators"
       footer={
         <>
-          <span className="small muted">Needs admin.membership:write and a recent second factor.</span>
+          <span className="small muted">Needs permission to manage members and a recent second factor.</span>
           <div className="row">
             <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
             <button className="btn primary" onClick={save} disabled={!dirty || busy}>{busy ? 'Saving…' : 'Save admins'}</button>
@@ -327,7 +337,7 @@ function AdminsDrawer({ org, current, members, onClose }: {
     >
       <div className="mb-12">
         <div className="input-label">Organization</div>
-        <div className="mono" style={{ fontSize: 12.5 }}>{org}</div>
+        <div className={name ? '' : 'mono'} style={{ fontSize: 12.5 }}>{name ?? org}</div>
       </div>
       <label className="input-label">Administrators (org members)</label>
       <div className="panel" style={{ padding: 12 }}>
@@ -339,7 +349,7 @@ function AdminsDrawer({ org, current, members, onClose }: {
         />
       </div>
       <div className="input-hint" style={{ marginTop: 8 }}>
-        Each selected member can manage this org's people (scoped to its service bundle). Saving replaces the entire roster; deselect everyone to remove all admins.
+        Each selected member becomes an org admin and can manage this organization's people, within the sites it runs. Saving replaces the whole list; deselect everyone to remove all org admins.
       </div>
     </Drawer>
   );

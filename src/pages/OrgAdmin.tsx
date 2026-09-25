@@ -5,6 +5,7 @@ import { I } from '../components/ui/Icons';
 import { Chip, Avatar, Drawer, EmptyHint, Switch } from '../components/ui/Primitives';
 import { type KratosIdentity } from '../api/client';
 import { bounceToStepUp } from '../lib/stepUp';
+import { toastFor } from '../lib/apiError';
 import { SkeletonPanel } from '../components/ui/Skeleton';
 import {
   useMyOrganizations,
@@ -41,7 +42,7 @@ function makeToastErr(pushToast: PushToast) {
       pushToast('Not authorized for this organization', { err: true, sub: e.message });
       return;
     }
-    pushToast(e.message || 'Request failed', { err: true });
+    pushToast(...toastFor(e));
   };
 }
 
@@ -104,11 +105,11 @@ export function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
     <Drawer
       open
       onClose={onClose}
-      eyebrow={`POST /organizations/${org}/users`}
+      eyebrow="Org admin"
       title="Invite user"
       footer={
         <>
-          <span className="small muted mono">creates a Kratos identity in this org</span>
+          <span className="small muted">Adds a new member to this organization</span>
           <div className="row">
             <button className="btn" onClick={onClose}>Cancel</button>
             <button className="btn primary" onClick={submit} disabled={!email || busy}>{busy ? 'Inviting…' : 'Invite'}</button>
@@ -131,7 +132,7 @@ export function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0' }}>
         <div>
           <div style={{ fontWeight: 500, fontSize: 13 }}>Send invite email</div>
-          <div className="small muted">Generates a recovery link via Kratos</div>
+          <div className="small muted">Emails them a link to set their password</div>
         </div>
         <Switch on={sendInvite} onChange={setSendInvite} />
       </div>
@@ -168,11 +169,11 @@ function ManageGroupsDrawer({ org, user, assignable, onClose, onDone, pushToast 
     <Drawer
       open
       onClose={onClose}
-      eyebrow={`PUT /organizations/${org}/users/${user.id}/groups`}
+      eyebrow="Org admin"
       title={`Manage groups · ${user.traits?.name || user.traits?.email}`}
       footer={
         <>
-          <span className="small muted mono">metadata_admin.groups</span>
+          <span className="small muted">Only groups you may assign here are listed</span>
           <div className="row">
             <button className="btn" onClick={onClose}>Cancel</button>
             <button className="btn primary" onClick={submit} disabled={busy}>{busy ? 'Saving…' : 'Apply change'}</button>

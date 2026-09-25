@@ -1,19 +1,23 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession, useUsers, useGroupsMap, useUserSearch, useStats, useMyOrganizations, useUserIdentity, useAuditEvents, useAuthorizationModel, usePermissionChain } from '../api/hooks';
+import { useUsers, useGroupsMap, useUserSearch, useStats, useAuthorizationModel, usePermissionChain } from '../api/hooks';
 import { I } from '../components/ui/Icons';
-import { Chip, Avatar, Drawer, PermTree, Switch, ConfirmDialog, EmptyHint } from '../components/ui/Primitives';
+import { Chip, Avatar, Drawer, PermTree, Switch } from '../components/ui/Primitives';
 import { Pagination, usePagination } from '../components/ui/Pagination';
 import { SkeletonRows } from '../components/ui/Skeleton';
 import { isPrivilegedGroup } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
-import { membershipsOf, searchedToUser } from '../api/transforms';
-import { RiskBadge, riskOf } from './Audit';
-import type { User, AuditEvent } from '../api/types';
+import { kratosToUser, searchedToUser } from '../api/transforms';
+import type { User } from '../api/types';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { PRIVILEGED_MUTATION, permits } from '../policy/model';
 import { takePendingChange, type PendingChange } from '../lib/pendingChange';
+import { ApiErrorState } from '../components/ApiErrorState';
+import { UserOrgsTab } from './users/UserOrgsTab';
+import { UserTrail } from './users/UserTrail';
+import { UserProfileTab } from './users/UserProfileTab';
+import { UserSessionsTab } from './users/UserSessionsTab';
+import { UserDangerTab } from './users/UserDangerTab';
 
 // Small debounce so typing a name doesn't re-filter (and, for emails, re-query
 // the server) on every keystroke.
@@ -27,7 +31,7 @@ function useDebounced<T>(value: T, ms = 250): T {
 }
 
 export function UsersPage() {
-  const { setUserDrawer, setGrant } = useApp();
+  const { setUserDrawer, setGrant, pageParam, userDrawer } = useApp();
   const [q, setQ] = useState("");
   // A change that was refused for want of a second factor, waiting to be proposed again. Held
   // until the person it targets is on screen, because the drawer opens on a row, not on an email.
@@ -72,12 +76,34 @@ export function UsersPage() {
     setResuming(null);
   }, [resuming, rows, q, setUserDrawer]);
 
+  // A link to one person (`#/people/<id>`): read them from the directory and open their drawer. The
+  // row they would be clicked on need not be on page one, so the id is looked up, not the list.
+  const linked = useQuery({
+    queryKey: ['user-identity', pageParam],
+    queryFn: () => api.getUser(pageParam as string),
+    enabled: !!pageParam && userDrawer?.user?.id !== pageParam,
+  });
+  useEffect(() => {
+    if (pageParam && linked.data && linked.data.id === pageParam && userDrawer?.user?.id !== pageParam) {
+      setUserDrawer({ mode: 'edit', user: kratosToUser(linked.data) });
+    }
+  }, [pageParam, linked.data, userDrawer?.user?.id, setUserDrawer]);
+  // Back from `#/people/<id>` to `#/users` closes the drawer the address no longer names.
+  const lastParam = useRef(pageParam);
+  useEffect(() => {
+    if (lastParam.current && !pageParam && userDrawer?.mode === 'edit') setUserDrawer(null);
+    lastParam.current = pageParam;
+  }, [pageParam, userDrawer?.mode, setUserDrawer]);
+
   return (
     <>
+      {pageParam && linked.isError && (
+        <div className="mb-12"><ApiErrorState compact what="this person" error={linked.error} onRetry={() => linked.refetch()} /></div>
+      )}
       <div className="page-head">
         <div>
           <h1>Users</h1>
-          <div className="sub">{searching ? `${filtered.length} match${filtered.length === 1 ? '' : 'es'}` : `${total} identities`}{loading ? ' · loading…' : ''} · Kratos <span className="mono">metadata_admin.groups</span></div>
+          <div className="sub">{searching ? `${filtered.length} match${filtered.length === 1 ? '' : 'es'}` : `${total} identities`}{loading ? ' · loading…' : ''} · access comes from each member&apos;s groups</div>
         </div>
         <div className="page-actions">
           <button className="btn" onClick={() => setGrant({})}>
@@ -179,7 +205,7 @@ export function UsersPage() {
 }
 
 export function UserDrawer() {
-  const { userDrawer, setUserDrawer, state, pushToast, apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSendRecoveryEmail } = useApp();
+  const { userDrawer, setUserDrawer, state, apiSetUserGroups, apiCreateUser } = useApp();
   const applyChange = useApplyChange();
   /**
    * What this actor may hand out, asked of the model the engine decides against.
@@ -208,10 +234,6 @@ export function UserDrawer() {
   const user = editing;
   const [groups, setGroups] = useState(user?.groups || []);
   const [drawerTab, setDrawerTab] = useState("groups");
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [confirmDeactivate, setConfirmDeactivate] = useState(false);
-
-  const [sendingRecovery, setSendingRecovery] = useState(false);
 
   // create state
   const [newEmail, setNewEmail] = useState("");
@@ -227,7 +249,6 @@ export function UserDrawer() {
   useEffect(() => { setGroups(userDrawer?.resumeGroups ?? user?.groups ?? []); }, [user?.id]);
   useEffect(() => {
     setDrawerTab("groups");
-    setConfirmDelete(false);
     setNewEmail(""); setNewName(""); setNewGroups([]); setSendInvite(true);
   }, [userDrawer?.mode, user?.id]);
 
@@ -256,19 +277,6 @@ export function UserDrawer() {
   const create = () => {
     if (!newEmail || !newName) return;
     const ok = applyChange("create", newEmail, () => apiCreateUser({ email: newEmail, name: newName, groups: newGroups, sendInvite }));
-    if (ok) setUserDrawer(null);
-  };
-
-  const toggleActive = () => {
-    if (!user) return;
-    const next: 'active' | 'inactive' = user.active ? 'inactive' : 'active';
-    const verb = next === 'inactive' ? 'deactivate' : 'reactivate';
-    applyChange(verb, user.email, () => apiSetUserState(user.id, next));
-  };
-
-  const doDelete = () => {
-    if (!user) return;
-    const ok = applyChange("delete", user.email, () => apiDeleteUser(user.id));
     if (ok) setUserDrawer(null);
   };
 
@@ -343,11 +351,11 @@ export function UserDrawer() {
       <Drawer
         open={true}
         onClose={() => setUserDrawer(null)}
-        eyebrow="POST /admin/users"
+        eyebrow="People"
         title="Create user"
         footer={
           <>
-            <span className="small muted mono">POST /admin/identities · Kratos</span>
+            <span className="small muted">They can sign in once they set a password.</span>
             <div className="row">
               <button className="btn" onClick={() => setUserDrawer(null)}>Cancel</button>
               <button className="btn primary" onClick={create} disabled={!newEmail || !newName}>Create user</button>
@@ -372,7 +380,7 @@ export function UserDrawer() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0" }}>
           <div>
             <div style={{ fontWeight: 500, fontSize: 13 }}>Send invite email</div>
-            <div className="small muted">Generates a recovery link via Kratos</div>
+            <div className="small muted">Emails them a link to set their password</div>
           </div>
           <Switch on={sendInvite} onChange={setSendInvite} />
         </div>
@@ -410,9 +418,11 @@ export function UserDrawer() {
           {editing && (
             <div className="drawer-tabs">
               <button className={drawerTab === "groups" ? "on" : ""} onClick={() => setDrawerTab("groups")}>Access</button>
+              <button className={drawerTab === "profile" ? "on" : ""} onClick={() => setDrawerTab("profile")}>Edit</button>
               <button className={drawerTab === "orgs" ? "on" : ""} onClick={() => setDrawerTab("orgs")}>Organizations</button>
+              <button className={drawerTab === "sessions" ? "on" : ""} onClick={() => setDrawerTab("sessions")}>Sessions</button>
               <button className={drawerTab === "activity" ? "on" : ""} onClick={() => setDrawerTab("activity")}>Activity</button>
-              <button className={drawerTab === "danger" ? "on" : ""} onClick={() => { setDrawerTab("danger"); setConfirmDelete(false); }}>Danger</button>
+              <button className={drawerTab === "danger" ? "on" : ""} onClick={() => setDrawerTab("danger")}>Danger</button>
             </div>
           )}
           {drawerTab === "groups" && (
@@ -443,7 +453,7 @@ export function UserDrawer() {
                     </div>
                   ) : !assignable.isLoading && !mayAssign ? (
                     <div className="small muted" style={{ marginBottom: 8 }}>
-                      You cannot assign groups: it needs <span className="mono">admin.membership:write</span>.
+                      You cannot assign groups: your roles do not include managing members.
                       Below is what this person already holds.
                     </div>
                   ) : null}
@@ -454,357 +464,15 @@ export function UserDrawer() {
                   <div className="panel" style={{ padding: 12 }}><PermTree user={{ ...user, groups }} model={chain.model} routeTables={chain.routeTables} /></div>
                 </div>
               </div>
-              <div className="panel" style={{ padding: 14, marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 500, fontSize: 12.5 }}>Recovery email</div>
-                  <div className="small muted">Send a password-reset link.</div>
-                </div>
-                <button
-                  className="btn"
-                  disabled={sendingRecovery}
-                  onClick={async () => {
-                    if (!user) return;
-                    setSendingRecovery(true);
-                    try {
-                      await apiSendRecoveryEmail(user.id);
-                      pushToast(`Recovery email sent to ${user.email}`);
-                    } catch {
-                      pushToast("Failed to send recovery email", { err: true });
-                    } finally {
-                      setSendingRecovery(false);
-                    }
-                  }}
-                >
-                  {sendingRecovery ? "Sending…" : "Send recovery email"}
-                </button>
-              </div>
             </>
           )}
-          {drawerTab === "orgs" && <OrgMembershipTab user={user} />}
+          {drawerTab === "profile" && <UserProfileTab user={user} />}
+          {drawerTab === "orgs" && <UserOrgsTab user={user} />}
+          {drawerTab === "sessions" && <UserSessionsTab user={user} />}
           {drawerTab === "activity" && <UserTrail user={user} />}
-          {drawerTab === "danger" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div className="panel" style={{ padding: 14 }}>
-                <div style={{ fontWeight: 500, marginBottom: 4 }}>{user.active ? "Deactivate account" : "Reactivate account"}</div>
-                <div className="small muted" style={{ marginBottom: 10 }}>
-                  {user.active
-                    ? "Blocks login. Identity and data are preserved."
-                    : "Restores login access for this identity."}
-                </div>
-                <button className="btn" onClick={user.active ? () => setConfirmDeactivate(true) : toggleActive}>
-                  {user.active ? "Deactivate" : "Reactivate"}
-                </button>
-              </div>
-              <div className="panel" style={{ padding: 14 }}>
-                <div style={{ fontWeight: 500, marginBottom: 4, color: "var(--red, #ef4444)" }}>Delete account</div>
-                <div className="small muted" style={{ marginBottom: 10 }}>
-                  Permanently removes this identity from Kratos. Cannot be undone.
-                </div>
-                {!confirmDelete
-                  ? (
-                    <button
-                      className="btn"
-                      style={{ borderColor: "var(--red, #ef4444)", color: "var(--red, #ef4444)" }}
-                      onClick={() => setConfirmDelete(true)}
-                    >
-                      Delete user
-                    </button>
-                  ) : (
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <span className="small" style={{ flex: 1, color: "var(--red, #ef4444)" }}>Delete {user.email}?</span>
-                      <button className="btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
-                      <button
-                        className="btn primary"
-                        style={{ background: "var(--red, #ef4444)", borderColor: "var(--red, #ef4444)" }}
-                        onClick={doDelete}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
-              </div>
-            </div>
-          )}
+          {drawerTab === "danger" && <UserDangerTab key={user.id} user={user} onDeleted={() => setUserDrawer(null)} />}
         </>
       )}
-      <ConfirmDialog
-        open={confirmDeactivate}
-        title={`Deactivate ${user?.email ?? "user"}?`}
-        danger
-        confirmLabel="Deactivate"
-        body={<>This blocks login for the account. Their identity and data are preserved — you can reactivate them later.</>}
-        onCancel={() => setConfirmDeactivate(false)}
-        onConfirm={() => { setConfirmDeactivate(false); toggleActive(); }}
-      />
     </Drawer>
-  );
-}
-
-// Multi-organization membership editor (Users drawer · Organizations tab).
-//
-// A user's EFFECTIVE membership = the native primary `organization_id` UNION the
-// additional list. jinbe OWNS that set now and answers it as `organizations`;
-// `metadata_admin.organizations` is the write path and the fallback, no longer
-// the truth. Both halves are edited against EXISTING endpoints:
-//   • primary    → PATCH /admin/users/:id/organization  (native, UUID-checked)
-//   • additional → PATCH /admin/users/:id/metadata       (merge; refuses groups)
-// The org catalog for the picker comes from GET /me/organizations (a super_admin
-// sees every org).
-//
-// Editors seed from the AUTHORITATIVE identity (useUserIdentity), never the
-// directory row: a search-hit row omits the multi-org list, and a merge-write
-// built on that false-empty base would wipe real memberships. Membership grants
-// NO permission on its own (permissions come from groups, gated separately) —
-// but it is a sensitive tenant-scoping action, so the additional-org write
-// mirrors the super_admin gate as defence in depth. The backend independently
-// enforces admin on the metadata endpoint and refuses any group change (422).
-function OrgMembershipTab({ user }: { user: User }) {
-  const { apiSetUserOrganization, apiSetUserOrganizations } = useApp();
-  const applyChange = useApplyChange();
-  const { data: session } = useSession();
-  // Editing somebody's organisations is gated on the permission the mutation checks. A role NAME
-  // this model does not define greyed the whole tab for the very people who may change it.
-  const mayEditMemberships = permits(session?.permissions, PRIVILEGED_MUTATION);
-
-  const identityQ = useUserIdentity(user.id);
-  const identity = identityQ.data;
-  const catalogQ = useMyOrganizations();
-  const catalog = useMemo(() => catalogQ.data ?? [], [catalogQ.data]);
-  // The starting point of an EDIT, which is why the source matters more here than anywhere else:
-  // this screen saves what it is showing. jinbe answers `organizations` from the records it owns —
-  // the effective set, primary included — so the additional list is that set minus the primary.
-  // Only when the field is absent (a backend that does not own membership) does what was written on
-  // the identity stand in. Seeding from the identity while the truth lived elsewhere would have
-  // shown an empty list to somebody who belongs to three, and saving it would have made that true.
-  const baselineAdditional = useMemo(() => {
-    if (!identity) return [];
-    const primaryId = identity.organization_id ?? "";
-    return membershipsOf(identity).filter(o => o && o !== primaryId);
-  }, [identity]);
-
-  const [primary, setPrimary] = useState("");
-  const [additional, setAdditional] = useState<string[]>([]);
-  const [addId, setAddId] = useState("");
-  const [seeded, setSeeded] = useState(false);
-
-  // Seed once, from the source of truth, when it lands. The `seeded` guard keeps
-  // a post-save refetch (or a realtime invalidation) from wiping in-progress edits.
-  useEffect(() => {
-    if (!identity || seeded) return;
-    setPrimary(identity.organization_id ?? "");
-    setAdditional(baselineAdditional);
-    setSeeded(true);
-  }, [identity, baselineAdditional, seeded]);
-
-  if (identityQ.isLoading || !seeded) {
-    return (
-      <div className="panel" style={{ padding: 24, textAlign: "center" }}>
-        <span className="small muted">Loading organization membership…</span>
-      </div>
-    );
-  }
-  if (identityQ.isError) {
-    return (
-      <div className="panel" style={{ padding: 20 }}>
-        <EmptyHint>Couldn&apos;t load this user&apos;s organizations — {(identityQ.error as Error).message}</EmptyHint>
-      </div>
-    );
-  }
-
-  const baselinePrimary = identity?.organization_id ?? "";
-  const toggle = (o: string) =>
-    setAdditional(prev => (prev.includes(o) ? prev.filter(x => x !== o) : [...prev, o]));
-  const addById = () => {
-    const v = addId.trim();
-    if (!v) return;
-    setAdditional(prev => (prev.includes(v) ? prev : [...prev, v]));
-    setAddId("");
-  };
-
-  // Candidate rows = catalog ∪ drafted additional, minus the primary (managed in
-  // its own section, always part of the effective set).
-  const candidates = Array.from(new Set([...catalog, ...additional]))
-    .filter(o => o && o !== primary.trim())
-    .sort();
-  const effective = Array.from(new Set([...(primary.trim() ? [primary.trim()] : []), ...additional]));
-
-  const primaryChanged = primary.trim() !== baselinePrimary;
-  const additionalChanged =
-    JSON.stringify([...additional].sort()) !== JSON.stringify([...baselineAdditional].sort());
-
-  const savePrimary = () =>
-    applyChange("organization", user.email, () => apiSetUserOrganization(user.id, primary.trim() || undefined));
-  const saveAdditional = () => {
-    if (!mayEditMemberships) return;
-    applyChange("organizations", user.email, () => apiSetUserOrganizations(user.id, additional));
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div className="small muted">
-        Effective membership is the primary organization UNION the additional
-        organizations — the same union jinbe resolves into OPA&apos;s{" "}
-        <span className="mono">user_organizations</span>. Membership scopes a user
-        to a tenant; it grants no permissions on its own (those come from groups).
-      </div>
-
-      <div className="panel" style={{ padding: 14 }}>
-        <div className="input-label">Effective organizations</div>
-        {effective.length === 0
-          ? <span className="small muted">— none —</span>
-          : (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
-              {effective.map(o => (
-                <Chip key={o} tone={o === primary.trim() ? "accent" : ""} title={o === primary.trim() ? `${o} · primary` : o}>{o}</Chip>
-              ))}
-            </div>
-          )}
-      </div>
-
-      <div>
-        <label className="input-label">Primary organization</label>
-        <div className="row" style={{ gap: 8 }}>
-          <input
-            className="input mono"
-            style={{ flex: 1 }}
-            placeholder="e.g. acme-corp (empty for none)"
-            value={primary}
-            onChange={e => setPrimary(e.target.value)}
-          />
-          <button className="btn" onClick={savePrimary} disabled={!primaryChanged}>Save primary</button>
-        </div>
-        <div className="small muted" style={{ marginTop: 4 }}>
-          Native <span className="mono">organization_id</span> — the org the scoped delegated endpoints key on.
-        </div>
-      </div>
-
-      <div>
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <label className="input-label" style={{ margin: 0 }}>Additional organizations</label>
-          <span className="small muted" title="Read from the membership records jinbe owns; written through metadata_admin.organizations">held by jinbe</span>
-        </div>
-        {candidates.length === 0
-          ? (
-            <div className="panel" style={{ padding: 14, marginTop: 6 }}>
-              <span className="small muted">No other organizations known. Add one by ID below.</span>
-            </div>
-          )
-          : (
-            <div className="panel" style={{ padding: 0, marginTop: 6 }}>
-              {candidates.map((o, i) => {
-                const on = additional.includes(o);
-                return (
-                  <label
-                    key={o}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
-                      borderBottom: i < candidates.length - 1 ? "1px solid var(--line)" : "none",
-                      cursor: mayEditMemberships ? "pointer" : "not-allowed",
-                      background: on ? "var(--accent-soft)" : "transparent",
-                      opacity: mayEditMemberships ? 1 : 0.6,
-                    }}
-                    title={o}
-                  >
-                    <input type="checkbox" checked={on} disabled={!mayEditMemberships} onChange={() => toggle(o)} />
-                    <span className="mono small" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{o}</span>
-                    {on && <Chip tone="ok">member</Chip>}
-                  </label>
-                );
-              })}
-            </div>
-          )}
-
-        <div className="row" style={{ gap: 8, marginTop: 8 }}>
-          <input
-            className="input mono"
-            style={{ flex: 1 }}
-            placeholder="Add organization by ID…"
-            value={addId}
-            disabled={!mayEditMemberships}
-            onChange={e => setAddId(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addById(); } }}
-          />
-          <button className="btn" onClick={addById} disabled={!mayEditMemberships || !addId.trim()}>Add</button>
-        </div>
-
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
-          <span className="small muted">
-            {mayEditMemberships
-              ? "Replaces the additional-org list; the primary org is unaffected."
-              : "Multi-org assignment requires super_admin."}
-          </span>
-          <button
-            className="btn primary"
-            onClick={saveAdditional}
-            disabled={!mayEditMemberships || !additionalChanged}
-            title={!mayEditMemberships ? "Needs admin.membership:write" : undefined}
-          >
-            Apply additional orgs
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// One row of a per-user trail. Renders the plain event + group-diff chips from
-// the `changes` envelope (added/removed groups) + a risk badge.
-function TrailRow({ e }: { e: AuditEvent }) {
-  const isFail = e.status === "failed" || e.verb === "fail" || e.verb === "deny";
-  const risk = riskOf(e);
-  const added = e.changes?.added ?? [];
-  const removed = e.changes?.removed ?? [];
-  return (
-    <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderBottom: "1px solid var(--line)", borderLeft: risk.level !== "none" ? `2px solid var(--${risk.tone})` : "2px solid transparent" }}>
-      <span className="small muted mono nowrap" style={{ width: 60, flexShrink: 0 }}>{e.when}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          <Chip tone={isFail ? "err" : ""}>{e.verb}</Chip>
-          <span className="small mono" style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{e.changes?.summary || e.target || e.path || e.category}</span>
-          <RiskBadge e={e} />
-          {isFail && <Chip tone="err">{e.verb === "deny" ? "denied" : "failed"}</Chip>}
-        </div>
-        {(added.length > 0 || removed.length > 0) && (
-          <div className="row mt-4" style={{ gap: 4, flexWrap: "wrap" }}>
-            {added.map(a => <Chip key={`a-${a}`} tone="ok">+ {a}</Chip>)}
-            {removed.map(r => <Chip key={`r-${r}`} tone="err">− {r}</Chip>)}
-          </div>
-        )}
-        {(e.service || e.who) && <div className="small muted mono mt-4">{[e.service, e.who].filter(Boolean).join(" · ")}</div>}
-      </div>
-    </div>
-  );
-}
-
-// Per-user trail (Part D): "Did" (actor == email) + "Done to them"
-// (target == user:<email>, matched via the emit-time targetEmail). Fail-closed:
-// react-query's isError distinguishes a load failure from an empty trail.
-function UserTrail({ user }: { user: User }) {
-  const didQ = useAuditEvents({ actor: user.email, limit: 50 });
-  const doneQ = useAuditEvents({ target: `user:${user.email}`, limit: 50 });
-  const did = didQ.data ?? [];
-  const done = doneQ.data ?? [];
-
-  const section = (title: string, sub: string, q: ReturnType<typeof useAuditEvents>, rows: AuditEvent[]) => (
-    <div className="panel">
-      <div className="panel-head"><div><h3>{title}</h3><div className="sub">{sub}</div></div><Chip>{rows.length}</Chip></div>
-      <div style={{ padding: 0 }}>
-        {q.isError ? (
-          <div style={{ padding: 16 }}><span className="small" style={{ color: "var(--danger, #c0392b)" }}>Couldn&apos;t load this trail — load error, not "no activity". Reload to retry.</span></div>
-        ) : rows.length === 0 ? (
-          <div style={{ padding: 14 }}><EmptyHint>{q.isLoading ? "Loading…" : "Nothing recorded in the retained window."}</EmptyHint></div>
-        ) : rows.map(e => <TrailRow key={e.id} e={e} />)}
-      </div>
-    </div>
-  );
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {section("What they did", `Actions by ${user.email}`, didQ, did)}
-      {section("What was done to them", "Access & privilege changes targeting this user", doneQ, done)}
-      <div className="small muted" style={{ textAlign: "center", opacity: 0.7 }}>
-        Bounded by the audit stream cap (Redis-only store) — older activity may have aged out.
-      </div>
-    </div>
   );
 }

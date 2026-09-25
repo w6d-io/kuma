@@ -221,7 +221,7 @@ export interface AppState {
 // but not to pageFromHash's hand-copied list — first click on the nav entry
 // bounced back to the dashboard.)
 // `enforced` is kept as the old id of `apis`: a bookmark still opens the screen it names.
-export const PAGE_IDS = ['dashboard', 'users', 'groups', 'apis', 'enforced', 'audit', 'accessreview', 'recertification', 'settings', 'orgadmin', 'organizations', 'backup'] as const;
+export const PAGE_IDS = ['dashboard', 'users', 'groups', 'apis', 'enforced', 'audit', 'accessreview', 'recertification', 'settings', 'orgadmin', 'organizations', 'apikeys', 'backup'] as const;
 export type PageId = (typeof PAGE_IDS)[number];
 
 export interface TweakDefaults {

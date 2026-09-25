@@ -1,6 +1,7 @@
 import { useApp } from '../contexts/AppContext';
 import { bounceToStepUp } from '../lib/stepUp';
 import { rememberPendingChange, type PendingIntent } from '../lib/pendingChange';
+import { toastFor } from '../lib/apiError';
 
 export function useApplyChange() {
   const { pushToast, pipeline, persona, refreshAudit } = useApp();
@@ -88,7 +89,7 @@ export function useApplyChange() {
             );
             return;
           }
-          pushToast(`${err.message}`, { err: true });
+          pushToast(...toastFor(err));
         });
     } else {
       // Sync mutator (rare — a few UI-only paths). Just run the pipeline echo.
