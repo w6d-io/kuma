@@ -1,0 +1,145 @@
+/* Kit — overlays: Dialog, Drawer, ConfirmDialog, Toasts, the command palette. */
+
+/* ── Dialog ───────────────────────────────────────────────────── */
+.modal-wrap {
+  position: fixed; inset: 0; z-index: var(--z-overlay);
+  display: grid; place-items: center;
+  background: var(--color-scrim);
+  padding: var(--space-5);
+  overflow-y: auto;
+  animation: fadeIn 160ms ease;
+}
+.modal {
+  width: min(720px, 100%);
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: flex; flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  animation: modalIn 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.modal.lg { width: min(960px, 100%); }
+@keyframes modalIn { from { transform: translateY(8px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
+.modal-head, .drawer-head {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.overlay-title { min-width: 0; }
+.modal-head h2 { font-size: var(--text-lg); line-height: var(--leading-lg); margin: 0; }
+.drawer-head h2 { font-size: var(--text-md); line-height: var(--leading-md); margin: 0; }
+.overlay-title .eyebrow { margin-bottom: var(--space-half); }
+.modal-body { padding: var(--space-4); overflow: auto; flex: 1; }
+.modal-foot, .drawer-foot {
+  display: flex; justify-content: flex-end; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.modal-foot .spacer, .drawer-foot .spacer { flex: 1; }
+
+.confirm-body { font-size: var(--text-base); line-height: 1.6; color: var(--color-text-muted); }
+.confirm-blast {
+  display: flex; gap: var(--space-2); align-items: center;
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-warning-line);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-soft);
+  font-size: var(--text-sm);
+}
+.confirm-blast-ico { width: 14px; height: 14px; display: grid; place-items: center; color: var(--color-warning); flex-shrink: 0; }
+
+/* ── Drawer ───────────────────────────────────────────────────── */
+.drawer-wrap {
+  position: fixed; inset: 0; z-index: var(--z-overlay);
+  display: flex; justify-content: flex-end;
+  background: var(--color-scrim);
+  animation: fadeIn 160ms ease;
+}
+.drawer {
+  width: min(640px, 100vw);
+  height: 100vh;
+  height: 100dvh;
+  background: var(--color-bg);
+  border-left: 1px solid var(--color-border);
+  display: flex; flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  animation: slideIn 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.drawer.lg { width: min(880px, 100vw); }
+@keyframes slideIn { from { transform: translateX(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+.drawer-body { flex: 1; overflow-y: auto; padding: var(--space-4); }
+.drawer-foot { justify-content: space-between; padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom)); }
+
+/* Two panels side by side in a drawer, stacked on a phone where each would be too narrow to read. */
+.drawer-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+@media (max-width: 860px) { .drawer-split { grid-template-columns: 1fr; } }
+
+/* ── Toasts ───────────────────────────────────────────────────── */
+.toasts {
+  position: fixed; bottom: var(--space-4); left: var(--space-4); z-index: var(--z-toast);
+  display: flex; flex-direction: column; gap: var(--space-2);
+  max-width: calc(100vw - 2 * var(--space-4));
+}
+.toast {
+  display: flex; align-items: center; gap: var(--space-3);
+  min-width: 260px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  box-shadow: var(--shadow-md);
+  animation: slideUp 180ms ease;
+}
+@keyframes slideUp { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+.toast .d { width: 6px; height: 6px; flex: none; border-radius: var(--radius-pill); background: var(--color-success); box-shadow: 0 0 0 3px var(--color-success-soft); }
+.toast.err .d { background: var(--color-danger); box-shadow: 0 0 0 3px var(--color-danger-soft); }
+.toast .lbl { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle); }
+
+/* ── Command palette ──────────────────────────────────────────── */
+.cmdk-wrap {
+  position: fixed; inset: 0; z-index: var(--z-command);
+  background: var(--color-scrim);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 15vh;
+  animation: fadeIn 120ms ease;
+}
+.cmdk {
+  width: min(560px, 92vw);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.cmdk-input {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: none; outline: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--text-md);
+  border-bottom: 1px solid var(--color-border);
+}
+.cmdk-list { max-height: 50vh; overflow-y: auto; padding: var(--space-1); }
+.cmdk-group-label { padding: var(--space-2) var(--space-3) var(--space-1); font-size: var(--text-xs); text-transform: uppercase; color: var(--color-text-subtle); letter-spacing: 0.08em; }
+.cmdk-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  cursor: pointer;
+}
+.cmdk-item:hover, .cmdk-item.on { background: var(--color-surface-2); }
+.cmdk-item .ico { width: 14px; height: 14px; display: grid; place-items: center; color: var(--color-text-subtle); }
+.cmdk-item .sub { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle); }

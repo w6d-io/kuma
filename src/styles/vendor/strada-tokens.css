@@ -6,7 +6,7 @@
  * text on a dark ground. That has happened; it is why the copy stops where it stops.
  *
  * Vendored rather than mapped by hand so a new version of the design system moves this application
- * without a hunt through hex codes. Nothing here is read directly by a component: theme.css turns
+ * without a hunt through hex codes. Nothing here is read directly by a component: tokens.css turns
  * these into the names the application uses, because these are light only.
  */
 /* =============================================================================

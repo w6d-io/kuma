@@ -1,7 +1,9 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useEnforcedConfig } from '../api/hooks';
 import { YamlView, CopyButton } from '../components/YamlView';
-import { Chip, EmptyHint, Method } from '../components/ui/Primitives';
+import { Method } from '../components/ui/Primitives';
+import { Badge, Button, ButtonBase, Callout, Card, EmptyHint, PageHeader, cx } from '../components/ui';
+import { I } from '../components/ui/Icons';
 import type { EnforcedDocument, EnforcedEdge, EnforcedGrant, EnforcedRole } from '../api/client';
 import { sharedTables, splitByKind } from '../policy/edges';
 import { SkeletonPanel, SkeletonTiles } from '../components/ui/Skeleton';
@@ -53,7 +55,7 @@ function Chain({ permission, roles, grants }: { permission: string; roles: Enfor
   if (carriers.length === 0) {
     return (
       <div className="chain">
-        <span className="small" style={{ color: 'var(--err)' }}>
+        <span className="small text-danger">
           No role carries <span className="mono">{permission}</span>, so nobody can reach this route —
           which, from the caller&apos;s side, is indistinguishable from lacking the right.
         </span>
@@ -74,13 +76,13 @@ function Chain({ permission, roles, grants }: { permission: string; roles: Enfor
         return (
           <div key={carrier.role} className="chain-step">
             <div className="chain-head">
-              <Chip>{permission}</Chip>
+              <Badge>{permission}</Badge>
               <span className="chain-arrow" aria-hidden="true">←</span>
               <span className="small muted">carried by role</span>
-              <Chip tone="plain">{carrier.role}</Chip>
+              <Badge tone="plain">{carrier.role}</Badge>
             </div>
             {holders.length === 0 ? (
-              <span className="small" style={{ color: 'var(--err)' }}>
+              <span className="small text-danger">
                 Nobody holds <span className="mono">{carrier.role}</span> anywhere.
               </span>
             ) : (
@@ -98,11 +100,11 @@ function Chain({ permission, roles, grants }: { permission: string; roles: Enfor
                         {/* The name for a reader, the identifier in the tooltip and when nothing can
                             name it. `*` is the model's own way of saying every one, so it is said in
                             words rather than shown as a symbol nobody outside the file recognises. */}
-                        <Chip tone="plain" title={h.organisation}>
+                        <Badge tone="plain" title={h.organisation}>
                           {h.organisation === EVERY_ORGANISATION
                             ? 'every organisation'
                             : (h.organisationName ?? h.organisation)}
-                        </Chip>
+                        </Badge>
                         {/* WHY they hold it. Without the group a reader sees the role and has no way
                             to know what to change to take it away. */}
                         {h.viaGroups?.length ? (
@@ -148,9 +150,9 @@ function EdgeSummary({ edge }: { edge: EnforcedEdge }) {
         <dt>Caller identified by</dt>
         <dd>
           {edge.authenticators.length > 0
-            ? edge.authenticators.map(a => <Chip key={a} tone="plain">{a}</Chip>)
+            ? edge.authenticators.map(a => <Badge key={a} tone="plain">{a}</Badge>)
             /* An edge that identifies nobody forwards everybody, whatever the table below says. */
-            : <span style={{ color: 'var(--err)' }}>nothing — every caller is anonymous here</span>}
+            : <span className="text-danger">nothing — every caller is anonymous here</span>}
         </dd>
       </div>
       <div>
@@ -166,9 +168,9 @@ function EdgeSummary({ edge }: { edge: EnforcedEdge }) {
             </span>
           ) : (
             <>
-              <Chip tone={edge.tableDeclared === false ? 'warn' : 'plain'}>{edge.authorizesAs}</Chip>
+              <Badge tone={edge.tableDeclared === false ? 'warning' : 'plain'}>{edge.authorizesAs}</Badge>
               {edge.tableDeclared === false && (
-                <span className="small" style={{ color: 'var(--err)' }}>
+                <span className="small text-danger">
                   {' '}— no loaded document declares routes for it, so every call here is refused for
                   a reason nothing on this rule shows.
                 </span>
@@ -193,7 +195,7 @@ function SharedTableWarning({ documents }: { documents: EnforcedDocument[] }) {
   if (shared.length === 0) return null;
 
   return (
-    <div className="panel edge-warning">
+    <Callout tone="warning" icon={I.alert} className="edge-warning">
       {shared.map(({ table, rules }) => (
         <p key={table}>
           <strong>{rules.length} rules are decided against the same route table.</strong>{' '}
@@ -203,7 +205,7 @@ function SharedTableWarning({ documents }: { documents: EnforcedDocument[] }) {
           value — and is matched against another API&apos;s routes.
         </p>
       ))}
-    </div>
+    </Callout>
   );
 }
 
@@ -244,24 +246,24 @@ function RouteTable({
               <td><Method m={route.method} /></td>
               <td className="mono">{route.path}</td>
               <td>
-                <Chip tone={route.class === 'authorized' ? 'ok' : route.class === 'public' ? 'warn' : 'plain'}>
+                <Badge tone={route.class === 'authorized' ? 'success' : route.class === 'public' ? 'warning' : 'plain'}>
                   {route.class === 'public'
                     ? 'nothing'
                     : route.class === 'authenticated'
                       ? 'a session'
                       : 'a permission'}
-                </Chip>
+                </Badge>
               </td>
-              <td>{route.permission ? <Chip>{route.permission}</Chip> : <span className="small muted">—</span>}</td>
+              <td>{route.permission ? <Badge>{route.permission}</Badge> : <span className="small muted">—</span>}</td>
               <td>
                 {!route.permission
                   ? <span className="small muted">—</span>
                   : holders.length > 0
-                    ? <span className="row" style={{ gap: 4, flexWrap: 'wrap' }}>{holders.map(r => <Chip key={r} tone="plain">{r}</Chip>)}</span>
+                    ? <span className="row gap-4 wrap">{holders.map(r => <Badge key={r} tone="plain">{r}</Badge>)}</span>
                     /* Not cosmetic: a permission no role carries makes the route unreachable by
                        everybody, and from the caller's side that is indistinguishable from lacking
                        the right. */
-                    : <span className="small" style={{ color: 'var(--err)' }}>no role carries it</span>}
+                    : <span className="small text-danger">no role carries it</span>}
               </td>
             </tr>
             {open === id && route.permission && (
@@ -296,8 +298,7 @@ export function ApisPage() {
     return (
       <div aria-busy="true" aria-label="Reading what is enforced">
         <SkeletonTiles count={3} />
-        <div style={{ height: 12 }} />
-        <SkeletonPanel lines={5} />
+        <div className="mt-12"><SkeletonPanel lines={5} /></div>
       </div>
     );
   }
@@ -306,33 +307,29 @@ export function ApisPage() {
     // Deliberately not an empty list: "nothing is enforced" is the one answer that is certainly
     // wrong, and it is the one an empty screen gives.
     return (
-      <div className="panel" style={{ padding: 20 }}>
+      <Card className="p-24">
         <EmptyHint>
           Couldn&apos;t read the enforced configuration — {(query.error as Error).message}. What is in
           force is unchanged; only this view is unavailable.
         </EmptyHint>
-      </div>
+      </Card>
     );
   }
 
   if (documents.length === 0) {
     return (
-      <div className="panel" style={{ padding: 20 }}>
+      <Card className="p-24">
         <EmptyHint>Nothing is loaded by the engines in this namespace.</EmptyHint>
-      </div>
+      </Card>
     );
   }
 
   return (
     <div className="enforced">
-      <div className="page-head">
-        <div>
-          <h1>APIs</h1>
-          <div className="sub">
-            What protects each one, and who can reach it — read from the objects the engines load
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title="APIs"
+        sub="What protects each one, and who can reach it — read from the objects the engines load"
+      />
 
       <div className="enforced-note small muted">
         Read-only. These objects are synced from Git by Argo — change them there, not here. What you
@@ -354,17 +351,17 @@ export function ApisPage() {
               {group.items.map(d => {
                 const id = `${d.kind}/${d.name}`;
                 return (
-                  <button
+                  <ButtonBase
                     key={id}
-                    className={`enforced-item ${current && id === `${current.kind}/${current.name}` ? 'active' : ''}`}
+                    className={cx('enforced-item', current && id === `${current.kind}/${current.name}` && 'active')}
                     onClick={() => setSelected(id)}
                   >
                     <span className="enforced-item-head">
                       <span className="mono">{d.name}</span>
-                      {d.edge?.tableDeclared === false && <Chip tone="warn">no route table</Chip>}
+                      {d.edge?.tableDeclared === false && <Badge tone="warning">no route table</Badge>}
                     </span>
                     <span className="enforced-item-decides small muted">{d.decides}</span>
-                  </button>
+                  </ButtonBase>
                 );
               })}
             </Fragment>
@@ -377,12 +374,12 @@ export function ApisPage() {
               <span className="mono">
                 {current.namespace}/{current.name}
               </span>
-              <span className="row" style={{ gap: 6, alignItems: 'center' }}>
+              <span className="row gap-4">
                 <span className="small muted">{current.kind}</span>
                 {current.routes && current.routes.length > 0 && (
-                  <button className="btn ghost sm" onClick={() => setAsYaml(v => !v)}>
+                  <Button variant="ghost" size="sm" onClick={() => setAsYaml(v => !v)}>
                     {asYaml ? 'Routes' : 'YAML'}
-                  </button>
+                  </Button>
                 )}
                 <CopyButton text={current.yaml} />
               </span>

@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { I } from './Icons';
+import { Button } from './Button';
+import { Select } from './Input';
+import { cx } from './cx';
 
 interface PaginationProps {
   page: number;
@@ -18,52 +21,36 @@ export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChan
   const pages = buildPageNumbers(page, totalPages);
 
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderTop: "1px solid var(--line)", fontSize: 12 }}>
-      <div className="row" style={{ gap: 8 }}>
+    <div className="pagination">
+      <div className="row">
         <span className="small muted mono">{from}–{to} of {total}</span>
         {onPageSizeChange && (
-          <select className="input" style={{ width: "auto", padding: "2px 6px", fontSize: 11 }} value={pageSize} onChange={e => { onPageSizeChange(Number(e.target.value)); onPageChange(0); }}>
+          <Select size="sm" className="w-auto" aria-label="Rows per page" value={pageSize} onChange={e => { onPageSizeChange(Number(e.target.value)); onPageChange(0); }}>
             {sizes.map(s => <option key={s} value={s}>{s} / page</option>)}
-          </select>
+          </Select>
         )}
       </div>
-      <div className="row" style={{ gap: 2 }}>
-        <PgBtn disabled={page === 0} onClick={() => onPageChange(page - 1)} title="Previous">
-          <span style={{ transform: "rotate(180deg)", display: "grid", placeItems: "center" }}>{I.chev}</span>
-        </PgBtn>
+      <nav className="pagination-pages" aria-label="Pages">
+        <Button size="sm" variant="ghost" iconOnly icon={I.caretLeft} aria-label="Previous page" title="Previous" disabled={page === 0} onClick={() => onPageChange(page - 1)} />
         {pages.map((p, i) =>
           p === '...' ? (
-            <span key={`e${i}`} style={{ padding: "0 4px", color: "var(--ink-4)" }}>…</span>
+            <span key={`e${i}`} className="pagination-gap">…</span>
           ) : (
-            <PgBtn key={p} active={p === page} onClick={() => onPageChange(p as number)}>
+            <Button
+              key={p}
+              size="sm"
+              variant={p === page ? 'secondary' : 'ghost'}
+              className={cx('icon-only', p === page && 'on')}
+              aria-current={p === page ? 'page' : undefined}
+              onClick={() => onPageChange(p as number)}
+            >
               {(p as number) + 1}
-            </PgBtn>
+            </Button>
           )
         )}
-        <PgBtn disabled={page >= totalPages - 1} onClick={() => onPageChange(page + 1)} title="Next">
-          {I.chev}
-        </PgBtn>
-      </div>
+        <Button size="sm" variant="ghost" iconOnly icon={I.chev} aria-label="Next page" title="Next" disabled={page >= totalPages - 1} onClick={() => onPageChange(page + 1)} />
+      </nav>
     </div>
-  );
-}
-
-function PgBtn({ children, disabled, active, onClick, title }: { children: React.ReactNode; disabled?: boolean; active?: boolean; onClick: () => void; title?: string }) {
-  return (
-    <button
-      disabled={disabled}
-      onClick={onClick}
-      title={title}
-      style={{
-        width: 28, height: 28, borderRadius: "var(--radius)",
-        border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`,
-        background: active ? "var(--accent)" : "var(--panel)",
-        color: active ? "white" : disabled ? "var(--ink-4)" : "var(--ink)",
-        display: "grid", placeItems: "center", cursor: disabled ? "default" : "pointer",
-        fontSize: 11, fontWeight: active ? 600 : 400, opacity: disabled ? 0.4 : 1,
-      }}>
-      {children}
-    </button>
   );
 }
 

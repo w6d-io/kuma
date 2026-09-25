@@ -1,4 +1,4 @@
-import { Chip } from '../../components/ui/Primitives';
+import { Badge, Checkbox, cx } from '../../components/ui';
 import { I } from '../../components/ui/Icons';
 import { isPrivilegedGroup } from '../../hooks/useRbac';
 import type { GroupDefinition } from '../../policy/model';
@@ -22,7 +22,7 @@ export function SiteGroupRows({ checked, toggle, targetMfa, offered, mayAssign, 
   const rows = [...new Set([...offered, ...checked])].sort();
   return (
     <>
-      {rows.map((g, i) => {
+      {rows.map((g) => {
         const on = checked.includes(g);
         const known = offered.includes(g);
         // "Privileged" means what it means to the engine: granting in every organisation.
@@ -42,37 +42,27 @@ export function SiteGroupRows({ checked, toggle, targetMfa, offered, mayAssign, 
           : undefined;
         const map = legacy[g] ?? {};
         return (
-          <label
-            key={g}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '10px 14px',
-              borderBottom: i < rows.length - 1 ? '1px solid var(--line)' : 'none',
-              cursor: blocked ? 'not-allowed' : 'pointer',
-              background: on ? 'var(--accent-soft)' : 'transparent',
-              opacity: blocked ? 0.55 : 1,
-            }}
-            title={title}
-          >
-            <input type="checkbox" checked={on} disabled={blocked} onChange={() => { if (!blocked) toggle(g); }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 500, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                {g}
-                {privileged && <Chip tone="warn" title="Grants in every organisation"><span className="chip-ico">{I.lock}</span>privileged</Chip>}
-                {!known && <Chip tone="err">not in the model</Chip>}
-                {blockedByMfa && !blockedByActor && <Chip tone="err">MFA required</Chip>}
-              </div>
-              {/* Silent when the previous model mapped nothing: an empty mapping says nothing about
-                  the enforced model. */}
-              {Object.keys(map).length > 0 && (
-                <div className="small muted mono" style={{ overflowWrap: 'anywhere' }}>
-                  {Object.entries(map).map(([s, rs]) => `${s}: ${rs.join(',')}`).join(' · ')}
-                </div>
-              )}
-            </div>
-          </label>
+          <div key={g} className="people-sep" title={title}>
+            <Checkbox
+              className={cx('site-group', on && 'on')}
+              checked={on}
+              disabled={blocked}
+              onChange={() => { if (!blocked) toggle(g); }}
+              label={
+                <span className="row wrap gap-4 fw-medium text-base">
+                  {g}
+                  {privileged && <Badge tone="warning" title="Grants in every organisation"><span className="chip-ico">{I.lock}</span>privileged</Badge>}
+                  {!known && <Badge tone="danger">not in the model</Badge>}
+                  {blockedByMfa && !blockedByActor && <Badge tone="danger">MFA required</Badge>}
+                </span>
+              }
+              // Silent when the previous model mapped nothing: an empty mapping says nothing about
+              // the enforced model.
+              hint={Object.keys(map).length > 0
+                ? Object.entries(map).map(([s, rs]) => `${s}: ${rs.join(',')}`).join(' · ')
+                : undefined}
+            />
+          </div>
         );
       })}
     </>

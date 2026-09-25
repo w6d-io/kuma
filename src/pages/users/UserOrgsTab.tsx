@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useSession, useUserIdentity } from '../../api/hooks';
 import { useOrgCatalog } from '../../api/orgCatalog';
-import { Chip } from '../../components/ui/Primitives';
+import { Badge, Button, Card } from '../../components/ui';
 import { OrgPicker } from '../../components/OrgPicker';
 import { ApiErrorState } from '../../components/ApiErrorState';
 import { useApplyChange } from '../../hooks/useApplyChange';
@@ -69,9 +69,9 @@ export function UserOrgsTab({ user }: { user: User }) {
   }
   if (identityQ.isLoading || !seeded) {
     return (
-      <div className="panel" style={{ padding: 24, textAlign: "center" }}>
+      <Card pad="md" className="text-center">
         <span className="small muted">Loading organizations…</span>
-      </div>
+      </Card>
     );
   }
 
@@ -95,40 +95,41 @@ export function UserOrgsTab({ user }: { user: User }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="stack gap-16">
       <div className="small muted">
         A member belongs to their primary organization plus any additional ones. Membership places
         them in an organization; it grants nothing on its own — access comes from their groups.
       </div>
 
-      <div className="panel" style={{ padding: 14 }}>
+      <Card pad="md">
         <div className="input-label">Member of</div>
         {effective.length === 0
           ? <span className="small muted">— no organization —</span>
           : (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+            <div className="row wrap gap-4 mt-4">
               {effective.map(o => (
-                <Chip key={o} mono={false} tone={o === primary ? "accent" : ""} title={o}>
+                <Badge key={o} mono={false} tone={o === primary ? "accent" : "neutral"} title={o}>
                   {name(o)}{o === primary ? " · primary" : ""}
-                </Chip>
+                </Badge>
               ))}
             </div>
           )}
-      </div>
+      </Card>
 
       <div>
         <label className="input-label">Primary organization</label>
-        <div className="row" style={{ gap: 8 }}>
-          <OrgPicker
-            value={primary}
-            onChange={setPrimary}
-            noneLabel="No primary organization"
-            ariaLabel="Primary organization"
-            style={{ flex: 1 }}
-          />
-          <button className="btn" onClick={savePrimary} disabled={!primaryChanged}>Save primary</button>
+        <div className="row gap-8">
+          <div className="flex-1">
+            <OrgPicker
+              value={primary}
+              onChange={setPrimary}
+              noneLabel="No primary organization"
+              ariaLabel="Primary organization"
+            />
+          </div>
+          <Button onClick={savePrimary} disabled={!primaryChanged}>Save primary</Button>
         </div>
-        <div className="small muted" style={{ marginTop: 4 }}>
+        <div className="small muted mt-4">
           The organization whose org admins manage this person.
         </div>
       </div>
@@ -137,53 +138,47 @@ export function UserOrgsTab({ user }: { user: User }) {
         <label className="input-label">Additional organizations</label>
         {listed.length === 0
           ? (
-            <div className="panel" style={{ padding: 14, marginTop: 6 }}>
+            <Card pad="md" className="mt-8">
               <span className="small muted">None.</span>
-            </div>
+            </Card>
           )
           : (
-            <div className="panel" style={{ padding: 0, marginTop: 6 }}>
-              {listed.map((o, i) => (
-                <div
-                  key={o}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 10, padding: "8px 14px",
-                    borderBottom: i < listed.length - 1 ? "1px solid var(--line)" : "none",
-                  }}
-                  title={o}
-                >
-                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{name(o)}</span>
-                  <button className="btn ghost sm" disabled={!mayEditMemberships} onClick={() => remove(o)}>Remove</button>
+            <Card className="mt-8">
+              {listed.map(o => (
+                <div key={o} className="people-sep people-row row gap-12" title={o}>
+                  <span className="flex-1 truncate">{name(o)}</span>
+                  <Button variant="ghost" size="sm" disabled={!mayEditMemberships} onClick={() => remove(o)}>Remove</Button>
                 </div>
               ))}
-            </div>
+            </Card>
           )}
 
-        <div className="row" style={{ gap: 8, marginTop: 8 }}>
-          <OrgPicker
-            value=""
-            onChange={add}
-            exclude={[primary, ...additional]}
-            placeholder="Add an organization…"
-            ariaLabel="Add an organization"
-            disabled={!mayEditMemberships}
-            style={{ flex: 1 }}
-          />
+        <div className="row gap-8 mt-8">
+          <div className="flex-1">
+            <OrgPicker
+              value=""
+              onChange={add}
+              exclude={[primary, ...additional]}
+              placeholder="Add an organization…"
+              ariaLabel="Add an organization"
+              disabled={!mayEditMemberships}
+            />
+          </div>
         </div>
 
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+        <div className="row justify-between mt-12">
           <span className="small muted">
             {mayEditMemberships
               ? "Replaces the additional organizations; the primary one is unaffected."
               : "Changing additional organizations needs permission to manage members."}
           </span>
-          <button
-            className="btn primary"
+          <Button
+            variant="primary"
             onClick={saveAdditional}
             disabled={!mayEditMemberships || !additionalChanged}
           >
             Apply
-          </button>
+          </Button>
         </div>
       </div>
     </div>

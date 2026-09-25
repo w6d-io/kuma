@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
-import { Chip, Avatar, Drawer, EmptyHint, MultiSelectPills } from '../components/ui/Primitives';
+import { MultiSelectPills } from '../components/ui/Primitives';
+import { Avatar, Badge, Button, ButtonBase, Card, Drawer, EmptyHint, EmptyRow, Field, Input, LoadingRows, PageHeader, Table, cx } from '../components/ui';
 import { kratosToUser } from '../api/transforms';
 import {
   useAllOrganizations,
@@ -14,7 +15,6 @@ import {
 import { InviteDrawer } from './orgadmin/InviteDrawer';
 import { PRIVILEGED_MUTATION, permits } from '../policy/model';
 import { bounceToStepUp } from '../lib/stepUp';
-import { SkeletonRows } from '../components/ui/Skeleton';
 
 // The Organizations hub — the platform-level view of EVERY
 // tenant, as opposed to the delegated "Org Admin" tab (a member's self-service
@@ -62,27 +62,25 @@ export function OrganizationsPage() {
   );
 
   const header = (
-    <div className="page-head">
-      <div>
-        <h1>Organizations</h1>
-        <div className="sub">Every organization, the sites it runs and its members — in one place{orgs ? ` · ${orgs.length} org${orgs.length === 1 ? '' : 's'}` : ''}</div>
-      </div>
-    </div>
+    <PageHeader
+      title="Organizations"
+      sub={<>Every organization, the sites it runs and its members — in one place{orgs ? ` · ${orgs.length} org${orgs.length === 1 ? '' : 's'}` : ''}</>}
+    />
   );
 
   if (orgs === null) {
-    return <>{header}<div className="panel" style={{ padding: 40, textAlign: 'center' }}><div className="muted small">Loading organizations…</div></div></>;
+    return <>{header}<Card className="p-32 text-center"><div className="muted small">Loading organizations…</div></Card></>;
   }
 
   if (orgs.length === 0) {
     return (
       <>
         {header}
-        <div className="panel" style={{ padding: 40 }}>
+        <Card className="p-32">
           <EmptyHint>
             The directory records no organization. They are provisioned elsewhere, not created here.
           </EmptyHint>
-        </div>
+        </Card>
       </>
     );
   }
@@ -92,28 +90,25 @@ export function OrganizationsPage() {
       {header}
       <div className="list-detail">
         {/* Left rail — one row per org, with a bundle summary */}
-        <div className="panel" style={{ padding: 0 }}>
-          <div style={{ padding: 8, borderBottom: '1px solid var(--line)' }}>
-            <input className="input" placeholder="Search organizations…" value={q} onChange={e => setQ(e.target.value)} style={{ width: '100%' }} />
+        <Card>
+          <div className="p-8 border-b">
+            <Input placeholder="Search organizations…" value={q} onChange={e => setQ(e.target.value)} />
           </div>
-          {filtered.map((o, i) => {
+          {filtered.map((o) => {
             const svcs = applications[o] ?? [];
             const on = o === activeOrg;
             return (
-              <button key={o} onClick={() => setSel(o)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderBottom: i < filtered.length - 1 ? '1px solid var(--line)' : 'none', background: on ? 'var(--panel-2)' : 'transparent', color: 'var(--ink)', cursor: 'pointer', display: 'flex', gap: 9, alignItems: 'center' }}>
-                <span style={{ color: 'var(--ink-3)', flexShrink: 0, display: 'grid', placeItems: 'center', width: 15, height: 15 }}>{I.globe}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
+              <ButtonBase key={o} onClick={() => setSel(o)} className={cx('org-rail-item', on && 'on')}>
+                <span className="icon muted">{I.globe}</span>
+                <div className="flex-1 min-w-0">
                   {/* The name when the directory knows it, the identifier when it does not — worse to
                       read, still correct, and never a guess. A list of raw UUIDs is unreadable, and
                       three of the eight here do carry a name nobody was showing. */}
-                  <div
-                    className={names[o] ? '' : 'mono'}
-                    style={{ fontWeight: on ? 600 : 500, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis' }}
-                  >
+                  <div className={cx('org-rail-name text-base', on ? 'fw-semibold' : 'fw-medium', !names[o] && 'mono')}>
                     {names[o] ?? o}
                   </div>
                   {names[o] && (
-                    <div className="small muted mono" style={{ overflowWrap: 'anywhere' }}>{o}</div>
+                    <div className="small muted mono break-anywhere">{o}</div>
                   )}
                   <div className="small muted mt-4">
                     {svcs.length > 0
@@ -123,14 +118,14 @@ export function OrganizationsPage() {
                       : <span className="muted">no applications</span>}
                   </div>
                 </div>
-              </button>
+              </ButtonBase>
             );
           })}
           {filtered.length === 0 && <EmptyHint>No match.</EmptyHint>}
-        </div>
+        </Card>
 
         {/* Right — selected org */}
-        <div style={{ minWidth: 0 }}>
+        <div className="min-w-0">
           {activeOrg && <OrgDetail key={activeOrg} org={activeOrg} name={names[activeOrg]} services={applications[activeOrg] ?? []} />}
         </div>
       </div>
@@ -160,82 +155,79 @@ function OrgDetail({ org, name, services }: { org: string; name?: string; servic
 
   return (
     <>
-      <div className="panel-head" style={{ marginBottom: 12 }}>
-        <div style={{ minWidth: 0 }}>
-          <h3 className="row" style={{ gap: 8 }}>
+      <div className="panel-head mb-12">
+        <div className="min-w-0">
+          <h3 className="row gap-8">
             <span className={name ? '' : 'mono'}>{name ?? org}</span>
-            {!hasBundle && <Chip tone="warn" title="Runs no site yet — members can't be given site roles here">no sites</Chip>}
+            {!hasBundle && <Badge tone="warning" title="Runs no site yet — members can't be given site roles here">no sites</Badge>}
           </h3>
           <div className="sub">
             {total} member{total === 1 ? '' : 's'}{hasBundle ? <> · {services.length} site{services.length === 1 ? '' : 's'}</> : ''}
             {name && <> · <span className="mono">{org}</span></>}
           </div>
         </div>
-        <div className="row" style={{ gap: 8 }}>
-          <button className="btn" onClick={() => setPage('apikeys', org)}>API keys</button>
-          <button className="btn primary" onClick={() => setInvite(true)}>
-            <span style={{ width: 14, height: 14, display: 'grid', placeItems: 'center' }}>{I.plus}</span> Invite person
-          </button>
+        <div className="row gap-8">
+          <Button size="sm" onClick={() => setPage('apikeys', org)}>API keys</Button>
+          <Button size="sm" variant="primary" icon={I.plus} onClick={() => setInvite(true)}>Invite person</Button>
         </div>
       </div>
 
       {/* What this organisation runs. A record of the directory, not a setting of this console: it
           changes when a deployment is provisioned or turned off, which is not something to edit here. */}
-      <div className="panel mb-12" style={{ padding: 14 }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 500, fontSize: 12.5 }}>Applications</div>
-          <div className="small muted" style={{ marginTop: 2 }}>
+      <Card pad="md" className="mb-12">
+        <div className="min-w-0">
+          <div className="fw-medium text-base">Applications</div>
+          <div className="small muted mt-2">
             {hasBundle
               ? <>The sites this organization runs. Only what is enabled.</>
               : <>This organisation runs nothing that the directory records.</>}
           </div>
-          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <div className="row wrap gap-4 mt-8">
             {hasBundle
-              ? services.map(s => <Chip key={s} tone="ok">{s}</Chip>)
+              ? services.map(s => <Badge key={s} tone="success">{s}</Badge>)
               : <span className="small muted">none</span>}
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Administrators — the org's per-org admin roster (data.org_admin_map). An
           admin manages this org's members, scoped to its bundle. Assigning is
           Gated on admin.membership:write plus a recent second factor, enforced by jinbe. */}
-      <div className="panel mb-12" style={{ padding: 14 }}>
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontWeight: 500, fontSize: 12.5 }}>Administrators</div>
-            <div className="small muted" style={{ marginTop: 2 }}>
+      <Card pad="md" className="mb-12">
+        <div className="row justify-between items-start gap-12">
+          <div className="min-w-0 flex-1">
+            <div className="fw-medium text-base">Administrators</div>
+            <div className="small muted mt-2">
               Org admins manage this organization's members, within the sites it runs. Changing them needs permission to manage members.
             </div>
-            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <div className="row wrap gap-4 mt-8">
               {roster.length === 0
                 ? <span className="small muted">No admins yet — nobody can manage this org's members.</span>
-                : roster.map(a => <Chip key={a} tone="accent">{a}</Chip>)}
+                : roster.map(a => <Badge key={a} tone="accent">{a}</Badge>)}
             </div>
           </div>
           {mayAdminister && (
-            <button className="btn ghost sm" onClick={() => setEditAdmins(true)}>{roster.length ? 'Edit admins' : 'Add admins'}</button>
+            <Button variant="ghost" size="sm" onClick={() => setEditAdmins(true)}>{roster.length ? 'Edit admins' : 'Add admins'}</Button>
           )}
         </div>
-      </div>
+      </Card>
 
       {/* Members */}
-      <div className="panel">
-        <div className="panel-head"><div><h3>People</h3><div className="sub">Click a person to see their site and org access</div></div></div>
-        <table className="table">
+      <Card title="People" sub="Click a person to see their site and org access" pad="none">
+        <Table>
           <thead><tr><th>Identity</th><th>Groups</th><th></th></tr></thead>
           <tbody>
-            {usersQ.isLoading && <SkeletonRows rows={4} cols={3} />}
-            {!usersQ.isLoading && users.length === 0 && <tr><td colSpan={3}><EmptyHint>No people in this organization yet — invite someone.</EmptyHint></td></tr>}
+            {usersQ.isLoading && <LoadingRows rows={4} cols={3} />}
+            {!usersQ.isLoading && users.length === 0 && <EmptyRow colSpan={3}><EmptyHint>No people in this organization yet — invite someone.</EmptyHint></EmptyRow>}
             {!usersQ.isLoading && users.map(u => {
               const groups = u.metadata_admin?.groups ?? [];
               return (
                 <tr key={u.id} className="row-click" onClick={() => setUserDrawer({ mode: 'edit', user: kratosToUser(u) })}>
                   <td>
-                    <div className="row" style={{ gap: 10 }}>
+                    <div className="row gap-8">
                       <Avatar name={u.traits?.name || u.traits?.email} />
                       <div>
-                        <div style={{ fontWeight: 500 }}>{u.traits?.name || u.traits?.email}{roster.includes(u.traits?.email || '') && <> <Chip tone="accent" title="Administrator of this organization">admin</Chip></>}{u.state !== 'active' && <> <Chip tone="warn">inactive</Chip></>}</div>
+                        <div className="fw-medium">{u.traits?.name || u.traits?.email}{roster.includes(u.traits?.email || '') && <> <Badge tone="accent" title="Administrator of this organization">admin</Badge></>}{u.state !== 'active' && <> <Badge tone="warning">inactive</Badge></>}</div>
                         <div className="small muted mono">{u.traits?.email}</div>
                       </div>
                     </div>
@@ -243,15 +235,15 @@ function OrgDetail({ org, name, services }: { org: string; name?: string; servic
                   <td>
                     {groups.length === 0
                       ? <span className="small muted">— no groups —</span>
-                      : <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{groups.map(g => <Chip key={g}>{g}</Chip>)}</span>}
+                      : <span className="row wrap gap-4">{groups.map(g => <Badge key={g}>{g}</Badge>)}</span>}
                   </td>
-                  <td style={{ width: 24, textAlign: 'right' }}><span style={{ color: 'var(--ink-4)' }}>{I.chev}</span></td>
+                  <td className="org-chev-cell text-right"><span className="text-disabled">{I.chev}</span></td>
                 </tr>
               );
             })}
           </tbody>
-        </table>
-      </div>
+        </Table>
+      </Card>
 
       {invite && (
         <InviteDrawer
@@ -329,28 +321,29 @@ function AdminsDrawer({ org, name, current, members, onClose }: {
         <>
           <span className="small muted">Needs permission to manage members and a recent second factor.</span>
           <div className="row">
-            <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
-            <button className="btn primary" onClick={save} disabled={!dirty || busy}>{busy ? 'Saving…' : 'Save admins'}</button>
+            <Button onClick={onClose} disabled={busy}>Cancel</Button>
+            <Button variant="primary" onClick={save} disabled={!dirty || busy}>{busy ? 'Saving…' : 'Save admins'}</Button>
           </div>
         </>
       }
     >
       <div className="mb-12">
         <div className="input-label">Organization</div>
-        <div className={name ? '' : 'mono'} style={{ fontSize: 12.5 }}>{name ?? org}</div>
+        <div className={cx('text-base', !name && 'mono')}>{name ?? org}</div>
       </div>
-      <label className="input-label">Administrators (org members)</label>
-      <div className="panel" style={{ padding: 12 }}>
-        <MultiSelectPills
-          options={options}
-          selected={selected}
-          onToggle={toggle}
-          empty="No members in this organization yet — invite someone first."
-        />
-      </div>
-      <div className="input-hint" style={{ marginTop: 8 }}>
-        Each selected member becomes an org admin and can manage this organization's people, within the sites it runs. Saving replaces the whole list; deselect everyone to remove all org admins.
-      </div>
+      <Field
+        label="Administrators (org members)"
+        hint="Each selected member becomes an org admin and can manage this organization's people, within the sites it runs. Saving replaces the whole list; deselect everyone to remove all org admins."
+      >
+        <Card pad="sm">
+          <MultiSelectPills
+            options={options}
+            selected={selected}
+            onToggle={toggle}
+            empty="No members in this organization yet — invite someone first."
+          />
+        </Card>
+      </Field>
     </Drawer>
   );
 }

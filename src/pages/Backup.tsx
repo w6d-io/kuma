@@ -2,11 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useSession } from '../api/hooks';
 import { api, type BackupList } from '../api/client';
-import { I } from '../components/ui/Icons';
-import { Chip, ConfirmDialog } from '../components/ui/Primitives';
+import { I, Badge, Button, Card, CodeView, ConfirmDialog, EmptyRow, LoadingRows, PageHeader, Table } from '../components/ui';
 import { ExportBundleModal } from '../components/ExportBundleModal';
 import { PRIVILEGED_MUTATION, permits } from '../policy/model';
-import { SkeletonRows } from '../components/ui/Skeleton';
 
 // Deploy-time flag (envsubst → window.__BACKUP_ENABLED__). A stable module
 // constant — the conditional render in BackupPage never flips at runtime, so
@@ -30,19 +28,16 @@ export function BackupPage() {
 function BackupDisabled() {
   return (
     <>
-      <div className="page-head">
-        <h1>Backup</h1>
-        <div className="sub">Snapshot, restore and disaster-recovery for your RBAC configuration.</div>
-      </div>
-      <div className="panel" style={{ padding: 20, maxWidth: 720 }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-          <span style={{ width: 18, height: 18, display: 'grid', placeItems: 'center', color: 'var(--warn)' }}>{I.alert}</span>
-          <h3 style={{ margin: 0 }}>Backup isn't set up on this deployment</h3>
+      <PageHeader title="Backup" sub="Snapshot, restore and disaster-recovery for your RBAC configuration." />
+      <Card pad="md" className="maxw-lg">
+        <div className="row gap-8 mb-8">
+          <span className="icon-lg text-warning">{I.alert}</span>
+          <h3 className="m-0">Backup isn't set up on this deployment</h3>
         </div>
-        <p className="small muted" style={{ lineHeight: 1.6 }}>
+        <p className="small muted leading-relaxed">
           Scheduled S3 backups (and in-app restore + first-init recovery) are off. To enable, set in the auth Helm values:
         </p>
-        <pre style={{ background: 'var(--surface-2, #f5f5fa)', border: '1px solid var(--line)', borderRadius: 8, padding: 12, fontSize: 12.5, overflowX: 'auto' }}>{`backup:
+        <CodeView title="values.yaml" language="yaml" code={`backup:
   enabled: true
   s3:
     bucket: your-auth-backup-bucket
@@ -53,13 +48,13 @@ function BackupDisabled() {
 jinbe:
   serviceAccount:
     annotations:
-      eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/auth-backup-role`}</pre>
-        <p className="small muted" style={{ lineHeight: 1.6 }}>
+      eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/auth-backup-role`} />
+        <p className="small muted leading-relaxed">
           The IAM role needs <span className="mono">s3:PutObject</span> (backup), plus{' '}
           <span className="mono">s3:GetObject</span> + <span className="mono">s3:ListBucket</span> for in-app restore.
           Manual export/import is still available under <b>Settings</b>.
         </p>
-      </div>
+      </Card>
     </>
   );
 }
@@ -158,64 +153,57 @@ function BackupEnabled() {
 
   return (
     <>
-      <div className="page-head">
-        <h1>Backup</h1>
-        <div className="sub">Snapshot, restore and disaster-recovery for your RBAC configuration.</div>
-      </div>
+      <PageHeader title="Backup" sub="Snapshot, restore and disaster-recovery for your RBAC configuration." />
 
       {/* status + actions */}
-      <div className="panel mb-12" style={{ padding: 16 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-          <Chip tone="info">S3 backup on</Chip>
-          {list?.bucket && <Chip>{list.bucket}/{list.prefix}</Chip>}
-          {list?.region && <Chip>{list.region}</Chip>}
-          <span className="small muted" style={{ marginLeft: 'auto' }}>
+      <Card pad="md" className="mb-12">
+        <div className="row wrap gap-8 mb-12">
+          <Badge tone="info">S3 backup on</Badge>
+          {list?.bucket && <Badge>{list.bucket}/{list.prefix}</Badge>}
+          {list?.region && <Badge>{list.region}</Badge>}
+          <span className="small muted ml-auto">
             {latest ? `Latest: ${fmtDate(latest.lastModified)}` : 'No backups yet'}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn primary" onClick={doBackupNow} disabled={busy || !mayRestore} title={gate}>
-            <span style={{ width: 13, height: 13, display: 'inline-grid', placeItems: 'center', marginRight: 6 }}>{I.sync}</span>
+        <div className="row wrap gap-8">
+          <Button variant="primary" icon={I.sync} onClick={doBackupNow} disabled={busy || !mayRestore} title={gate}>
             Back up now
-          </button>
-          <button className="btn" onClick={() => latest && setConfirmKey(latest.key)} disabled={busy || !latest || !mayRestore} title={gate}>
+          </Button>
+          <Button onClick={() => latest && setConfirmKey(latest.key)} disabled={busy || !latest || !mayRestore} title={gate}>
             Restore latest
-          </button>
-          <button className="btn" onClick={() => setExportOpen(true)} disabled={busy || !mayRestore} title={gate}>
-            <span style={{ width: 13, height: 13, display: 'inline-grid', placeItems: 'center', marginRight: 6 }}>{I.download}</span>
+          </Button>
+          <Button icon={I.download} onClick={() => setExportOpen(true)} disabled={busy || !mayRestore} title={gate}>
             Export…
-          </button>
-          <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={onFile} />
-          <button className="btn" onClick={() => fileRef.current?.click()} disabled={busy || !mayRestore} title={gate}>
-            <span style={{ width: 13, height: 13, display: 'inline-grid', placeItems: 'center', marginRight: 6 }}>{I.upload}</span>
+          </Button>
+          <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={onFile} />
+          <Button icon={I.upload} onClick={() => fileRef.current?.click()} disabled={busy || !mayRestore} title={gate}>
             Restore from file
-          </button>
-          <button className="btn ghost sm" onClick={load} disabled={loading} style={{ marginLeft: 'auto' }}>Refresh</button>
+          </Button>
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={load} disabled={loading}>Refresh</Button>
         </div>
-        {!mayRestore && <p className="small muted" style={{ marginTop: 10 }}>Restore and export need admin.membership:write.</p>}
-      </div>
+        {!mayRestore && <p className="small muted mt-12">Restore and export need admin.membership:write.</p>}
+      </Card>
 
       {/* snapshots */}
-      <div className="panel">
-        <div className="panel-head"><div><h3>Snapshots</h3></div></div>
-        <table className="table">
-          <thead><tr><th>When</th><th>Size</th><th className="mono">Key</th><th style={{ width: 90 }}></th></tr></thead>
+      <Card title="Snapshots" pad="none">
+        <Table>
+          <thead><tr><th>When</th><th>Size</th><th className="mono">Key</th><th /></tr></thead>
           <tbody>
-            {loading && <SkeletonRows rows={4} cols={4} />}
-            {!loading && backups.length === 0 && <tr><td colSpan={4}><span className="small muted">No backups yet — the scheduled job runs daily, or use “Back up now”.</span></td></tr>}
+            {loading && <LoadingRows rows={4} cols={4} />}
+            {!loading && backups.length === 0 && <EmptyRow colSpan={4}>No backups yet — the scheduled job runs daily, or use “Back up now”.</EmptyRow>}
             {backups.map((b, i) => (
               <tr key={b.key}>
-                <td>{fmtDate(b.lastModified)} {i === 0 && <Chip tone="info">latest</Chip>}</td>
+                <td>{fmtDate(b.lastModified)} {i === 0 && <Badge tone="info">latest</Badge>}</td>
                 <td className="mono">{fmtBytes(b.size)}</td>
-                <td className="mono small" style={{ wordBreak: 'break-all' }}>{b.key}</td>
-                <td>
-                  <button className="btn ghost sm" onClick={() => setConfirmKey(b.key)} disabled={busy || !mayRestore} title={gate}>Restore</button>
+                <td className="mono small break-all">{b.key}</td>
+                <td className="shrink">
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmKey(b.key)} disabled={busy || !mayRestore} title={gate}>Restore</Button>
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+        </Table>
+      </Card>
 
       {/* snapshot restore confirm */}
       <ConfirmDialog

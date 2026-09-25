@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useSession, useUserSearch, useAuthorizationModel, usePermissionChain } from '../api/hooks';
-import { I } from '../components/ui/Icons';
-import { Chip, Avatar, Drawer, PermTree, AccessLevel } from '../components/ui/Primitives';
+import { PermTree, AccessLevel } from '../components/ui/Primitives';
+import { Avatar, Badge, Button, ButtonBase, Callout, Card, Checkbox, Drawer, Field, I, Input, Stepper, cx } from '../components/ui';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
 import { searchedToUser } from '../api/transforms';
@@ -196,108 +196,88 @@ export function GrantAccess() {
         <>
           <div />
           <div className="row">
-            <button className="btn" onClick={() => setGrant(null)}>Cancel</button>
+            <Button onClick={() => setGrant(null)}>Cancel</Button>
             {step !== 'who' && (
-              <button className="btn" onClick={() => goStep(STEPS[stepIdx - 1].id)}>Back</button>
+              <Button onClick={() => goStep(STEPS[stepIdx - 1].id)}>Back</Button>
+            )}
+            {/* The step list only goes back; after "Change", this is the way forward again. */}
+            {step === 'who' && user && (
+              <Button variant="primary" onClick={() => goStep('what')}>Next</Button>
             )}
             {step === 'what' && (
-              <button className="btn primary" disabled={!user} onClick={() => goStep('review')}>Review</button>
+              <Button variant="primary" disabled={!user} onClick={() => goStep('review')}>Review</Button>
             )}
             {step === 'review' && (
-              <button
-                className="btn primary"
+              <Button
+                variant="primary"
                 disabled={!user || !changed || actorBlock || mfaBlock}
                 onClick={apply}
               >
                 Apply access
-              </button>
+              </Button>
             )}
           </div>
         </>
       }
     >
-      {/* Stepper */}
-      <div className="seg mb-12" role="tablist" style={{ display: 'flex' }}>
-        {STEPS.map((s, i) => (
-          <button
-            key={s.id}
-            className={step === s.id ? 'on' : ''}
-            disabled={s.id !== 'who' && !user}
-            onClick={() => goStep(s.id)}
-            style={{ flex: 1 }}
-          >
-            <span className="mono small" style={{ opacity: 0.6, marginRight: 6 }}>{i + 1}</span>
-            {s.label}
-          </button>
-        ))}
-      </div>
+      <Stepper className="mb-12" steps={STEPS} current={step} onStep={(id) => goStep(id as Step)} />
 
       {/* Selected-person banner (visible on What / Review) */}
       {user && step !== 'who' && (
-        <div className="panel mb-12" style={{ padding: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
-          <Avatar name={user.name} size={34} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 500 }}>{user.name}</div>
-            <div className="small muted mono">{user.email}</div>
+        <Card pad="sm" className="mb-12">
+          <div className="row gap-12">
+            <Avatar name={user.name} size={34} />
+            <div className="flex-1">
+              <div className="fw-medium">{user.name}</div>
+              <div className="small muted mono">{user.email}</div>
+            </div>
+            {user.mfa === false && <Badge tone="warning" title="No second factor enrolled"><span className="chip-ico">{I.alert}</span>no 2FA</Badge>}
+            {!user.active && <Badge tone="warning">inactive</Badge>}
+            <Button variant="ghost" size="sm" onClick={() => setStep('who')}>Change</Button>
           </div>
-          {user.mfa === false && <Chip tone="warn" title="No second factor enrolled"><span className="chip-ico">{I.alert}</span>no 2FA</Chip>}
-          {!user.active && <Chip tone="warn">inactive</Chip>}
-          <button className="btn ghost sm" onClick={() => setStep('who')}>Change</button>
-        </div>
+        </Card>
       )}
 
       {/* ── Step 1: Who ── */}
       {step === 'who' && (
         <>
-          <label className="input-label">Who are you granting access to?</label>
-          <div style={{ position: 'relative', marginBottom: 10 }}>
-            <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)' }}>{I.search}</span>
-            <input
-              className="input"
+          <Field label="Who are you granting access to?" className="mb-8">
+            <Input
+              leading={I.search}
               autoFocus
-              style={{ paddingLeft: 30, width: '100%' }}
               placeholder="Search by name, or type a full email…"
               value={pq}
               onChange={(e) => setPq(e.target.value)}
             />
-          </div>
-          <div className="panel" style={{ padding: 0, maxHeight: 340, overflowY: 'auto' }}>
-            {!searching && <div className="small muted" style={{ padding: 14 }}>Type at least 2 characters to search by name or email.</div>}
-            {searching && searchQ.isLoading && <div className="small muted" style={{ padding: 14 }}>Searching…</div>}
+          </Field>
+          <Card className="ga-list">
+            {!searching && <div className="small muted p-12">Type at least 2 characters to search by name or email.</div>}
+            {searching && searchQ.isLoading && <div className="small muted p-12">Searching…</div>}
             {searching && !searchQ.isLoading && matches.length === 0 && (
-              <div className="small muted" style={{ padding: 14 }}>
+              <div className="small muted p-12">
                 No one matches “{dpq}”.{' '}
-                <button className="btn ghost sm" onClick={() => { setGrant(null); setUserDrawer({ mode: 'create' }); }}>Invite someone new</button>
+                <Button variant="ghost" size="sm" onClick={() => { setGrant(null); setUserDrawer({ mode: 'create' }); }}>Invite someone new</Button>
               </div>
             )}
-            {matches.map((u, i) => (
-              <button
-                key={u.id}
-                onClick={() => pick(u)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
-                  padding: '10px 14px', background: 'transparent', border: 'none', cursor: 'pointer',
-                  borderBottom: i < matches.length - 1 ? '1px solid var(--line)' : 'none',
-                }}
-                className="row-click"
-              >
+            {matches.map((u) => (
+              <ButtonBase key={u.id} onClick={() => pick(u)} className="ga-row ga-person">
                 <Avatar name={u.name} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 500, fontSize: 12.5 }}>{u.name} {!u.active && <Chip tone="warn">inactive</Chip>}</div>
-                  <div className="small muted mono" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.email}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="fw-medium text-base">{u.name} {!u.active && <Badge tone="warning">inactive</Badge>}</div>
+                  <div className="small muted mono truncate">{u.email}</div>
                 </div>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: '45%' }}>
+                <div className="ga-person-groups">
                   {u.groups.length === 0
                     ? <span className="small muted">no access</span>
-                    : u.groups.slice(0, 3).map((g) => <Chip key={g}>{g}</Chip>)}
+                    : u.groups.slice(0, 3).map((g) => <Badge key={g}>{g}</Badge>)}
                   {u.groups.length > 3 && <span className="small muted">+{u.groups.length - 3}</span>}
                 </div>
-                <span style={{ color: 'var(--ink-4)' }}>{I.chev}</span>
-              </button>
+                <span className="text-disabled">{I.chev}</span>
+              </ButtonBase>
             ))}
-          </div>
+          </Card>
           {searching && matches.length >= 50 && (
-            <div className="small muted" style={{ padding: '8px 2px' }}>Showing the first 50 — refine your search to narrow it.</div>
+            <div className="small muted py-8 px-2">Showing the first 50 — refine your search to narrow it.</div>
           )}
         </>
       )}
@@ -305,27 +285,25 @@ export function GrantAccess() {
       {/* ── Step 2: What ── */}
       {step === 'what' && user && (
         <>
-          <label className="input-label">What should they be able to do?</label>
-          <div className="small muted" style={{ marginBottom: 8 }}>
-            Pick one or more outcomes. Each grants a bundle of permissions — search by role area, service, or a permission like <span className="mono">billing:read</span>.
-          </div>
-          <div style={{ position: 'relative', marginBottom: 10 }}>
-            <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)' }}>{I.search}</span>
-            <input
-              className="input"
-              style={{ paddingLeft: 30, width: '100%' }}
+          <Field
+            label="What should they be able to do?"
+            hint={<>Pick one or more outcomes. Each grants a bundle of permissions — search by role area, service, or a permission like <span className="mono">billing:read</span>.</>}
+            className="mb-8"
+          >
+            <Input
+              leading={I.search}
               placeholder="Filter outcomes…"
               value={gq}
               onChange={(e) => setGq(e.target.value)}
             />
-          </div>
-          <div className="panel" style={{ padding: 0, maxHeight: 380, overflowY: 'auto' }}>
+          </Field>
+          <Card className="ga-list tall">
             {outcomes.length === 0 && (
-              <div className="small muted" style={{ padding: 14 }}>
+              <div className="small muted p-12">
                 No outcome matches “{gq}”. Groups come from the model in Git.
               </div>
             )}
-            {outcomes.map((o, i) => {
+            {outcomes.map((o) => {
               const on = groups.includes(o.g);
               const blockedByActor = o.privileged && !mayGrantPrivileged && !on;
               const blockedByMfa = o.privileged && user.mfa === false && !on;
@@ -336,45 +314,44 @@ export function GrantAccess() {
                 ? `“${o.g}” grants admin privileges. ${user.name} must enroll a second factor (TOTP / security key / backup codes) first.`
                 : undefined;
               return (
-                <label
-                  key={o.g}
-                  title={title}
-                  style={{
-                    display: 'block', padding: '12px 14px', cursor: blocked ? 'not-allowed' : 'pointer',
-                    background: on ? 'var(--accent-soft)' : 'transparent',
-                    borderBottom: i < outcomes.length - 1 ? '1px solid var(--line)' : 'none',
-                    opacity: blocked ? 0.55 : 1,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <input type="checkbox" checked={on} disabled={blocked} onChange={() => { if (!blocked) toggle(o.g); }} />
-                    <span style={{ fontWeight: 500, fontSize: 12.5, flex: 1 }}>
-                      {o.g}
-                      {o.privileged && <Chip tone="warn" title="Grants in every organisation"><span className="chip-ico">{I.lock}</span>privileged</Chip>}
-                      {blockedByActor && <Chip tone="err">needs admin.membership:write</Chip>}
-                      {blockedByMfa && !blockedByActor && <Chip tone="err">2FA required</Chip>}
-                    </span>
-                    <AccessLevel level={o.level} compact />
-                  </div>
-                  <div style={{ marginTop: 6, marginLeft: 26 }}>
-                    <div className="small muted">{o.summary}</div>
-                    <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
-                      {o.perms.slice(0, 8).map((p) => <Chip key={p}>{p}</Chip>)}
-                      {o.perms.length > 8 && <span className="small muted">+{o.perms.length - 8} more</span>}
-                      {/* A role the catalogue does not define grants nothing. Saying so is the
-                          difference between "this gives nothing" and "this points at something
-                          that is missing". */}
-                      {o.unknownRoles.length > 0 && (
-                        <Chip tone="err" title="Named by the group but not defined in the model">
-                          undefined role: {o.unknownRoles.join(', ')}
-                        </Chip>
-                      )}
-                    </div>
-                  </div>
-                </label>
+                <div key={o.g} title={title} className={cx('ga-row ga-outcome', on && 'on')}>
+                  <Checkbox
+                    checked={on}
+                    disabled={blocked}
+                    onChange={() => { if (!blocked) toggle(o.g); }}
+                    label={
+                      <>
+                        <span className="row">
+                          <span className="fw-medium text-base flex-1">
+                            {o.g}
+                            {o.privileged && <Badge tone="warning" title="Grants in every organisation"><span className="chip-ico">{I.lock}</span>privileged</Badge>}
+                            {blockedByActor && <Badge tone="danger">needs admin.membership:write</Badge>}
+                            {blockedByMfa && !blockedByActor && <Badge tone="danger">2FA required</Badge>}
+                          </span>
+                          <AccessLevel level={o.level} compact />
+                        </span>
+                        <span className="block mt-4">
+                          <span className="block small muted">{o.summary}</span>
+                          <span className="row wrap gap-4 mt-4">
+                            {o.perms.slice(0, 8).map((p) => <Badge key={p}>{p}</Badge>)}
+                            {o.perms.length > 8 && <span className="small muted">+{o.perms.length - 8} more</span>}
+                            {/* A role the catalogue does not define grants nothing. Saying so is the
+                                difference between "this gives nothing" and "this points at something
+                                that is missing". */}
+                            {o.unknownRoles.length > 0 && (
+                              <Badge tone="danger" title="Named by the group but not defined in the model">
+                                undefined role: {o.unknownRoles.join(', ')}
+                              </Badge>
+                            )}
+                          </span>
+                        </span>
+                      </>
+                    }
+                  />
+                </div>
               );
             })}
-          </div>
+          </Card>
         </>
       )}
 
@@ -382,43 +359,42 @@ export function GrantAccess() {
       {step === 'review' && user && (
         <>
           {(actorBlock || mfaBlock) && (
-            <div className="panel mb-12" style={{ padding: 12, border: '1px solid var(--red, #ef4444)', color: 'var(--red, #ef4444)' }}>
-              <div style={{ fontWeight: 500, fontSize: 12.5 }}>Can't apply — privileged grant blocked</div>
-              <div className="small" style={{ marginTop: 4, color: 'var(--ink-2)' }}>
+            <Callout tone="danger" icon={I.alert} title="Can't apply — privileged grant blocked" className="mb-12">
+              <div className="small text-muted">
                 {actorBlock && <>Assigning <b>{escalating.join(', ')}</b> grants in every organisation; that needs admin.membership:write. </>}
                 {mfaBlock && <>{user.name} must enroll a second factor before receiving <b>{escalating.join(', ')}</b>. </>}
                 jinbe enforces this regardless (422).
               </div>
-            </div>
+            </Callout>
           )}
-          <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 12, alignItems: 'start' }}>
+          <div className="grid g2 items-start">
             <div>
               <label className="input-label">What changes</label>
-              <div className="panel" style={{ padding: 12 }}>
+              <Card pad="sm">
                 {!changed && <div className="small muted">No change — {user.name} already has exactly this access.</div>}
                 {added.map((g) => (
-                  <div key={g} className="row" style={{ gap: 8, marginBottom: 6 }}>
-                    <Chip tone="ok">+ add</Chip><span className="mono small">{g}</span>
-                    {grantsEveryOrganisation(modelGroups[g]) && <Chip tone="warn" title="Grants in every organisation"><span className="chip-ico">{I.lock}</span></Chip>}
+                  <div key={g} className="row gap-8 mb-4">
+                    <Badge tone="success">+ add</Badge><span className="mono small">{g}</span>
+                    {grantsEveryOrganisation(modelGroups[g]) && <Badge tone="warning" title="Grants in every organisation"><span className="chip-ico">{I.lock}</span></Badge>}
                   </div>
                 ))}
                 {removed.map((g) => (
-                  <div key={g} className="row" style={{ gap: 8, marginBottom: 6 }}>
-                    <Chip tone="err">− remove</Chip><span className="mono small">{g}</span>
+                  <div key={g} className="row gap-8 mb-4">
+                    <Badge tone="danger">− remove</Badge><span className="mono small">{g}</span>
                   </div>
                 ))}
                 {changed && (
-                  <div className="small muted" style={{ marginTop: 8, lineHeight: 1.5 }}>
+                  <div className="small muted mt-8 leading-relaxed">
                     Result: {groups.length === 0 ? <b>no access</b> : <>member of <b>{groups.join(', ')}</b></>}.
                   </div>
                 )}
-              </div>
+              </Card>
             </div>
             <div>
               <label className="input-label">Resulting access</label>
-              <div className="panel" style={{ padding: 12 }}>
+              <Card pad="sm">
                 <PermTree user={{ ...user, groups }} model={chain.model} routeTables={chain.routeTables} />
-              </div>
+              </Card>
             </div>
           </div>
         </>

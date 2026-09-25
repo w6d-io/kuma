@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Drawer, EmptyHint, Switch } from '../../components/ui/Primitives';
+import { Button, Card, Checkbox, Drawer, EmptyHint, Field, Input, Switch, cx } from '../../components/ui';
 import { makeToastErr, type PushToast } from './toastErr';
 import { useCreateOrgUser } from '../../api/hooks';
 
@@ -9,24 +9,20 @@ function GroupPicker({ assignable, checked, toggle }: { assignable: string[]; ch
     return <EmptyHint>No groups you may assign here — the user keeps base access.</EmptyHint>;
   }
   return (
-    <div className="panel" style={{ padding: 0 }}>
-      {assignable.map((g, i) => {
+    <Card>
+      {assignable.map((g) => {
         const on = checked.includes(g);
         return (
-          <label
+          <Checkbox
             key={g}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-              borderBottom: i < assignable.length - 1 ? '1px solid var(--line)' : 'none',
-              cursor: 'pointer', background: on ? 'var(--accent-soft)' : 'transparent',
-            }}
-          >
-            <input type="checkbox" checked={on} onChange={() => toggle(g)} />
-            <span style={{ fontWeight: 500, fontSize: 12.5 }}>{g}</span>
-          </label>
+            className={cx('orgs-pick', on && 'on')}
+            checked={on}
+            onChange={() => toggle(g)}
+            label={<span className="fw-medium text-base">{g}</span>}
+          />
         );
       })}
-    </div>
+    </Card>
   );
 }
 
@@ -68,30 +64,27 @@ export function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
         <>
           <span className="small muted">Adds a new member to this organization</span>
           <div className="row">
-            <button className="btn" onClick={onClose}>Cancel</button>
-            <button className="btn primary" onClick={submit} disabled={!email || busy}>{busy ? 'Inviting…' : 'Invite'}</button>
+            <Button onClick={onClose}>Cancel</Button>
+            <Button variant="primary" onClick={submit} disabled={!email || busy}>{busy ? 'Inviting…' : 'Invite'}</Button>
           </div>
         </>
       }
     >
-      <div className="mb-12">
-        <label className="input-label">Email *</label>
-        <input className="input mono" type="text" inputMode="email" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="user@example.com" value={email} onChange={e => setEmail(e.target.value)} autoFocus />
-      </div>
-      <div className="mb-12">
-        <label className="input-label">Name <span className="muted">(optional)</span></label>
-        <input className="input" placeholder="Jane Doe" value={name} onChange={e => setName(e.target.value)} />
-      </div>
+      <Field label="Email" required className="mb-12">
+        <Input mono type="text" inputMode="email" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="user@example.com" value={email} onChange={e => setEmail(e.target.value)} autoFocus />
+      </Field>
+      <Field label={<>Name <span className="muted">(optional)</span></>} className="mb-12">
+        <Input placeholder="Jane Doe" value={name} onChange={e => setName(e.target.value)} />
+      </Field>
       {/* No list at all where there is nothing to hand out on invite: My org grants after joining. */}
       {assignable.length > 0 && (
-        <div className="mb-12">
-          <label className="input-label">Groups <span className="muted">(optional · only groups you may assign)</span></label>
+        <Field label={<>Groups <span className="muted">(optional · only groups you may assign)</span></>} className="mb-12">
           <GroupPicker assignable={assignable} checked={groups} toggle={toggle} />
-        </div>
+        </Field>
       )}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0' }}>
+      <div className="row justify-between py-8">
         <div>
-          <div style={{ fontWeight: 500, fontSize: 13 }}>Send invite email</div>
+          <div className="fw-medium text-base">Send invite email</div>
           <div className="small muted">Emails them a link to set their password</div>
         </div>
         <Switch on={sendInvite} onChange={setSendInvite} />

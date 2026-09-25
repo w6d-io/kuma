@@ -45,6 +45,7 @@ export const I: Record<string, React.ReactElement> = {
   upload: icon('upload'),
   download: icon('download'),
   arrowOut: icon('arrow-up-right-from-square'),
+  copy: icon('copy'),
 
   // State
   check: icon('check'),
@@ -59,6 +60,7 @@ export const I: Record<string, React.ReactElement> = {
   caret: icon('chevron-down'),
   caretUp: icon('chevron-up'),
   caretRight: icon('chevron-right'),
+  caretLeft: icon('chevron-left'),
   chev: icon('chevron-right'),
 
   // Trend, in the audit summary

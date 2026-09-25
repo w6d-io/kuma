@@ -1,0 +1,117 @@
+.rulepipe {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+.rp-node {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  min-width: 130px;
+  flex: 1;
+}
+.rp-ico {
+  width: 20px; height: 20px;
+  display: grid; place-items: center;
+  color: var(--color-text-subtle);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+.rp-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rp-lbl {
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.rp-sub {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-sub.mono { font-family: var(--font-mono); }
+.rp-arrow {
+  color: var(--color-text-disabled);
+  font-size: var(--text-lg);
+  align-self: center;
+  line-height: 1;
+}
+/* Clickable pipeline nodes (Layer 2 — open the per-stage editor). */
+.rp-node.clickable {
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: border-color var(--duration-fast), background var(--duration-fast), box-shadow var(--duration-fast);
+}
+.rp-node.clickable:hover { border-color: var(--color-border-strong); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+.rp-node.clickable:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 1px; }
+.rp-node.active { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+/* Status tones — icon chip + sub text pick up the stage's colour. */
+.rp-node.tone-ok   .rp-ico { color: var(--color-success);   background: var(--color-success-soft);   border-color: color-mix(in srgb, var(--color-success) 30%, var(--color-border)); }
+.rp-node.tone-warn .rp-ico { color: var(--color-warning); background: var(--color-warning-soft); border-color: color-mix(in srgb, var(--color-warning) 30%, var(--color-border)); }
+.rp-node.tone-err  .rp-ico { color: var(--color-danger);  background: var(--color-danger-soft);  border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-border)); }
+.rp-node.tone-ok   .rp-sub { color: var(--color-success); }
+.rp-node.tone-warn .rp-sub { color: var(--color-warning); }
+.rp-node.tone-err  .rp-sub { color: var(--color-danger); }
+
+
+/* ── Vertical gateway pipeline (numbered accordion rows + left rail) ── */
+.vstage { display: flex; gap: 12px; }
+.vstage-rail { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; width: 26px; }
+.vstage-num {
+  width: 26px; height: 26px; border-radius: var(--radius-pill);
+  display: grid; place-items: center;
+  font-size: var(--text-sm); font-weight: 600; font-variant-numeric: tabular-nums;
+  background: var(--color-surface-2); border: 1px solid var(--color-border); color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+.vstage.tone-ok   .vstage-num { color: var(--color-success);   border-color: color-mix(in srgb, var(--color-success) 40%, var(--color-border));   background: var(--color-success-soft); }
+.vstage.tone-warn .vstage-num { color: var(--color-warning); border-color: color-mix(in srgb, var(--color-warning) 40%, var(--color-border)); background: var(--color-warning-soft); }
+.vstage.tone-err  .vstage-num { color: var(--color-danger);  border-color: color-mix(in srgb, var(--color-danger) 40%, var(--color-border));  background: var(--color-danger-soft); }
+.vstage-line { flex: 1; width: 1px; background: var(--color-border-strong); margin: 4px 0; min-height: 8px; }
+.vstage-main { flex: 1; min-width: 0; padding-bottom: 12px; }
+.vstage-head {
+  width: 100%; text-align: left; display: flex; align-items: center; gap: 10px;
+  background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  padding: 10px 12px; cursor: pointer; color: var(--color-text); font: inherit;
+  transition: border-color var(--duration-fast), background var(--duration-fast), box-shadow var(--duration-fast);
+}
+.vstage-head:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-sm); }
+.vstage-head:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 1px; }
+.vstage-head.static { cursor: default; }
+.vstage.open > .vstage-main > .vstage-head { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.vstage-head-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.vstage-title { font-size: var(--text-base); font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.vstage-ico { width: 15px; height: 15px; display: grid; place-items: center; color: var(--color-text-subtle); flex-shrink: 0; }
+.vstage-q { color: var(--color-text-subtle); font-weight: 400; font-size: var(--text-sm); }
+.vstage-sum { font-size: var(--text-sm); color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; }
+.vstage-sum.tone-ok { color: var(--color-success); }
+.vstage-sum.tone-warn { color: var(--color-warning); }
+.vstage-sum.tone-err { color: var(--color-danger); }
+.vstage-chev { color: var(--color-text-subtle); font-size: var(--text-sm); flex-shrink: 0; }
+.vstage-body {
+  border: 1px solid var(--color-accent); border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  padding: 14px 12px; background: var(--color-surface);
+}
+
+/* Advanced disclosure — where the Ory jargon hides. */
+.advanced { margin-top: 12px; border-top: 1px dashed var(--color-border-strong); padding-top: 10px; }
+.advanced-toggle {
+  background: none; border: none; cursor: pointer; color: var(--color-text-subtle);
+  font-size: var(--text-sm); font-weight: 600; padding: 0; display: inline-flex; align-items: center; gap: 5px;
+}
+.advanced-toggle:hover { color: var(--color-text-muted); }
+.advanced-toggle:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; border-radius: var(--radius-sm); }
+.advanced-body { margin-top: 10px; }
+

@@ -1,8 +1,7 @@
 import { useRef, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useAuthMethods, useSetAuthMethods, useImportHistory, useRollbackImport } from '../api/hooks';
-import { I } from '../components/ui/Icons';
-import { Chip, Modal, ConfirmDialog, Switch } from '../components/ui/Primitives';
+import { I, Badge, Button, Callout, Card, Checkbox, ConfirmDialog, Dialog, PageHeader, Switch, Table } from '../components/ui';
 import { api } from '../api/client';
 import type { BundleImportResult, AuthMethodName } from '../api/client';
 import { ExportBundleModal } from '../components/ExportBundleModal';
@@ -186,39 +185,35 @@ export function SettingsPage() {
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>Admin settings</h1>
-          <div className="sub">Admin operations.</div>
-        </div>
-      </div>
+      <PageHeader title="Admin settings" sub="Admin operations." />
 
       {accountUrl && (
-        <div className="panel" style={{ marginBottom: 14, padding: 14, display: "flex", gap: 12, alignItems: "center" }}>
-          <span style={{ width: 18, height: 18, display: "grid", placeItems: "center", color: "var(--ink-3)" }}>{I.users}</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 500, fontSize: 13 }}>Looking for your account settings?</div>
-            <div className="small muted">
-              Profile, password, two-factor, and session management live on the auth domain.
+        <Card pad="md">
+          <div className="row gap-12">
+            <span className="icon-lg muted">{I.users}</span>
+            <div className="flex-1 min-w-0">
+              <div className="fw-medium text-base">Looking for your account settings?</div>
+              <div className="small muted">
+                Profile, password, two-factor, and session management live on the auth domain.
+              </div>
             </div>
+            <a className="btn" href={accountUrl}>Open account settings →</a>
           </div>
-          <a className="btn" href={accountUrl}>Open account settings →</a>
-        </div>
+        </Card>
       )}
 
       {/* ─── Authentication methods (Kratos self-service, hot-reload) ─── */}
       {authMethodsAvailable && authMethods && (
-        <div className="panel" style={{ marginBottom: 14, padding: 14 }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Authentication methods</div>
-          <div className="small muted" style={{ marginBottom: 14 }}>
-            Enable or disable how users sign in. Changes hot-reload into Kratos — live on the next login flow, no restart.
-          </div>
+        <Card
+          title="Authentication methods"
+          sub="Enable or disable how users sign in. Changes hot-reload into Kratos — live on the next login flow, no restart."
+        >
           {/* Self-registration master switch — off = accounts are admin-created only. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0 12px', borderBottom: '2px solid var(--line)', marginBottom: 6 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 500, fontSize: 13 }}>
+          <div className="settings-row master">
+            <div className="flex-1 min-w-0">
+              <div className="fw-medium text-base">
                 Self-registration
-                {!registrationEnabled && <Chip tone="warn" mono={false}>admin-only accounts</Chip>}
+                {!registrationEnabled && <Badge tone="warning" mono={false}>admin-only accounts</Badge>}
               </div>
               <div className="small muted">
                 {registrationEnabled
@@ -232,23 +227,21 @@ export function SettingsPage() {
             const st = authMethods[m.id];
             const locked = !!m.needsConfig && !st.configured;
             return (
-              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 500, fontSize: 13 }}>
+              <div key={m.id} className="settings-row">
+                <div className="flex-1 min-w-0">
+                  <div className="fw-medium text-base">
                     {m.label}
-                    {locked && <span className="small muted" style={{ marginLeft: 8 }}>requires config in kratos.yml</span>}
+                    {locked && <span className="small muted ml-8">requires config in kratos.yml</span>}
                   </div>
                   <div className="small muted">{m.hint}</div>
                   {m.id === 'code' && st.enabled && (
-                    <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                      <input
-                        type="checkbox"
-                        checked={!!st.passwordlessEnabled}
-                        disabled={setAuthMethods.isPending}
-                        onChange={e => toggleAuthMethod('code', { passwordlessEnabled: e.target.checked })}
-                      />
-                      Allow passwordless sign-in with a code (first factor)
-                    </label>
+                    <Checkbox
+                      className="settings-sub-option"
+                      checked={!!st.passwordlessEnabled}
+                      disabled={setAuthMethods.isPending}
+                      onChange={v => toggleAuthMethod('code', { passwordlessEnabled: v })}
+                      label="Allow passwordless sign-in with a code (first factor)"
+                    />
                   )}
                 </div>
                 {locked
@@ -257,135 +250,133 @@ export function SettingsPage() {
               </div>
             );
           })}
-        </div>
+        </Card>
       )}
 
       <OrgSitesSettings />
 
       {/* ─── RBAC bundle ─── */}
-      <div className="panel" style={{ marginBottom: 14, padding: 14 }}>
-        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>RBAC bundle</div>
-        <div className="small muted" style={{ marginBottom: 14 }}>
-          Export or import a full snapshot of RBAC configuration (services, groups, roles, route maps, Oathkeeper rules).
-        </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button className="btn" onClick={() => setExportOpen(true)}>
-            {I.download} Export bundle
-          </button>
-          <button className="btn" onClick={handleImportClick} disabled={importing}>
-            {I.upload} {importing ? 'Importing…' : 'Import bundle'}
-          </button>
-          <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleFileSelected} />
+      <Card
+        title="RBAC bundle"
+        sub="Export or import a full snapshot of RBAC configuration (services, groups, roles, route maps, Oathkeeper rules)."
+      >
+        <div className="row wrap gap-8">
+          <Button icon={I.download} onClick={() => setExportOpen(true)}>
+            Export bundle
+          </Button>
+          <Button icon={I.upload} onClick={handleImportClick} disabled={importing}>
+            {importing ? 'Importing…' : 'Import bundle'}
+          </Button>
+          <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleFileSelected} />
         </div>
 
         {importResult && (
-          <div style={{ marginTop: 14, fontSize: 12, color: "var(--ink-2)" }}>
-            <div style={{ fontWeight: 500, marginBottom: 4 }}>Import summary</div>
+          <div className="mt-12 text-sm text-muted">
+            <div className="fw-medium mb-4">Import summary</div>
             <div>{importResult.rbac.services} services, {importResult.rbac.groups} groups, {importResult.rbac.roles} roles, {importResult.rbac.routeMaps} route maps, {importResult.rbac.oathkeeperRules} Oathkeeper rules</div>
           </div>
         )}
 
         {/* ─── Import history — automatic pre-import snapshots, one-click reroll ─── */}
         {(importHistory?.length ?? 0) > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>Import history</div>
-            <div className="small muted" style={{ marginBottom: 8 }}>
+          <div className="mt-16">
+            <div className="fw-medium text-base mb-4">Import history</div>
+            <div className="small muted mb-8">
               A snapshot is taken automatically before every import, restore or rollback. Rolling back re-applies the snapshot as a full restore (and keeps a snapshot of what it replaces).
             </div>
-            <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+            <Table className="compact">
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--line)', textAlign: 'left' }}>
-                  <th style={{ padding: '6px 8px', fontWeight: 500, color: 'var(--ink-2)' }}>When</th>
-                  <th style={{ padding: '6px 8px', fontWeight: 500, color: 'var(--ink-2)' }}>Taken before</th>
-                  <th style={{ padding: '6px 8px', fontWeight: 500, color: 'var(--ink-2)' }}>By</th>
-                  <th style={{ padding: '6px 8px', fontWeight: 500, color: 'var(--ink-2)' }}>Contents</th>
-                  <th style={{ padding: '6px 8px', width: 90 }} />
+                <tr>
+                  <th>When</th>
+                  <th>Taken before</th>
+                  <th>By</th>
+                  <th>Contents</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
                 {importHistory!.map(h => (
-                  <tr key={h.id} style={{ borderBottom: '1px solid var(--line)' }}>
-                    <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{new Date(h.takenAt).toLocaleString()}</td>
-                    <td style={{ padding: '6px 8px' }}><Chip>{h.reason.replace('pre-', '')}</Chip></td>
-                    <td style={{ padding: '6px 8px' }} className="mono">{h.actor || '—'}</td>
-                    <td style={{ padding: '6px 8px' }} className="small muted">
+                  <tr key={h.id}>
+                    <td className="nowrap">{new Date(h.takenAt).toLocaleString()}</td>
+                    <td><Badge>{h.reason.replace('pre-', '')}</Badge></td>
+                    <td className="mono">{h.actor || '—'}</td>
+                    <td className="small muted">
                       {h.counts.services} svc · {h.counts.groups} groups · {h.counts.roles} roles · {h.counts.oathkeeperRules} rules
                     </td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>
-                      <button className="btn ghost sm" disabled={rollbackImport.isPending} onClick={() => setConfirmRollback(h.id)}>
+                    <td className="shrink align-right">
+                      <Button variant="ghost" size="sm" disabled={rollbackImport.isPending} onClick={() => setConfirmRollback(h.id)}>
                         Roll back
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Confirm before import (UX-8) — pick which sections to apply. */}
-      <Modal
+      <Dialog
         open={!!pending}
         onClose={() => { if (!importing) setPending(null); }}
         eyebrow="Settings"
         title="Import RBAC bundle?"
         footer={
           <>
-            <button className="btn" onClick={() => setPending(null)} disabled={importing}>Cancel</button>
-            <button className="btn primary" onClick={confirmImport} disabled={importing || importSections.length === 0}>
+            <Button onClick={() => setPending(null)} disabled={importing}>Cancel</Button>
+            <Button variant="primary" onClick={confirmImport} disabled={importing || importSections.length === 0}>
               {importing
                 ? 'Importing…'
                 : isFullRestore
                   ? 'Restore full config'
                   : `Import ${importSections.length} section${importSections.length === 1 ? '' : 's'}`}
-            </button>
+            </Button>
           </>
         }
       >
         {pending && (
-          <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div
-              className="panel"
-              style={{ padding: 10, borderColor: isFullRestore ? 'var(--warn, #d97706)' : 'var(--line)', color: isFullRestore ? 'var(--warn, #d97706)' : 'var(--ink-2)' }}
+          <div className="col gap-12 text-base">
+            <Callout
+              tone={isFullRestore ? 'warning' : 'neutral'}
+              icon={I.alert}
+              title={isFullRestore ? 'This replaces your entire RBAC configuration' : 'Selective import — nothing is removed'}
             >
-              <div style={{ fontWeight: 600, marginBottom: 2 }}>
-                {isFullRestore ? 'This replaces your entire RBAC configuration' : 'Selective import — nothing is removed'}
-              </div>
               <div className="small">
                 {isFullRestore
                   ? <>Every section is applied from <span className="mono">{pending.fileName}</span> and anything not in the file (extra services, groups, rules) is removed. This cannot be undone.</>
                   : <>Only the checked sections are overwritten or added from <span className="mono">{pending.fileName}</span>. Unchecked sections, and anything not in the file, are left untouched.</>}
               </div>
-            </div>
+            </Callout>
             <div>
-              <div className="small muted" style={{ marginBottom: 4 }}>Choose what to import</div>
-              <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>
-                <input
-                  type="checkbox"
-                  disabled={importing}
-                  checked={importSections.length === availableSections.length}
-                  ref={(el) => { if (el) el.indeterminate = importSections.length > 0 && importSections.length < availableSections.length; }}
-                  onChange={(e) => setImportSections(e.target.checked ? availableSections.map(s => s.id) : [])}
-                />
-                Select all (full restore)
-              </label>
+              <div className="small muted mb-4">Choose what to import</div>
+              <Checkbox
+                className="settings-check all"
+                disabled={importing}
+                checked={importSections.length === availableSections.length}
+                indeterminate={importSections.length > 0 && importSections.length < availableSections.length}
+                onChange={(on) => setImportSections(on ? availableSections.map(s => s.id) : [])}
+                label="Select all (full restore)"
+              />
               {availableSections.map((s) => (
-                <label key={s.id} className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
-                  <input
-                    type="checkbox"
-                    disabled={importing}
-                    checked={importSections.includes(s.id)}
-                    onChange={(e) => setImportSections((cur) => (e.target.checked ? [...cur, s.id] : cur.filter((x) => x !== s.id)))}
-                  />
-                  <span style={{ flex: 1 }}>{s.label}</span>
-                  <span className="mono muted" style={{ fontSize: 11 }}>{pending.counts[s.id]}</span>
-                </label>
+                <Checkbox
+                  key={s.id}
+                  className="settings-check"
+                  disabled={importing}
+                  checked={importSections.includes(s.id)}
+                  onChange={(on) => setImportSections((cur) => (on ? [...cur, s.id] : cur.filter((x) => x !== s.id)))}
+                  label={
+                    <span className="row justify-between">
+                      <span>{s.label}</span>
+                      <span className="mono muted text-xs">{pending.counts[s.id]}</span>
+                    </span>
+                  }
+                />
               ))}
             </div>
           </div>
         )}
-      </Modal>
+      </Dialog>
 
       <ConfirmDialog
         open={!!confirmRollback}

@@ -1,157 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { I } from './Icons';
+import { Avatar } from './Avatar';
+import { Badge } from './Badge';
+import { EmptyHint } from './EmptyState';
+import { cx } from './cx';
 import { LevelMeta } from '../../hooks/useRbac';
 import { permissionChain, type RouteTable } from '../../policy/model';
 
-export function Chip({ tone = "", children, mono = true, title }: { tone?: string; children: React.ReactNode; mono?: boolean; title?: string }) {
-  return <span className={`chip ${tone}`} style={mono ? undefined : { fontFamily: "var(--font-sans)" }} title={title}>{children}</span>;
-}
-
 export function Method({ m }: { m: string }) {
   return <span className={`method ${m}`}>{m}</span>;
-}
-
-export function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
-  return <button className={`switch ${on ? "on" : ""}`} onClick={() => onChange(!on)} aria-pressed={on} aria-label="Toggle" />;
-}
-
-export function Avatar({ name, email, size = 22 }: { name?: string; email?: string; size?: number }) {
-  const src = name || email || "?";
-  const initials = src.split(/\s+|@/).filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join("");
-  const h = [...src].reduce((a, c) => a + c.charCodeAt(0), 0);
-  const hue = h % 360;
-  const bg = `oklch(62% 0.13 ${hue})`;
-  const bg2 = `oklch(52% 0.13 ${(hue + 30) % 360})`;
-  return <span className="avatar" style={{ width: size, height: size, background: `linear-gradient(135deg, ${bg}, ${bg2})`, fontSize: Math.max(9, size * 0.42) }}>{initials}</span>;
-}
-
-export function Drawer({ open, onClose, title, eyebrow, children, footer, size = "" }: {
-  open: boolean; onClose: () => void; title: string; eyebrow?: string;
-  children: React.ReactNode; footer?: React.ReactNode; size?: string;
-}) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-  if (!open) return null;
-  return (
-    <div className="drawer-wrap" onClick={onClose}>
-      <aside className={`drawer ${size}`} onClick={e => e.stopPropagation()}>
-        <div className="drawer-head">
-          <div>
-            {eyebrow && <div className="eyebrow">{eyebrow}</div>}
-            <h2>{title}</h2>
-          </div>
-          <button className="btn ghost" onClick={onClose} aria-label="Close">
-            <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.close}</span>
-          </button>
-        </div>
-        <div className="drawer-body">{children}</div>
-        {footer && <div className="drawer-foot">{footer}</div>}
-      </aside>
-    </div>
-  );
-}
-
-export function Modal({ open, onClose, title, eyebrow, children, footer, size = "" }: {
-  open: boolean; onClose: () => void; title: string; eyebrow?: string;
-  children: React.ReactNode; footer?: React.ReactNode; size?: string;
-}) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-  if (!open) return null;
-  return (
-    <div className="modal-wrap" onClick={onClose}>
-      <div className={`modal ${size}`} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="modal-head">
-          <div>
-            {eyebrow && <div className="eyebrow">{eyebrow}</div>}
-            <h2>{title}</h2>
-          </div>
-          <button className="btn ghost" onClick={onClose} aria-label="Close">
-            <span style={{ width: 14, height: 14, display: "grid", placeItems: "center" }}>{I.close}</span>
-          </button>
-        </div>
-        <div className="modal-body">{children}</div>
-        {footer && <div className="modal-foot">{footer}</div>}
-      </div>
-    </div>
-  );
-}
-
-// Standard confirmation for destructive actions. Optional blast-radius line
-// ("affects N users") and optional type-to-confirm for high-impact actions.
-// One dialog for every delete/deactivate across the app (UX consistency).
-export function ConfirmDialog({
-  open, title, body, blastRadius, confirmLabel = "Confirm", danger = false,
-  requireText, onConfirm, onCancel, busy = false,
-}: {
-  open: boolean; title: string; body?: React.ReactNode; blastRadius?: React.ReactNode;
-  confirmLabel?: string; danger?: boolean; requireText?: string;
-  onConfirm: () => void; onCancel: () => void; busy?: boolean;
-}) {
-  const [typed, setTyped] = useState("");
-  useEffect(() => { if (open) setTyped(""); }, [open]);
-  const ready = !requireText || typed.trim() === requireText;
-  const dangerStyle = danger ? { background: "var(--red, #ef4444)", borderColor: "var(--red, #ef4444)", color: "#fff" } : undefined;
-  return (
-    <Modal open={open} onClose={onCancel} title={title}
-      footer={<>
-        <button className="btn" onClick={onCancel} disabled={busy}>Cancel</button>
-        <button className="btn primary" style={dangerStyle} onClick={onConfirm} disabled={!ready || busy}>
-          {busy ? "Working…" : confirmLabel}
-        </button>
-      </>}>
-      {body && <div className="small" style={{ lineHeight: 1.6, color: "var(--ink-2)" }}>{body}</div>}
-      {blastRadius && (
-        <div className="panel" style={{ padding: "10px 12px", marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ width: 14, height: 14, display: "grid", placeItems: "center", color: "var(--warn)", flexShrink: 0 }}>{I.alert}</span>
-          <span className="small">{blastRadius}</span>
-        </div>
-      )}
-      {requireText && (
-        <div style={{ marginTop: 12 }}>
-          <label className="input-label">Type <span className="mono">{requireText}</span> to confirm</label>
-          <input className="input mono" autoFocus value={typed} onChange={e => setTyped(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && ready && !busy) onConfirm(); }} style={{ width: "100%" }} />
-        </div>
-      )}
-    </Modal>
-  );
-}
-
-export function Pipeline({ stage }: { stage: string }) {
-  // The real path a change takes. Named for what each step is, so the echo cannot promise a
-  // propagation the deployment does not perform.
-  const steps = [
-    { id: "stored", name: "Stored", meta: "jinbe" },
-    { id: "bundle", name: "Bundle", meta: "new revision" },
-    { id: "engine", name: "Engine", meta: "polls, ≤40s" },
-  ];
-  const idx = steps.findIndex(s => s.id === stage);
-  return (
-    <div className="pipe">
-      {steps.map((s, i) => {
-        const cls = stage === "idle" ? "" : i < idx ? "done" : i === idx ? "current" : "";
-        return (
-          <div key={s.id} className={`step ${cls}`}>
-            <div className="name">{s.name}</div>
-            <div className="meta">{s.meta}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-export function EmptyHint({ children }: { children: React.ReactNode }) {
-  return <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--ink-3)", fontSize: 12 }}>{children}</div>;
 }
 
 // Toggle-chip multi-select (same visual language as the Groups role picker).
@@ -165,17 +22,16 @@ export function MultiSelectPills({ options, selected, onToggle, empty }: {
     return <div className="small muted">{empty ?? "No options available."}</div>;
   }
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+    <div className="pills">
       {options.map(o => {
         const on = selected.includes(o);
         return (
           <button
             key={o}
             type="button"
-            className="chip mono"
+            className={cx("pill", on && "on")}
             aria-pressed={on}
             onClick={() => onToggle(o)}
-            style={{ cursor: "pointer", fontWeight: 500, background: on ? "var(--accent)" : "var(--panel-2)", color: on ? "white" : "var(--ink-2)", borderColor: on ? "var(--accent)" : "var(--line)" }}
           >
             {on && <span className="kv-ico">{I.check}</span>} {o}
           </button>
@@ -195,22 +51,6 @@ export function AccessLevel({ level, count, compact = false }: { level: string; 
       {!compact && <span className="lbl">{m.label}</span>}
       {count != null && !compact && <span className="cnt">{count}</span>}
     </span>
-  );
-}
-
-export function Toasts({ toasts }: { toasts: { id: string; msg: string; err?: boolean; sub?: string }[] }) {
-  return (
-    <div className="toasts">
-      {toasts.map(t => (
-        <div key={t.id} className={`toast ${t.err ? "err" : ""}`}>
-          <span className="d" />
-          <div>
-            <div>{t.msg}</div>
-            {t.sub && <div className="lbl">{t.sub}</div>}
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -316,7 +156,7 @@ export function AdvancedDisclosure({ label = "Advanced", note, defaultOpen = fal
     <div className="advanced">
       <button type="button" className="advanced-toggle" aria-expanded={open} onClick={() => setOpen(o => !o)}>
         <span className="kv-ico" aria-hidden="true">{open ? I.caret : I.caretRight}</span> {label}
-        {note && <span className="muted small" style={{ fontWeight: 400 }}> · {note}</span>}
+        {note && <span className="advanced-note"> · {note}</span>}
       </button>
       {open && <div className="advanced-body">{children}</div>}
     </div>
@@ -352,7 +192,7 @@ export function PermTree({ user, model, routeTables }: {
       <div className="pt-root">
         <Avatar name={user.name} size={26} />
         <div>
-          <div style={{ fontWeight: 500 }}>{user.name}</div>
+          <div className="fw-medium">{user.name}</div>
           <div className="small muted mono">{user.email}</div>
         </div>
       </div>
@@ -363,7 +203,7 @@ export function PermTree({ user, model, routeTables }: {
           <div className="pt-group">
             <span className="pt-line h" />
             <span className="mono pt-chip">group &middot; {b.group}</span>
-            {!b.declared && <Chip tone="err" title="Held, but the model declares no such group">not in the model</Chip>}
+            {!b.declared && <Badge tone="danger" title="Held, but the model declares no such group">not in the model</Badge>}
           </div>
           {b.declared && b.scopes.length === 0 && (
             <div className="pt-svc"><span className="small muted">&mdash; grants nothing &mdash;</span></div>
@@ -372,17 +212,17 @@ export function PermTree({ user, model, routeTables }: {
             <div key={scope.organisation} className="pt-svc">
               <span className="pt-line h" />
               {scope.everywhere
-                ? <Chip tone="warn" title="Granted in every organisation">in every organisation</Chip>
+                ? <Badge tone="warning" title="Granted in every organisation">in every organisation</Badge>
                 : <span className="mono pt-chip">in {scope.organisation}</span>}
               {scope.roles.map((r) => (
                 <div key={r.role} className="pt-role">
                   <span className="mono">{r.role}</span>
                   <div className="pt-perms">
-                    {!r.known && <Chip tone="err" title="Named by the group, not defined in the model">undefined role</Chip>}
+                    {!r.known && <Badge tone="danger" title="Named by the group, not defined in the model">undefined role</Badge>}
                     {r.known && r.permissions.length === 0 && <span className="small muted">&mdash; carries nothing &mdash;</span>}
                     {r.permissions.map((p) => (
                       <span key={p.permission} className="pt-perm">
-                        <Chip>{p.permission}</Chip>
+                        <Badge>{p.permission}</Badge>
                         {p.routes.length === 0
                           ? <span className="small muted" title="No declared route requires it — it may be enforced by a service that publishes no table">no route declares it</span>
                           : <span className="small muted" title={p.routes.map((x) => `${x.method} ${x.path}  (${x.api})`).join('\n')}>

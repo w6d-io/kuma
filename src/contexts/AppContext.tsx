@@ -5,7 +5,7 @@ import { parseHash, formatHash } from '../lib/route';
 import { useStore } from '../api/store';
 import { withOptimism, cachePatch } from '../api/mutations';
 import { api } from '../api/client';
-import { ConfirmDialog } from '../components/ui/Primitives';
+import { ConfirmDialog } from '../components/ui';
 import { applyTheme, nextTheme, storeTheme, storedTheme, type Theme } from '../theme';
 
 const TWEAK_DEFAULTS: TweakDefaults = {

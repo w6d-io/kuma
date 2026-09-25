@@ -1,0 +1,93 @@
+.quick-action {
+  text-align: left;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  display: flex; gap: 10px; align-items: flex-start;
+  cursor: pointer;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  transition: border-color var(--duration-fast), background var(--duration-fast);
+}
+.quick-action:hover { border-color: color-mix(in srgb, var(--color-text) 18%, var(--color-border)); background: var(--color-surface); }
+.quick-action-ico {
+  width: 26px; height: 26px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  display: grid; place-items: center;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+
+/* The change carried back from a step-up, proposed rather than applied. Coloured on the token pair
+   so it reads in both themes, and stated as a success because the factor WAS proven — the sentence
+   inside it is what says nothing has been written yet. */
+.resumed-change {
+  display: flex;
+  gap: var(--space-2, 8px);
+  align-items: flex-start;
+  padding: var(--space-3, 12px);
+  margin-bottom: var(--space-3, 12px);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-md);
+  background: var(--color-success-soft);
+}
+
+.resumed-change-icon { color: var(--color-success); line-height: 1.4; }
+
+/* A list beside the thing it selects. On a phone the two cannot share a row: the list gets a column
+   too narrow to read and the panel wraps character by character. Stacked below the same breakpoint
+   the shell uses, with the list first because it is what you act on. */
+/* A flow of cards, not a master/detail pane. Reusing `.list-detail` here put every other card in
+   its 280px column and the rest in the 1fr one, so they staggered. */
+.group-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.list-detail {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .list-detail {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ── Overview ─────────────────────────────────────────────────── */
+.dash-forbidden { display: flex; align-items: center; justify-content: center; min-height: 60vh; padding: var(--space-5); }
+.dash-forbidden-card { max-width: 520px; }
+.dash-forbidden-card .panel-body { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-3); padding: var(--space-5); }
+.dash-forbidden-ico { width: 44px; height: 44px; display: grid; place-items: center; color: var(--color-accent); font-size: var(--text-xl); }
+.dash-split { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+@media (max-width: 960px) { .dash-split { grid-template-columns: minmax(0, 1fr); } }
+.signal-grid { display: grid; margin-top: -1px; }
+.signal-grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.signal-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 960px) { .signal-grid.cols-4, .signal-grid.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .signal-grid.cols-4, .signal-grid.cols-3 { grid-template-columns: minmax(0, 1fr); } }
+.signal-tile {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-left: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border);
+  margin: 0 0 -1px -1px;
+  cursor: pointer;
+}
+.signal-tile:hover { background: var(--color-surface-2); }
+.signal-value { font-size: var(--text-xl); line-height: var(--leading-xl); font-weight: var(--weight-semibold); letter-spacing: -0.02em; color: var(--color-text); font-variant-numeric: tabular-nums; }
+.signal-value.text-danger { color: var(--color-danger); }
+.signal-value.text-warning { color: var(--color-warning); }
+
+/* ── The one way a screen says it could not load ──────────────── */
+.api-error { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-6); }
+.api-error.compact { padding: var(--space-4); }
+.api-error-ico { width: 16px; height: 16px; display: grid; place-items: center; color: var(--color-danger); flex-shrink: 0; margin-top: var(--space-half); }

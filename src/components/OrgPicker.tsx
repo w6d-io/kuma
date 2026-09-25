@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useOrgCatalog } from '../api/orgCatalog';
 import { orgOptions } from '../lib/orgOptions';
+import { Select } from './ui';
 
 /**
  * Pick an organisation by name. Replaces the free-text UUID fields: nobody should have to paste an
@@ -14,7 +15,8 @@ export function OrgPicker({
   noneLabel,
   placeholder = 'Choose an organization…',
   disabled,
-  style,
+  size,
+  className,
   ariaLabel = 'Organization',
 }: {
   value: string;
@@ -24,7 +26,8 @@ export function OrgPicker({
   noneLabel?: string;
   placeholder?: string;
   disabled?: boolean;
-  style?: React.CSSProperties;
+  size?: 'sm' | 'md';
+  className?: string;
   ariaLabel?: string;
 }) {
   const { orgs, isLoading, error } = useOrgCatalog();
@@ -33,10 +36,10 @@ export function OrgPicker({
     [orgs, value, exclude],
   );
   return (
-    <select
-      className="input"
+    <Select
+      size={size}
+      className={className}
       aria-label={ariaLabel}
-      style={style}
       value={value}
       disabled={disabled || isLoading}
       onChange={(e) => onChange(e.target.value)}
@@ -50,6 +53,6 @@ export function OrgPicker({
           {o.known ? o.label : `${o.label} (unknown organization)`}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }

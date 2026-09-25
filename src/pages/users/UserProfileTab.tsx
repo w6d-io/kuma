@@ -4,6 +4,7 @@ import { useApp } from '../../contexts/AppContext';
 import { useUserIdentity } from '../../api/hooks';
 import { accountsApi } from '../../api/accounts';
 import { ApiErrorState } from '../../components/ApiErrorState';
+import { Button, Card, Field, Input } from '../../components/ui';
 import { profileChange, profileError, type ProfileDraft } from '../../lib/profile';
 import { toastFor } from '../../lib/apiError';
 import type { User } from '../../api/types';
@@ -33,7 +34,7 @@ export function UserProfileTab({ user }: { user: User }) {
     return <ApiErrorState compact what="this profile" error={identityQ.error} onRetry={() => identityQ.refetch()} />;
   }
   if (identityQ.isLoading) {
-    return <div className="panel" style={{ padding: 24, textAlign: 'center' }}><span className="small muted">Loading profile…</span></div>;
+    return <Card pad="md" className="text-center"><span className="small muted">Loading profile…</span></Card>;
   }
 
   const change = profileChange(baseline, draft);
@@ -68,38 +69,37 @@ export function UserProfileTab({ user }: { user: User }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div>
-        <label className="input-label" htmlFor="profile-name">Full name</label>
-        <input id="profile-name" className="input" value={draft.name} placeholder="Jane Doe"
+    <div className="stack gap-12">
+      <Field label="Full name">
+        <Input id="profile-name" value={draft.name} placeholder="Jane Doe"
           onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} />
-      </div>
-      <div>
-        <label className="input-label" htmlFor="profile-email">Email</label>
-        <input id="profile-email" className="input mono" type="text" inputMode="email" autoComplete="off"
+      </Field>
+      <Field
+        label="Email"
+        error={invalid && draft.email !== baseline.email ? invalid : undefined}
+        hint={invalid && draft.email !== baseline.email ? undefined : 'They sign in with this address from now on.'}
+      >
+        <Input id="profile-email" mono type="text" inputMode="email" autoComplete="off"
           data-1p-ignore data-lpignore="true" value={draft.email}
           onChange={e => setDraft(d => ({ ...d, email: e.target.value }))} />
-        <div className="small muted" style={{ marginTop: 4 }}>
-          {invalid && draft.email !== baseline.email
-            ? <span style={{ color: 'var(--red, #ef4444)' }}>{invalid}</span>
-            : 'They sign in with this address from now on.'}
-        </div>
-      </div>
-      <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
-        <button className="btn" onClick={() => setDraft(baseline)} disabled={!change || saving}>Reset</button>
-        <button className="btn primary" onClick={save} disabled={!change || !!invalid || saving}>
+      </Field>
+      <div className="row justify-end gap-8">
+        <Button onClick={() => setDraft(baseline)} disabled={!change || saving}>Reset</Button>
+        <Button variant="primary" onClick={save} disabled={!change || !!invalid || saving}>
           {saving ? 'Saving…' : 'Save profile'}
-        </button>
+        </Button>
       </div>
-      <div className="panel" style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 500, fontSize: 12.5 }}>Recovery email</div>
-          <div className="small muted">Send a password-reset link.</div>
+      <Card pad="md">
+        <div className="row gap-12">
+          <div className="flex-1">
+            <div className="fw-medium text-base">Recovery email</div>
+            <div className="small muted">Send a password-reset link.</div>
+          </div>
+          <Button disabled={sendingRecovery} onClick={sendRecovery}>
+            {sendingRecovery ? 'Sending…' : 'Send recovery email'}
+          </Button>
         </div>
-        <button className="btn" disabled={sendingRecovery} onClick={sendRecovery}>
-          {sendingRecovery ? 'Sending…' : 'Send recovery email'}
-        </button>
-      </div>
+      </Card>
     </div>
   );
 }

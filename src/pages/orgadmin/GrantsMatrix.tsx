@@ -3,8 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { KratosIdentity } from '../../api/client';
 import { orgAccessApi, refusedOf, type AssignableGroup, type OrgGrants, type RefusedGroup } from '../../api/orgAccess';
 import { changedMembers, columnsFor, sameGroups, toggleGrant } from '../../lib/orgGrants';
-import { Avatar, Chip, EmptyHint } from '../../components/ui/Primitives';
-import { SkeletonRows } from '../../components/ui/Skeleton';
+import { Avatar, Badge, Button, Checkbox, EmptyHint, EmptyRow, LoadingRows, Table, Th } from '../../components/ui';
 import { makeToastErr, type PushToast } from './toastErr';
 
 const siteSummary = (g: AssignableGroup | undefined) =>
@@ -64,25 +63,24 @@ export function GrantsMatrix({ org, orgName, members, loading, saved, assignable
 
   const cols = columns.length + 3;
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table className="table">
+    <Table>
         <thead>
           <tr>
             <th>Person</th>
             {columns.map((c) => (
-              <th key={c.name} title={c.grantable ? siteSummary(byName.get(c.name)) : 'Held here, but not a group you may grant'} style={{ textAlign: 'center' }}>
+              <Th key={c.name} align="center" title={c.grantable ? siteSummary(byName.get(c.name)) : 'Held here, but not a group you may grant'}>
                 {c.name}{!c.grantable && <span className="muted"> · not yours</span>}
-              </th>
+              </Th>
             ))}
             <th />
             <th />
           </tr>
         </thead>
         <tbody>
-          {loading && <SkeletonRows rows={4} cols={cols} />}
-          {!loading && members.length === 0 && <tr><td colSpan={cols}><EmptyHint>No members yet — add someone who has an account, or invite a new person.</EmptyHint></td></tr>}
+          {loading && <LoadingRows rows={4} cols={cols} />}
+          {!loading && members.length === 0 && <EmptyRow colSpan={cols}><EmptyHint>No members yet — add someone who has an account, or invite a new person.</EmptyHint></EmptyRow>}
           {!loading && columns.length === 0 && members.length > 0 && (
-            <tr><td colSpan={cols} className="small muted" style={{ padding: 12 }}>There is no group you may grant in this organization. Members keep their site access.</td></tr>
+            <tr><td colSpan={cols} className="small muted orgs-note">There is no group you may grant in this organization. Members keep their site access.</td></tr>
           )}
           {!loading && members.map((m) => {
             const email = m.traits?.email ?? '';
@@ -92,42 +90,41 @@ export function GrantsMatrix({ org, orgName, members, loading, saved, assignable
             return (
               <FragmentRow key={m.id} cols={cols} refused={why}>
                 <td>
-                  <div className="row" style={{ gap: 10 }}>
+                  <div className="row gap-8">
                     <Avatar name={m.traits?.name || email} />
                     <div>
-                      <div style={{ fontWeight: 500 }}>{m.traits?.name || email}{m.state !== 'active' && <> <Chip tone="warn">inactive</Chip></>}</div>
+                      <div className="fw-medium">{m.traits?.name || email}{m.state !== 'active' && <> <Badge tone="warning">inactive</Badge></>}</div>
                       <div className="small muted mono">{email}</div>
                     </div>
                   </div>
                 </td>
                 {columns.map((c) => (
-                  <td key={c.name} style={{ textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      aria-label={`${c.name} for ${email}`}
+                  <td key={c.name} className="text-center">
+                    <Checkbox
+                      className="orgs-grant"
+                      label={<span className="sr-only">{`${c.name} for ${email}`}</span>}
                       checked={mine.includes(c.name)}
                       disabled={readOnly || !email || (!c.grantable && !mine.includes(c.name)) || saving === email}
                       onChange={() => setDraft((d) => toggleGrant(d, email, c.name))}
                     />
                   </td>
                 ))}
-                <td style={{ whiteSpace: 'nowrap' }}>
+                <td className="nowrap">
                   {dirty && (
                     <>
-                      <button className="btn primary sm" disabled={saving === email} onClick={() => save(m, email)}>{saving === email ? 'Saving…' : 'Save'}</button>{' '}
-                      <button className="btn ghost sm" disabled={saving === email} onClick={() => { setDraft((d) => ({ ...d, [email]: saved[email] ?? [] })); setRefused((r) => ({ ...r, [email]: [] })); }}>Undo</button>
+                      <Button variant="primary" size="sm" disabled={saving === email} onClick={() => save(m, email)}>{saving === email ? 'Saving…' : 'Save'}</Button>{' '}
+                      <Button variant="ghost" size="sm" disabled={saving === email} onClick={() => { setDraft((d) => ({ ...d, [email]: saved[email] ?? [] })); setRefused((r) => ({ ...r, [email]: [] })); }}>Undo</Button>
                     </>
                   )}
                 </td>
-                <td style={{ textAlign: 'right' }}>
-                  <button className="btn ghost sm" onClick={() => onRemove(m)} title={`Remove from ${orgName} only`}>Remove</button>
+                <td className="text-right">
+                  <Button variant="ghost" size="sm" onClick={() => onRemove(m)} title={`Remove from ${orgName} only`}>Remove</Button>
                 </td>
               </FragmentRow>
             );
           })}
         </tbody>
-      </table>
-    </div>
+    </Table>
   );
 }
 
@@ -138,9 +135,9 @@ function FragmentRow({ cols, refused, children }: { cols: number; refused: Refus
       <tr>{children}</tr>
       {refused.length > 0 && (
         <tr>
-          <td colSpan={cols} role="alert" style={{ background: 'var(--err-soft)' }}>
-            <div className="small" style={{ fontWeight: 500, color: 'var(--err)' }}>Nothing was saved for this person. Refused:</div>
-            <ul className="small" style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+          <td colSpan={cols} role="alert" className="orgs-refused">
+            <div className="small fw-medium text-danger">Nothing was saved for this person. Refused:</div>
+            <ul className="small orgs-refused-list">
               {refused.map((r) => <li key={r.group}><span className="mono">{r.group}</span>{r.reason ? ` — ${r.reason}` : ''}</li>)}
             </ul>
           </td>

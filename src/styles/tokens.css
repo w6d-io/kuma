@@ -1,0 +1,207 @@
+/* The design tokens: every colour, corner, gap, type size, height, shadow and duration the console
+ * paints with, named for what it is FOR and mapped onto the Strada design system.
+ *
+ * Strada (vendor/strada-tokens.css) is the palette and stays untouched: a new version of it moves
+ * this console without a hunt through hex codes. It is LIGHT ONLY, and a few of its values fail
+ * contrast as text, so this file is where the two gaps are closed:
+ *
+ *   - light: Strada values used as they are, except where one fails WCAG AA as text on white. Those
+ *     are darkened FROM the Strada value with color-mix rather than replaced, so the hue stays theirs:
+ *     accent and info (#1976d2, their own hover blue), success, warning, danger. Text-subtle is the one grey of
+ *     ours — their #999 is 2.8:1 on white.
+ *   - dark: derived here. Neutrals are chosen by hand (Strada has none); status and accent colours are
+ *     the Strada hues lightened with color-mix until they hold the same contrast on a dark ground.
+ *
+ * contrast.test.ts reads this file and fails if a text pair drops under 4.5:1 in either theme.
+ *
+ * Components read ONLY these names. The Strada names are read here and nowhere else.
+ */
+
+/* `[data-theme]` on an element as well as on the root, so the style guide can show a component in
+   the other theme beside the page's own. */
+:root,
+[data-theme="light"] {
+  /* What the BROWSER paints — form controls, scrollbars, the colours a bare control falls back to.
+     Undeclared, they stay light under a dark theme. Restated per theme below. */
+  color-scheme: light;
+
+  /* ── Colour: surfaces ─────────────────────────────────────────────── */
+  --color-bg: var(--surface);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-sidebar: #f7f8fa;                 /* their sidebar is pure white: a rail that does not read as one */
+  --color-hover: var(--surface-hover);
+  --color-scrim: rgb(0 0 0 / 0.35);
+
+  /* ── Colour: text ─────────────────────────────────────────────────── */
+  --color-text: var(--fg-1);
+  --color-text-muted: var(--fg-2);
+  --color-text-subtle: #707070;             /* the lightest grey that still reads 4.5:1 on the grey surface */
+  --color-text-disabled: var(--fg-disabled);
+
+  /* ── Colour: lines ────────────────────────────────────────────────── */
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  /* ── Colour: actions ──────────────────────────────────────────────── */
+  /* Primary actions are the wordmark charcoal; the accent (their product blue) marks selection,
+     links and focus. The wordmark red reads as an alarm at button size, so it is not used. */
+  --color-primary: var(--strada-charcoal);
+  --color-primary-hover: color-mix(in srgb, var(--strada-charcoal) 82%, white);
+  --color-on-primary: var(--fg-on-primary);
+  --color-accent: color-mix(in srgb, var(--primary-hover) 92%, black);
+  --color-accent-hover: color-mix(in srgb, var(--primary-hover) 80%, black);
+  --color-on-accent: var(--fg-on-primary);
+  --color-accent-soft: var(--primary-soft-3);
+  --color-accent-line: var(--primary-soft);
+  --color-focus-ring: var(--primary);
+
+  /* ── Colour: status ───────────────────────────────────────────────── */
+  --color-success: color-mix(in srgb, var(--success) 70%, black);
+  --color-success-soft: var(--success-soft);
+  --color-success-line: color-mix(in srgb, var(--success) 35%, var(--surface));
+  --color-warning: color-mix(in srgb, var(--warning) 60%, black);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-line: color-mix(in srgb, var(--warning) 40%, var(--surface));
+  --color-danger: color-mix(in srgb, var(--danger) 80%, black);
+  --color-danger-hover: color-mix(in srgb, var(--danger) 68%, black);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-line: color-mix(in srgb, var(--danger) 35%, var(--surface));
+  --color-on-danger: var(--fg-on-primary);
+  --color-info: color-mix(in srgb, var(--info-link) 92%, black);
+  --color-info-soft: var(--primary-soft-3);
+  --color-info-line: var(--primary-soft);
+
+  /* ── Radii: three, all Strada's ───────────────────────────────────── */
+  /* --radius-sm 3px (chips inside text, kbd), --radius-md 6px (controls, cards, dialogs),
+     --radius-pill (badges, switches, avatars). Strada defines all three under these names. */
+  --radius: var(--radius-md);
+
+  /* ── Spacing: Strada's 4px scale, --space-1 (4px) … --space-7 (48px) ─ */
+  --space-half: 2px;
+
+  /* ── Type: six sizes, each with its line height ───────────────────── */
+  --text-xs: var(--fs-11);   --leading-xs: 16px;
+  --text-sm: var(--fs-12);   --leading-sm: 18px;
+  --text-base: var(--fs-13); --leading-base: 20px;
+  --text-md: var(--fs-14);   --leading-md: 20px;
+  --text-lg: var(--fs-16);   --leading-lg: 24px;
+  --text-xl: var(--fs-20);   --leading-xl: 28px;
+  --weight-regular: var(--fw-regular);
+  --weight-medium: var(--fw-medium);
+  --weight-semibold: 600;
+  --weight-bold: var(--fw-bold);
+
+  /* ── Controls ─────────────────────────────────────────────────────── */
+  --control-sm: 28px;
+  --control-md: 36px;
+
+  /* ── Elevation ────────────────────────────────────────────────────── */
+  /* --shadow-sm, --shadow-md, --shadow-lg are Strada's; the dark theme restates them. */
+  --shadow-focus: 0 0 0 3px var(--color-accent-line);
+
+  /* ── Motion ───────────────────────────────────────────────────────── */
+  --duration-fast: 80ms;
+  --duration-base: var(--dur-fast);
+  --duration-slow: var(--dur);
+  --easing: var(--ease-standard);
+
+  /* ── Layers ───────────────────────────────────────────────────────── */
+  --z-sticky: 20;
+  --z-overlay: 60;
+  --z-popover: 70;
+  --z-command: 80;
+  --z-toast: 95;
+}
+
+/* The dark half, declared twice so an explicit choice wins over the system preference in both
+   directions. The two blocks are identical; contrast.test.ts checks that they stay so. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-bg: #1f2023;
+    --color-surface: #1f2023;
+    --color-surface-2: #24262a;
+    --color-surface-3: #2a2c30;
+    --color-sidebar: #131416;
+    --color-hover: rgb(255 255 255 / 0.06);
+    --color-scrim: rgb(0 0 0 / 0.55);
+    --color-text: #e9eaec;
+    --color-text-muted: #c2c6cd;
+    --color-text-subtle: #9aa1ab;
+    --color-text-disabled: #757c86;
+    --color-border: #313438;
+    --color-border-strong: #43474d;
+    --color-primary: #e9eaec;
+    --color-primary-hover: #c2c6cd;
+    --color-on-primary: #1f2023;
+    --color-accent: color-mix(in srgb, var(--primary) 60%, white);
+    --color-accent-hover: color-mix(in srgb, var(--primary) 45%, white);
+    --color-on-accent: #10161d;
+    --color-accent-soft: rgb(100 181 246 / 0.12);
+    --color-accent-line: rgb(100 181 246 / 0.3);
+    --color-focus-ring: color-mix(in srgb, var(--primary) 60%, white);
+    --color-success: color-mix(in srgb, var(--success) 78%, white);
+    --color-success-soft: rgb(102 187 106 / 0.12);
+    --color-success-line: rgb(102 187 106 / 0.35);
+    --color-warning: var(--warning);
+    --color-warning-soft: rgb(255 183 77 / 0.12);
+    --color-warning-line: rgb(255 183 77 / 0.35);
+    --color-danger: color-mix(in srgb, var(--danger) 75%, white);
+    --color-danger-hover: color-mix(in srgb, var(--danger) 60%, white);
+    --color-danger-soft: rgb(239 83 80 / 0.12);
+    --color-danger-line: rgb(239 83 80 / 0.35);
+    --color-on-danger: #10161d;
+    --color-info: color-mix(in srgb, var(--theme-blue) 72%, white);
+    --color-info-soft: rgb(79 195 247 / 0.12);
+    --color-info-line: rgb(79 195 247 / 0.3);
+    --shadow-sm: 0 1px 0 rgb(0 0 0 / 0.3);
+    --shadow-md: 0 8px 24px rgb(0 0 0 / 0.4);
+    --shadow-lg: 0 20px 60px rgb(0 0 0 / 0.55);
+  }
+}
+
+:root[data-theme="dark"],
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #1f2023;
+  --color-surface: #1f2023;
+  --color-surface-2: #24262a;
+  --color-surface-3: #2a2c30;
+  --color-sidebar: #131416;
+  --color-hover: rgb(255 255 255 / 0.06);
+  --color-scrim: rgb(0 0 0 / 0.55);
+  --color-text: #e9eaec;
+  --color-text-muted: #c2c6cd;
+  --color-text-subtle: #9aa1ab;
+  --color-text-disabled: #757c86;
+  --color-border: #313438;
+  --color-border-strong: #43474d;
+  --color-primary: #e9eaec;
+  --color-primary-hover: #c2c6cd;
+  --color-on-primary: #1f2023;
+  --color-accent: color-mix(in srgb, var(--primary) 60%, white);
+  --color-accent-hover: color-mix(in srgb, var(--primary) 45%, white);
+  --color-on-accent: #10161d;
+  --color-accent-soft: rgb(100 181 246 / 0.12);
+  --color-accent-line: rgb(100 181 246 / 0.3);
+  --color-focus-ring: color-mix(in srgb, var(--primary) 60%, white);
+  --color-success: color-mix(in srgb, var(--success) 78%, white);
+  --color-success-soft: rgb(102 187 106 / 0.12);
+  --color-success-line: rgb(102 187 106 / 0.35);
+  --color-warning: var(--warning);
+  --color-warning-soft: rgb(255 183 77 / 0.12);
+  --color-warning-line: rgb(255 183 77 / 0.35);
+  --color-danger: color-mix(in srgb, var(--danger) 75%, white);
+  --color-danger-hover: color-mix(in srgb, var(--danger) 60%, white);
+  --color-danger-soft: rgb(239 83 80 / 0.12);
+  --color-danger-line: rgb(239 83 80 / 0.35);
+  --color-on-danger: #10161d;
+  --color-info: color-mix(in srgb, var(--theme-blue) 72%, white);
+  --color-info-soft: rgb(79 195 247 / 0.12);
+  --color-info-line: rgb(79 195 247 / 0.3);
+  --shadow-sm: 0 1px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 20px 60px rgb(0 0 0 / 0.55);
+}

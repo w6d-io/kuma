@@ -1,4 +1,4 @@
-import { Chip } from '../components/ui/Primitives';
+import { Badge, Card, PageHeader } from '../components/ui';
 import { useAuthorizationModel, useStats } from '../api/hooks';
 import { scopesOf, grantsEveryOrganisation, hierarchyOf, resolveRoles, summarise, type RoleCatalogue } from '../policy/model';
 import { I } from '../components/ui/Icons';
@@ -28,36 +28,32 @@ export function GroupsPage() {
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>Groups</h1>
-          <div className="sub">
-            <span className="mono">groups.json</span> · what each group grants, per organisation
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title="Groups"
+        sub={<><span className="mono">groups.json</span> · what each group grants, per organisation</>}
+      />
 
-      <div className="panel" style={{ padding: 12, marginBottom: 12 }}>
+      <Card pad="sm" className="mb-12">
         <div className="small muted">
           Reviewed in Git and shipped with the policy bundle — this screen reports it and cannot
           change it. To add a group or move a permission, change the model and let Argo sync it.
         </div>
-      </div>
+      </Card>
 
       {error ? (
-        <div className="panel" style={{ padding: 16 }}>
+        <Card pad="md">
           <strong>The authorization model could not be read.</strong>
-          <div className="small muted" style={{ marginTop: 4 }}>
+          <div className="small muted mt-4">
             This is not an empty model: nothing here says what anybody holds. Retry, and check that
             the policy ConfigMaps are present in the namespace.
           </div>
-        </div>
+        </Card>
       ) : isLoading ? (
         <div aria-busy="true" aria-label="Reading the model"><SkeletonPanel lines={5} /></div>
       ) : Object.keys(groups).length === 0 ? (
-        <div className="panel" style={{ padding: 16 }}>
+        <Card pad="md">
           <span className="small muted">The model declares no group.</span>
-        </div>
+        </Card>
       ) : (
         <div className="group-cards">
           {Object.entries(groups).map(([group, definition]) => {
@@ -65,28 +61,28 @@ export function GroupsPage() {
             const everywhere = grantsEveryOrganisation(definition);
             const scopes = scopesOf(definition);
             return (
-              <div key={group} className="panel" style={{ padding: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <Card key={group} pad="sm">
+                <div className="row gap-8 wrap">
                   <strong className="mono">{group}</strong>
                   {/* Held in every organisation at once. Handing one out goes through the actor's
                       authority, the target's second factor and the actor's own step-up. */}
                   {everywhere && (
-                    <Chip tone="accent" title="Held in every organisation at once">
+                    <Badge tone="accent" title="Held in every organisation at once">
                       <span className="chip-ico">{I.lock}</span>every organisation
-                    </Chip>
+                    </Badge>
                   )}
                   <span className="small muted">
                     {members} {members === 1 ? 'member' : 'members'}
                   </span>
                 </div>
 
-                <div className="small muted" style={{ marginTop: 4 }}>{summarise(definition, roles)}</div>
+                <div className="small muted mt-4">{summarise(definition, roles)}</div>
 
                 {under[group]?.length > 0 && (
                   /* Not decoration: it answers "is this one stronger than that one", which is the
                      question somebody handing out a group actually has. Read off the model, so it
                      cannot claim a rank the engine does not enforce. */
-                  <div className="small muted" style={{ marginTop: 6 }}>
+                  <div className="small muted mt-8">
                     Includes everything{' '}
                     {under[group].map((below, i) => (
                       <span key={below}>
@@ -98,7 +94,7 @@ export function GroupsPage() {
                   </div>
                 )}
 
-                <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                <div className="grid gap-8 mt-8">
                   {scopes.map(scope => (
                     <ScopeRow
                       key={scope.key}
@@ -110,7 +106,7 @@ export function GroupsPage() {
                   ))}
                   {scopes.length === 0 && <span className="small muted">Grants nothing.</span>}
                 </div>
-              </div>
+              </Card>
             );
           })}
         </div>
@@ -134,29 +130,29 @@ function ScopeRow({
   const { permissions, undefined: undefined_ } = resolveRoles(roleNames, roles);
 
   return (
-    <div style={{ borderTop: '1px solid var(--line)', paddingTop: 8 }}>
-      <div className={mono ? 'small mono' : 'small'} style={{ color: 'var(--ink-2)' }}>
+    <div className="group-scope">
+      <div className={mono ? 'small mono text-muted' : 'small text-muted'}>
         {scope}
       </div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+      <div className="row gap-4 wrap mt-4">
         {roleNames.length === 0 ? (
           <span className="small muted">no role</span>
         ) : (
           roleNames.map(r => (
-            <Chip key={r} tone={roles[r] ? 'info' : 'warn'}>
+            <Badge key={r} tone={roles[r] ? 'info' : 'warning'}>
               {r}
               {!roles[r] && ' · not defined'}
-            </Chip>
+            </Badge>
           ))
         )}
       </div>
       {permissions.length > 0 && (
-        <div className="small mono" style={{ marginTop: 6, color: 'var(--ink-2)' }}>
+        <div className="small mono text-muted mt-8">
           {permissions.join(' · ')}
         </div>
       )}
       {undefined_.length > 0 && (
-        <div className="small" style={{ marginTop: 4, color: 'var(--warn)' }}>
+        <div className="small text-warning mt-4">
           {undefined_.join(', ')} {undefined_.length === 1 ? 'is' : 'are'} not in{' '}
           <span className="mono">roles.json</span>, so{' '}
           {undefined_.length === 1 ? 'it grants' : 'they grant'} nothing.

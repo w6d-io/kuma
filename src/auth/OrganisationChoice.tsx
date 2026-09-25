@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Organisation } from './directory';
+import { ButtonBase } from '../components/ui';
 
 /**
  * Which organisation this session acts in.
@@ -43,10 +44,10 @@ export function OrganisationChoice({
       <ul>
         {organisations.map((organisation) => (
           <li key={organisation.id}>
-            <button type="button" disabled={leaving} onClick={() => void choose(organisation.id)}>
+            <ButtonBase className="choice-opt" disabled={leaving} onClick={() => void choose(organisation.id)}>
               <span className="name">{organisation.name}</span>
               <span className="id">{organisation.id}</span>
-            </button>
+            </ButtonBase>
           </li>
         ))}
       </ul>
@@ -71,9 +72,9 @@ export function DirectoryUnavailable({ reason, onRetry }: { reason: string; onRe
       <p className="refused">{reason}</p>
       <ul>
         <li>
-          <button type="button" onClick={onRetry}>
+          <ButtonBase className="choice-opt" onClick={onRetry}>
             <span className="name">Try again</span>
-          </button>
+          </ButtonBase>
         </li>
       </ul>
     </main>

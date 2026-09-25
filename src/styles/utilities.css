@@ -1,0 +1,117 @@
+/* Small single-purpose classes for layout and text, every value on the token scale.
+
+   Named in pixels because that is how the 4px scale reads — `mt-8` is 8px, `gap-12` is 12px — and
+   the names that existed before the tokens kept that convention. Only scale steps exist: there is
+   no `mt-10`, and that is the point. Anything more particular than these belongs to a component or
+   to a class in the feature's stylesheet, not to a `style={{}}`. */
+
+/* ── Layout ─────────────────────────────────────────────────── */
+.row { display: flex; align-items: center; gap: var(--space-2); }
+.col { display: flex; flex-direction: column; gap: var(--space-2); }
+.stack { display: flex; flex-direction: column; }
+.inline-flex { display: inline-flex; align-items: center; }
+.block { display: block; }
+.hidden { display: none; }
+.wrap { flex-wrap: wrap; }
+.items-start { align-items: flex-start; }
+.items-end { align-items: flex-end; }
+.items-baseline { align-items: baseline; }
+.items-stretch { align-items: stretch; }
+.justify-between { justify-content: space-between; }
+.justify-end { justify-content: flex-end; }
+.justify-center { justify-content: center; }
+.flex-1 { flex: 1; }
+.min-w-0 { min-width: 0; }
+.shrink-0 { flex-shrink: 0; }
+.ml-auto { margin-left: auto; }
+.w-full { width: 100%; }
+.w-auto { width: auto; }
+.maxw-sm { max-width: 360px; }
+.maxw-md { max-width: 560px; }
+.maxw-lg { max-width: 720px; }
+.center-block { margin-left: auto; margin-right: auto; }
+.relative { position: relative; }
+.grid { display: grid; gap: var(--space-3); }
+.grid.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.span-2 { grid-column: span 2; }
+.span-all { grid-column: 1 / -1; }
+@media (max-width: 960px) {
+  .grid.g2, .grid.g3, .grid.g4 { grid-template-columns: minmax(0, 1fr); }
+  .span-2 { grid-column: auto; }
+}
+.border-t { border-top: 1px solid var(--color-border); }
+.border-b { border-bottom: 1px solid var(--color-border); }
+.divider { height: 1px; background: var(--color-border); border: 0; margin: var(--space-3) 0; }
+
+/* ── Spacing ────────────────────────────────────────────────── */
+.gap-0 { gap: 0; }
+.gap-2 { gap: var(--space-half); }
+.gap-4 { gap: var(--space-1); }
+.gap-8 { gap: var(--space-2); }
+.gap-12 { gap: var(--space-3); }
+.gap-16 { gap: var(--space-4); }
+.gap-24 { gap: var(--space-5); }
+.gap-32 { gap: var(--space-6); }
+.gap-48 { gap: var(--space-7); }
+.m-0 { margin: 0; } .mt-0 { margin-top: 0; } .mb-0 { margin-bottom: 0; } .ml-0 { margin-left: 0; } .mr-0 { margin-right: 0; }
+.m-2 { margin: var(--space-half); } .mt-2 { margin-top: var(--space-half); } .mb-2 { margin-bottom: var(--space-half); } .ml-2 { margin-left: var(--space-half); } .mr-2 { margin-right: var(--space-half); }
+.m-4 { margin: var(--space-1); } .mt-4 { margin-top: var(--space-1); } .mb-4 { margin-bottom: var(--space-1); } .ml-4 { margin-left: var(--space-1); } .mr-4 { margin-right: var(--space-1); }
+.m-8 { margin: var(--space-2); } .mt-8 { margin-top: var(--space-2); } .mb-8 { margin-bottom: var(--space-2); } .ml-8 { margin-left: var(--space-2); } .mr-8 { margin-right: var(--space-2); }
+.m-12 { margin: var(--space-3); } .mt-12 { margin-top: var(--space-3); } .mb-12 { margin-bottom: var(--space-3); } .ml-12 { margin-left: var(--space-3); } .mr-12 { margin-right: var(--space-3); }
+.m-16 { margin: var(--space-4); } .mt-16 { margin-top: var(--space-4); } .mb-16 { margin-bottom: var(--space-4); } .ml-16 { margin-left: var(--space-4); } .mr-16 { margin-right: var(--space-4); }
+.m-24 { margin: var(--space-5); } .mt-24 { margin-top: var(--space-5); } .mb-24 { margin-bottom: var(--space-5); } .ml-24 { margin-left: var(--space-5); } .mr-24 { margin-right: var(--space-5); }
+.m-32 { margin: var(--space-6); } .mt-32 { margin-top: var(--space-6); } .mb-32 { margin-bottom: var(--space-6); } .ml-32 { margin-left: var(--space-6); } .mr-32 { margin-right: var(--space-6); }
+.m-48 { margin: var(--space-7); } .mt-48 { margin-top: var(--space-7); } .mb-48 { margin-bottom: var(--space-7); } .ml-48 { margin-left: var(--space-7); } .mr-48 { margin-right: var(--space-7); }
+.p-0 { padding: 0; } .px-0 { padding-left: 0; padding-right: 0; } .py-0 { padding-top: 0; padding-bottom: 0; }
+.p-2 { padding: var(--space-half); } .px-2 { padding-left: var(--space-half); padding-right: var(--space-half); } .py-2 { padding-top: var(--space-half); padding-bottom: var(--space-half); }
+.p-4 { padding: var(--space-1); } .px-4 { padding-left: var(--space-1); padding-right: var(--space-1); } .py-4 { padding-top: var(--space-1); padding-bottom: var(--space-1); }
+.p-8 { padding: var(--space-2); } .px-8 { padding-left: var(--space-2); padding-right: var(--space-2); } .py-8 { padding-top: var(--space-2); padding-bottom: var(--space-2); }
+.p-12 { padding: var(--space-3); } .px-12 { padding-left: var(--space-3); padding-right: var(--space-3); } .py-12 { padding-top: var(--space-3); padding-bottom: var(--space-3); }
+.p-16 { padding: var(--space-4); } .px-16 { padding-left: var(--space-4); padding-right: var(--space-4); } .py-16 { padding-top: var(--space-4); padding-bottom: var(--space-4); }
+.p-24 { padding: var(--space-5); } .px-24 { padding-left: var(--space-5); padding-right: var(--space-5); } .py-24 { padding-top: var(--space-5); padding-bottom: var(--space-5); }
+.p-32 { padding: var(--space-6); } .px-32 { padding-left: var(--space-6); padding-right: var(--space-6); } .py-32 { padding-top: var(--space-6); padding-bottom: var(--space-6); }
+.p-48 { padding: var(--space-7); } .px-48 { padding-left: var(--space-7); padding-right: var(--space-7); } .py-48 { padding-top: var(--space-7); padding-bottom: var(--space-7); }
+
+/* ── Text ───────────────────────────────────────────────────── */
+.text-xs { font-size: var(--text-xs); line-height: var(--leading-xs); }
+.text-sm, .small { font-size: var(--text-sm); }
+.text-base { font-size: var(--text-base); }
+.text-md { font-size: var(--text-md); }
+.text-lg { font-size: var(--text-lg); line-height: var(--leading-lg); }
+.text-xl { font-size: var(--text-xl); line-height: var(--leading-xl); }
+.fw-regular { font-weight: var(--weight-regular); }
+.fw-medium { font-weight: var(--weight-medium); }
+.fw-semibold { font-weight: var(--weight-semibold); }
+.muted, .text-subtle { color: var(--color-text-subtle); }
+.text-muted, .ink-2 { color: var(--color-text-muted); }
+.text-disabled { color: var(--color-text-disabled); }
+.text-default { color: var(--color-text); }
+.text-accent { color: var(--color-accent); }
+.text-success { color: var(--color-success); }
+.text-warning { color: var(--color-warning); }
+.text-danger { color: var(--color-danger); }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+.nowrap { white-space: nowrap; }
+.pre-wrap { white-space: pre-wrap; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.break-all { word-break: break-all; }
+.break-anywhere { overflow-wrap: anywhere; }
+.tabular { font-variant-numeric: tabular-nums; }
+.leading-relaxed { line-height: 1.6; }
+.eyebrow {
+  font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--color-text-subtle); font-weight: var(--weight-medium);
+}
+.cursor-pointer { cursor: pointer; }
+
+/* ── Icons ──────────────────────────────────────────────────── */
+/* A box for an icon beside text, sized to the text rather than to the glyph's own box. */
+.icon { width: 14px; height: 14px; display: inline-grid; place-items: center; flex: none; }
+.icon-lg { width: 20px; height: 20px; display: inline-grid; place-items: center; flex: none; font-size: var(--text-lg); }
+.chip-ico, .kv-ico { width: 11px; height: 11px; display: inline-grid; place-items: center; flex: none; }
+.kv-ico { vertical-align: -1px; }
+.chip-ico i, .kv-ico i { font-size: var(--text-xs); line-height: 1; }

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { emptyOrganisationsHint, organisationsSourceNote } from '../auth/authority';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
-import { ConfirmDialog, EmptyHint } from '../components/ui/Primitives';
+import { Button, Callout, Card, ConfirmDialog, EmptyHint, PageHeader, Select } from '../components/ui';
 import { SkeletonPanel } from '../components/ui/Skeleton';
 import { OrgPicker } from '../components/OrgPicker';
 import { ApiErrorState } from '../components/ApiErrorState';
@@ -38,7 +38,7 @@ export function OrgAdminPage() {
   if (isLoading) {
     return (
       <>
-        <div className="page-head"><div><h1>My org</h1><div className="sub">Reading the organizations you administer…</div></div></div>
+        <PageHeader title="My org" sub="Reading the organizations you administer…" />
         <div aria-busy="true"><SkeletonPanel lines={4} /></div>
       </>
     );
@@ -47,33 +47,31 @@ export function OrgAdminPage() {
   if (!show) {
     return (
       <>
-        <div className="page-head"><div><h1>My org</h1><div className="sub">{organisationsSourceNote(scope) ?? 'Hand out your organization\'s groups to its members'}</div></div></div>
-        <div className="panel" style={{ padding: 40 }}><EmptyHint>{emptyOrganisationsHint(scope).message}</EmptyHint></div>
+        <PageHeader title="My org" sub={organisationsSourceNote(scope) ?? 'Hand out your organization\'s groups to its members'} />
+        <Card className="p-32"><EmptyHint>{emptyOrganisationsHint(scope).message}</EmptyHint></Card>
       </>
     );
   }
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>My org</h1>
-          <div className="sub">Groups you grant here count on this organization&apos;s routes only — members keep their site access</div>
-        </div>
-        <div className="page-actions">
+      <PageHeader
+        title="My org"
+        sub={<>Groups you grant here count on this organization&apos;s routes only — members keep their site access</>}
+        actions={<>
           {pickAny
-            ? <OrgPicker value={active} onChange={(id) => setPage('orgadmin', id || null)} style={{ minWidth: 240 }} />
+            ? <span className="orgs-picker"><OrgPicker value={active} onChange={(id) => setPage('orgadmin', id || null)} /></span>
             : administered.length > 1 && (
-              <select className="input" aria-label="Organization" style={{ width: 'auto' }} value={active} onChange={(e) => setPage('orgadmin', e.target.value)}>
+              <Select aria-label="Organization" className="w-auto" value={active} onChange={(e) => setPage('orgadmin', e.target.value)}>
                 {administered.map((o) => <option key={o} value={o}>{names[o] ?? o}</option>)}
-              </select>
+              </Select>
             )}
-          {active && <button className="btn" onClick={() => setPage('apikeys', active)}><span style={{ width: 14, height: 14, display: 'grid', placeItems: 'center' }}>{I.key}</span> API keys</button>}
-        </div>
-      </div>
+          {active && <Button icon={I.key} onClick={() => setPage('apikeys', active)}>API keys</Button>}
+        </>}
+      />
       {active
         ? <OrgMembers key={active} org={active} orgName={orgName} pushToast={pushToast} />
-        : <div className="panel" style={{ padding: 40 }}><EmptyHint>Choose an organization to manage its members.</EmptyHint></div>}
+        : <Card className="p-32"><EmptyHint>Choose an organization to manage its members.</EmptyHint></Card>}
     </>
   );
 }
@@ -112,20 +110,19 @@ function OrgMembers({ org, orgName, pushToast }: { org: string; orgName: string;
   return (
     <>
       {grantsMissing && (
-        <div className="panel mb-12" role="status" style={{ padding: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span style={{ width: 14, height: 14, display: 'grid', placeItems: 'center', color: 'var(--warn)' }}>{I.info}</span>
-          <span className="small">Org grants are not available yet on this server. Members are listed; granting is off until it is.</span>
+        <div className="mb-12" role="status">
+          <Callout tone="warning" icon={I.info}>
+            <span className="small">Org grants are not available yet on this server. Members are listed; granting is off until it is.</span>
+          </Callout>
         </div>
       )}
       {hardError && <div className="mb-12"><ApiErrorState compact error={hardError} what="this organization" onRetry={() => { usersQ.refetch(); grantsQ.refetch(); assignableQ.refetch(); }} /></div>}
 
-      <div className="panel">
-        <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
+      <Card>
+        <div className="row wrap gap-8 px-12 py-8 border-b">
           <AddMember org={org} orgName={orgName} pushToast={pushToast} />
           <div className="flex-1" />
-          <button className="btn primary" onClick={() => setInvite(true)}>
-            <span style={{ width: 14, height: 14, display: 'grid', placeItems: 'center' }}>{I.plus}</span> Invite new person
-          </button>
+          <Button variant="primary" size="sm" icon={I.plus} onClick={() => setInvite(true)}>Invite new person</Button>
         </div>
         <GrantsMatrix
           org={org}
@@ -138,7 +135,7 @@ function OrgMembers({ org, orgName, pushToast }: { org: string; orgName: string;
           onRemove={setRemoving}
           pushToast={pushToast}
         />
-      </div>
+      </Card>
 
       {invite && (
         <InviteDrawer

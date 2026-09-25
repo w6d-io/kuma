@@ -1,0 +1,196 @@
+.alevel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.alevel .bars { display: inline-flex; gap: 2px; align-items: flex-end; height: 12px; }
+.alevel .bar {
+  width: 3px; height: 4px;
+  background: var(--color-border-strong);
+  border-radius: var(--radius-sm);
+}
+.alevel .bar:nth-child(2) { height: 6px; }
+.alevel .bar:nth-child(3) { height: 8px; }
+.alevel .bar:nth-child(4) { height: 10px; }
+.alevel .bar:nth-child(5) { height: 12px; }
+.alevel.l-none  .bar.on { background: var(--color-text-disabled); }
+.alevel.l-read  .bar.on { background: var(--color-info); }
+.alevel.l-write .bar.on { background: var(--color-success); }
+.alevel.l-manage .bar.on { background: var(--color-warning); }
+.alevel.l-admin  .bar.on { background: var(--color-danger); }
+.alevel .lbl {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+}
+.alevel.l-admin .lbl { color: var(--color-danger); }
+.alevel.l-manage .lbl { color: var(--color-warning); }
+.alevel .cnt {
+  color: var(--color-text-disabled);
+  font-size: var(--text-xs);
+}
+
+
+
+.permtree { padding: 4px 0; }
+.pt-root {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+}
+.pt-branch { position: relative; padding-left: 16px; }
+.pt-line.v {
+  position: absolute;
+  left: 12px;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: var(--color-border-strong);
+}
+.pt-line.h {
+  width: 16px;
+  height: 1px;
+  background: var(--color-border-strong);
+  flex-shrink: 0;
+}
+.pt-group {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+  gap: 8px;
+  position: relative;
+}
+.pt-group .pt-line.h { margin-left: -16px; }
+.pt-chip {
+  background: var(--color-accent-soft);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-accent-soft);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+.pt-svc {
+  position: relative;
+  padding: 8px 10px 8px 22px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.pt-svc .pt-line.h {
+  position: absolute;
+  left: -16px;
+  top: 16px;
+}
+.pt-role {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 4px 0;
+}
+.pt-role > .mono {
+  min-width: 72px;
+  color: var(--color-text-subtle);
+  padding-top: 3px;
+}
+.pt-perms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1;
+}
+
+
+/* ── Grant access wizard ─────────────────────────────────────── */
+.ga-list { max-height: 340px; overflow-y: auto; }
+.ga-list.tall { max-height: 380px; }
+.ga-row:not(:last-child) { border-bottom: 1px solid var(--color-border); }
+.ga-person {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+}
+.ga-person:hover { background: var(--color-surface-2); }
+.ga-person-groups {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  max-width: 45%;
+}
+.ga-outcome { padding: var(--space-3) var(--space-4); }
+.ga-outcome.on { background: var(--color-accent-soft); }
+.ga-outcome .checkbox { display: flex; width: 100%; }
+.ga-outcome .checkbox-text { flex: 1; min-width: 0; }
+.ga-outcome .checkbox-label { display: block; }
+
+/* ── Access review ───────────────────────────────────────────── */
+.posture { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.posture-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+}
+.posture-cell + .posture-cell { border-left: 1px solid var(--color-border); }
+.posture-n {
+  font-size: var(--text-xl);
+  line-height: var(--leading-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.ar-chev { width: 24px; }
+.ar-when { width: 64px; flex: none; }
+.ar-trail { overflow: hidden; text-overflow: ellipsis; }
+.ar-provenance {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* ── Recertification ─────────────────────────────────────────── */
+.recert-form { display: grid; gap: var(--space-3); max-width: 640px; }
+.recert-form > .field { margin-top: 0; }
+.recert-radios { flex-direction: row; flex-wrap: wrap; gap: var(--space-4); }
+.recert-col-decide { width: 170px; }
+.recert-col-actions { width: 220px; }
+.btn.ghost.recert-revoke { color: var(--color-danger); }
+.btn.ghost.recert-revoke:hover:not(:disabled) { background: var(--color-danger-soft); color: var(--color-danger); }
+.recert-progress { display: flex; align-items: center; gap: var(--space-2); min-width: 120px; }
+.recert-progress progress {
+  flex: 1;
+  height: 6px;
+  appearance: none;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-border);
+  overflow: hidden;
+}
+.recert-progress progress::-webkit-progress-bar { background: var(--color-border); }
+.recert-progress progress::-webkit-progress-value { background: var(--color-accent); border-radius: var(--radius-pill); }
+.recert-progress progress::-moz-progress-bar { background: var(--color-accent); border-radius: var(--radius-pill); }
+.recert-progress progress.done::-webkit-progress-value { background: var(--color-success); }
+.recert-progress progress.done::-moz-progress-bar { background: var(--color-success); }
+
+/* ── Access checker ──────────────────────────────────────────── */
+.ac-form {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  align-items: end;
+  padding: var(--space-4);
+}
+.ac-form > .field { margin-top: 0; }
+.ac-th { width: 180px; }

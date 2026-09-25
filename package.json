@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
+    "lint": "eslint . && node scripts/lint-styles.mjs",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ui-counts": "node scripts/ui-counts.mjs"
   },
   "dependencies": {
     "@codemirror/lang-yaml": "^6.1.3",

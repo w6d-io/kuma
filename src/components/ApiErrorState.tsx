@@ -1,6 +1,6 @@
 import { useSession } from '../api/hooks';
 import { describeApiError } from '../lib/apiError';
-import { I } from './ui/Icons';
+import { Button, I, cx } from './ui';
 
 /**
  * The one way a screen says it could not load. The wording comes from `describeApiError`, so a 403
@@ -22,20 +22,16 @@ export function ApiErrorState({
   const view = describeApiError(error, { groups: session?.groups });
   const title = view.kind === 'failed' && what ? `Could not load ${what}` : view.title;
   return (
-    <div
-      role="alert"
-      className="panel"
-      style={{ padding: compact ? 14 : 28, display: 'flex', gap: 12, alignItems: 'flex-start' }}
-    >
-      <span style={{ width: 16, height: 16, display: 'grid', placeItems: 'center', color: 'var(--red, #ef4444)', flexShrink: 0, marginTop: 1 }}>
+    <div role="alert" className={cx('panel', 'api-error', compact && 'compact')}>
+      <span className="api-error-ico">
         {view.kind === 'forbidden' ? I.shield : I.alert}
       </span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 500 }}>{title}</div>
-        <div className="small muted" style={{ marginTop: 2 }}>{view.detail}</div>
+      <div className="flex-1 min-w-0">
+        <div className="fw-medium">{title}</div>
+        <div className="small muted mt-2">{view.detail}</div>
       </div>
       {view.retryable && onRetry && (
-        <button className="btn sm" onClick={onRetry}>Retry</button>
+        <Button size="sm" onClick={onRetry}>Retry</Button>
       )}
     </div>
   );
