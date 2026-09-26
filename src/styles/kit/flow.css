@@ -20,7 +20,7 @@ button.step-btn:hover { color: var(--color-text); }
   width: 22px; height: 22px; flex: none;
   display: grid; place-items: center;
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-round);
   background: var(--color-surface);
   font-size: var(--text-xs); font-weight: var(--weight-semibold);
   font-variant-numeric: tabular-nums;
@@ -45,7 +45,7 @@ button.step-btn:hover { color: var(--color-text); }
   width: 23px; height: 23px; flex: none;
   display: grid; place-items: center;
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-round);
   background: var(--color-surface);
   color: var(--color-text-subtle);
   font-size: var(--text-xs);

@@ -3,7 +3,8 @@
 //
 // Outside the token file and the vendored design system, a stylesheet may not write:
 //   - a hex colour           → use a --color-* token
-//   - a border-radius that is not a radius token (or 0)
+//   - a border-radius that is not a radius token (or 0); --radius-round is for circles only and
+//     ui-counts --check fails a round label (labels are square, see Badge.tsx)
 //   - a font-size in px/rem  → use a --text-* token
 //
 // Exits 1 with one line per offence, file:line.
@@ -14,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 const styles = join(root, 'src', 'styles');
 const ALLOWED = ['tokens.css', 'vendor/'];
-const RADIUS_OK = /^(0|var\(--radius-(sm|md|pill)\))(\s+(0|var\(--radius-(sm|md|pill)\)))*$/;
+const RADIUS_OK = /^(0|var\(--radius-(sm|md|round)\))(\s+(0|var\(--radius-(sm|md|round)\)))*$/;
 
 function walk(dir) {
   return readdirSync(dir).flatMap((n) => {
@@ -32,7 +33,7 @@ for (const file of walk(styles).filter((p) => p.endsWith('.css'))) {
     const at = `src/styles/${rel}:${i + 1}`;
     if (/#[0-9a-fA-F]{3,8}\b/.test(line)) problems.push(`${at}  raw hex colour — use a --color-* token`);
     const r = line.match(/border(?:-(?:top|bottom)-(?:left|right))?-radius:\s*([^;}]+)/);
-    if (r && !RADIUS_OK.test(r[1].trim())) problems.push(`${at}  radius "${r[1].trim()}" — use --radius-sm, --radius-md or --radius-pill`);
+    if (r && !RADIUS_OK.test(r[1].trim())) problems.push(`${at}  radius "${r[1].trim()}" — use --radius-sm, --radius-md or --radius-round`);
     const f = line.match(/font-size:\s*([^;}]+)/);
     if (f && /\d(px|rem|em)\b/.test(f[1])) problems.push(`${at}  font-size "${f[1].trim()}" — use a --text-* token`);
   });

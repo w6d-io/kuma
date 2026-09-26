@@ -102,8 +102,8 @@
   animation: slideUp 180ms ease;
 }
 @keyframes slideUp { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
-.toast .d { width: 6px; height: 6px; flex: none; border-radius: var(--radius-pill); background: var(--color-success); box-shadow: 0 0 0 3px var(--color-success-soft); }
-.toast.err .d { background: var(--color-danger); box-shadow: 0 0 0 3px var(--color-danger-soft); }
+.toast .d { width: 6px; height: 6px; flex: none; background: var(--color-success); }
+.toast.err .d { background: var(--color-danger); }
 .toast .lbl { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle); }
 
 /* ── Command palette ──────────────────────────────────────────── */

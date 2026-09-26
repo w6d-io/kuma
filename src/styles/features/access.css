@@ -174,13 +174,13 @@
   height: 6px;
   appearance: none;
   border: 0;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-round);
   background: var(--color-border);
   overflow: hidden;
 }
 .recert-progress progress::-webkit-progress-bar { background: var(--color-border); }
-.recert-progress progress::-webkit-progress-value { background: var(--color-accent); border-radius: var(--radius-pill); }
-.recert-progress progress::-moz-progress-bar { background: var(--color-accent); border-radius: var(--radius-pill); }
+.recert-progress progress::-webkit-progress-value { background: var(--color-accent); border-radius: var(--radius-round); }
+.recert-progress progress::-moz-progress-bar { background: var(--color-accent); border-radius: var(--radius-round); }
 .recert-progress progress.done::-webkit-progress-value { background: var(--color-success); }
 .recert-progress progress.done::-moz-progress-bar { background: var(--color-success); }
 

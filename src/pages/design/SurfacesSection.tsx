@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react';
 import {
   Avatar, Badge, Button, Callout, Card, EmptyHint, EmptyRow, EmptyState, I, LoadingRows, PageHeader,
-  Pagination, SkeletonText, Stat, Table, Th, Tooltip, nextSort, sortRows, type BadgeTone, type SortState,
+  Pagination, SkeletonText, Stat, Table, Th, Tooltip, nextSort, sortRows, type SortState,
 } from '../../components/ui';
-import { Method } from '../../components/ui/Primitives';
+import { LabelsSpecimen } from './LabelsSpecimen';
 import { SectionTitle, Specimen, State } from './Specimen';
 
-const TONES: BadgeTone[] = ['neutral', 'accent', 'success', 'warning', 'danger', 'info', 'plain'];
 const PEOPLE = [
   { name: 'Ada Lovelace', email: 'ada@acme.io', groups: 3, seen: '2 min ago' },
   { name: 'Grace Hopper', email: 'grace@acme.io', groups: 1, seen: 'yesterday' },
@@ -20,7 +19,7 @@ export function SurfacesSection() {
   const onSort = (k: 'name' | 'groups') => setSort((s) => nextSort(s, k));
   return (
     <>
-      <SectionTitle id="surfaces" title="Surfaces" sub="Where content sits: headers, cards, badges, tables, empty states." />
+      <SectionTitle id="surfaces" title="Surfaces" sub="Where content sits: headers, cards, labels, tables, empty states." />
       <Specimen name="PageHeader" wide>
         <PageHeader eyebrow="Sites" title="billing.acme.io" status={<Badge tone="success" icon={I.check} mono={false}>Live</Badge>} sub="Acme's invoicing app · 42 people · 2 organizations" actions={<><Button>Pause</Button><Button variant="primary" icon={I.edit}>Edit site</Button></>} />
       </Specimen>
@@ -46,14 +45,12 @@ export function SurfacesSection() {
             <Callout tone="neutral">Read-only: this org is managed from Git.</Callout>
           </div>
         </Specimen>
-        <Specimen name="Badge · Method · Tooltip · Avatar">
-          <State label="tones"><div className="row wrap gap-4">{TONES.map((t) => <Badge key={t} tone={t}>{t}</Badge>)}</div></State>
-          <State label="icon + words"><div className="row wrap gap-4"><Badge tone="success" icon={I.lock} mono={false}>2FA on</Badge><Badge tone="warning" icon={I.alert} mono={false}>2FA off</Badge></div></State>
-          <State label="methods"><div className="row wrap gap-4">{['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => <Method key={m} m={m} />)}</div></State>
+        <Specimen name="Tooltip · Avatar">
           <State label="tooltip (hover or focus)"><Tooltip content="Copies the identity id"><Badge>7f3c…a91</Badge></Tooltip></State>
           <State label="avatars"><div className="row gap-4"><Avatar name="Ada Lovelace" /><Avatar name="Grace Hopper" size={26} /><Avatar email="alan@acme.io" size={32} /></div></State>
         </Specimen>
       </div>
+      <LabelsSpecimen />
       <Specimen name="Table" note="Sortable header (aria-sort), row click, empty and loading rows, pagination." wide>
         <div className="grid g2">
           <Card pad="none">

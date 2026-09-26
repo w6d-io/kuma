@@ -107,7 +107,7 @@ function Verdict({ r }: { r: AccessCheckResult }) {
   return (
     <Card aria-live="polite">
       <div className="row items-start gap-16 p-16 border-b">
-        <Badge tone={r.allow ? 'success' : 'danger'}>{e.verdict}</Badge>
+        <Badge tone={r.allow ? 'success' : 'danger'} icon={r.allow ? I.check : I.close} className="verdict">{e.verdict}</Badge>
         <div className="flex-1 min-w-0">
           <div className="fw-medium">{e.text}</div>
           {e.tie && <div className="small text-warning mt-4">Two sites claim this route: {r.owners.join(', ')}</div>}

@@ -86,14 +86,13 @@
 .callout.neutral { border-left-color: var(--color-border-strong); background: var(--color-surface-2); }
 .callout.neutral .callout-ico { color: var(--color-text-subtle); }
 
-/* ── Badge ────────────────────────────────────────────────────── */
+/* ── Badge ────────────────────────────────────────────────────────
+   Labels are never pill-shaped (Badge.tsx has the roles). Status = square marker or icon + tone
+   text, no box. Tag = identifier in a square-cornered subtle box. Meta = small caps, muted.
+   Count = bare tabular number. `scripts/ui-counts.mjs --check` fails on a round label. */
 .badge {
-  display: inline-flex; align-items: center; gap: var(--space-1);
-  padding: 0 var(--space-2);
-  min-height: 20px;
-  border-radius: var(--radius-pill);
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border);
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 18px;
   font-size: var(--text-xs);
   line-height: var(--leading-xs);
   font-weight: var(--weight-medium);
@@ -103,33 +102,55 @@
   vertical-align: middle;
 }
 .badge.sans { font-family: var(--font-sans); }
-.badge.accent { background: var(--color-accent-soft); border-color: var(--color-accent-line); color: var(--color-accent); }
-.badge.success { background: var(--color-success-soft); border-color: var(--color-success-line); color: var(--color-success); }
-.badge.warning { background: var(--color-warning-soft); border-color: var(--color-warning-line); color: var(--color-warning); }
-.badge.danger { background: var(--color-danger-soft); border-color: var(--color-danger-line); color: var(--color-danger); }
-.badge.info { background: var(--color-info-soft); border-color: var(--color-info-line); color: var(--color-info); }
-.badge.plain { background: transparent; }
-.badge-ico { width: 11px; height: 11px; display: inline-grid; place-items: center; flex: none; }
+.badge.accent { color: var(--color-accent); }
+.badge.success { color: var(--color-success); }
+.badge.warning { color: var(--color-warning); }
+.badge.danger { color: var(--color-danger); }
+.badge.info { color: var(--color-info); }
+
+.badge.is-status::before { content: ""; width: 6px; height: 6px; flex: none; background: currentColor; }
+.badge.is-status.has-ico::before, .badge.is-status:has(> .chip-ico)::before { display: none; }
+
+.badge.is-tag {
+  padding: 0 5px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.badge.is-tag.plain { background: transparent; }
+
+.badge.is-meta {
+  gap: var(--space-1);
+  color: var(--color-text-subtle);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badge.is-count { color: var(--color-text-subtle); font-variant-numeric: tabular-nums; }
+/* A decision (ALLOWED / DENIED): icon + weighted words, one step up in size. */
+.badge.verdict { font-size: var(--text-sm); font-weight: var(--weight-semibold); letter-spacing: 0.04em; }
+.badge.verdict .badge-ico { width: 14px; height: 14px; }
+.badge.verdict .badge-ico i { font-size: var(--text-sm); }
+
+.badge-ico { width: 12px; height: 12px; display: inline-grid; place-items: center; flex: none; }
 .badge-ico i { font-size: var(--text-xs); line-height: 1; }
 
+/* An HTTP method is a word in a fixed column: coloured monospace, no box. */
 .method {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-sm);
   letter-spacing: 0.02em;
   display: inline-block;
   min-width: 46px;
-  text-align: center;
-  background: var(--color-surface-2);
   color: var(--color-text-muted);
 }
-.method.GET { background: var(--color-info-soft); color: var(--color-info); }
-.method.POST { background: var(--color-success-soft); color: var(--color-success); }
-.method.PUT { background: var(--color-warning-soft); color: var(--color-warning); }
-.method.PATCH { background: var(--color-accent-soft); color: var(--color-accent); }
-.method.DELETE { background: var(--color-danger-soft); color: var(--color-danger); }
+.method.GET { color: var(--color-info); }
+.method.POST { color: var(--color-success); }
+.method.PUT { color: var(--color-warning); }
+.method.PATCH { color: var(--color-accent); }
+.method.DELETE { color: var(--color-danger); }
 
 /* ── Table ────────────────────────────────────────────────────── */
 .table-scroll { width: 100%; overflow-x: auto; }
@@ -213,7 +234,7 @@
 
 /* ── Avatar ───────────────────────────────────────────────────── */
 .avatar {
-  width: 26px; height: 26px; border-radius: var(--radius-pill);
+  width: 26px; height: 26px; border-radius: var(--radius-round);
   background: var(--color-accent);
   color: white;
   display: grid; place-items: center;

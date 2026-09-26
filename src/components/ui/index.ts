@@ -7,7 +7,7 @@ export { Checkbox, RadioGroup } from './Checkbox';
 export { Switch } from './Switch';
 export { Card, Stat, Callout } from './Card';
 export { Badge, Kbd } from './Badge';
-export type { BadgeTone } from './Badge';
+export type { BadgeTone, BadgeVariant } from './Badge';
 export { Table, Th, EmptyRow, LoadingRows, sortRows, nextSort } from './Table';
 export type { SortState, SortDir } from './Table';
 export { Tabs, Segmented } from './Tabs';

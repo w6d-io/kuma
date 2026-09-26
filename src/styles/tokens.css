@@ -74,9 +74,11 @@
   --color-info-line: var(--primary-soft);
 
   /* ── Radii: three, all Strada's ───────────────────────────────────── */
-  /* --radius-sm 3px (chips inside text, kbd), --radius-md 6px (controls, cards, dialogs),
-     --radius-pill (badges, switches, avatars). Strada defines all three under these names. */
+  /* --radius-sm 3px (tags, kbd), --radius-md 6px (controls, cards, dialogs), --radius-round for
+     things that are circles by nature: avatars, switch tracks and thumbs, radios, spinners, step
+     numbers. Never a label: labels are square (see Badge.tsx); ui-counts fails on a round one. */
   --radius: var(--radius-md);
+  --radius-round: var(--radius-pill);
 
   /* ── Spacing: Strada's 4px scale, --space-1 (4px) … --space-7 (48px) ─ */
   --space-half: 2px;

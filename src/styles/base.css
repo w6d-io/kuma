@@ -38,7 +38,7 @@ kbd {
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--color-surface-3); border-radius: var(--radius-pill); border: 2px solid var(--color-bg); }
+::-webkit-scrollbar-thumb { background: var(--color-surface-3); border-radius: var(--radius-round); border: 2px solid var(--color-bg); }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-border-strong); }
 
 /* Announced, not drawn: a dialog needs a title for anybody not looking at it. */
@@ -132,7 +132,7 @@ html[data-navcollapsed="on"] .sidebar-foot { justify-content: center; }
 html[data-levelstyle="dot"] .alevel .bars { display: none; }
 html[data-levelstyle="dot"] .alevel::before {
   content: "";
-  width: 8px; height: 8px; border-radius: var(--radius-pill);
+  width: 8px; height: 8px; border-radius: var(--radius-round);
   background: var(--color-text-disabled);
 }
 html[data-levelstyle="dot"] .alevel.l-read::before   { background: var(--color-info); }
