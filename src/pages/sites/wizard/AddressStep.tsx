@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Badge, Field, I, Input, Select } from '../../../components/ui';
+import { Badge, Field, FieldRow, I, Input, Select } from '../../../components/ui';
 import { sitesApi, notAvailable, type SiteError } from '../../../api/sites';
 import { describePaste, detectPaste } from '../../../lib/sites/paste';
 import { labelProblem, nameProblem, namespaceProblem, portProblem, serviceProblem } from '../../../lib/sites/validate';
@@ -112,11 +112,11 @@ export function AddressStep({ s, patch, zones, problems }: { s: WizardState; pat
 
       <fieldset className="site-fieldset">
         <legend className="fw-medium">Public address</legend>
-        <div className="site-host-row">
-          <Field label="Label" error={s.label ? labelProblem(s.label) ?? undefined : undefined}>
+        <FieldRow>
+          <Field label="Label" span={2} error={s.label ? labelProblem(s.label) ?? undefined : undefined}>
             <Input mono value={s.label} placeholder="payroll" onChange={(e) => patch({ label: e.target.value.toLowerCase().trim() })} />
           </Field>
-          <Field label="Zone">
+          <Field label="Zone" span={2}>
             {zones.length > 0 ? (
               <Select mono value={s.zone} onChange={(e) => patch({ zone: e.target.value })}>
                 {zones.map((z) => <option key={z.suffix} value={z.suffix}>.{z.suffix}</option>)}
@@ -126,27 +126,27 @@ export function AddressStep({ s, patch, zones, problems }: { s: WizardState; pat
           <Field label="Path (optional)" hint="Only to share a host.">
             <Input mono value={s.pathPrefix} placeholder="/" onChange={(e) => patch({ pathPrefix: e.target.value.trim() === '/' ? '' : e.target.value.trim() })} />
           </Field>
-        </div>
+        </FieldRow>
         <CheckList lines={hostLines(check, checkError)} />
       </fieldset>
 
       <fieldset className="site-fieldset">
         <legend className="fw-medium">Runs at (inside the cluster)</legend>
         <p className="small muted m-0">The Service inside the cluster, like payroll-ui in namespace payroll on port 8080. Only the platform can reach it.</p>
-        <div className="site-host-row">
-          <Field label="Service" error={s.service ? serviceProblem(s.service) ?? undefined : undefined}><Input mono value={s.service} placeholder="payroll-ui" onChange={(e) => patch({ service: e.target.value.toLowerCase().trim() })} /></Field>
-          <Field label="Namespace" error={s.namespace ? namespaceProblem(s.namespace) ?? undefined : undefined}><Input mono value={s.namespace} placeholder="payroll" onChange={(e) => patch({ namespace: e.target.value.toLowerCase().trim() })} /></Field>
+        <FieldRow>
+          <Field label="Service" span={2} error={s.service ? serviceProblem(s.service) ?? undefined : undefined}><Input mono value={s.service} placeholder="payroll-ui" onChange={(e) => patch({ service: e.target.value.toLowerCase().trim() })} /></Field>
+          <Field label="Namespace" span={2} error={s.namespace ? namespaceProblem(s.namespace) ?? undefined : undefined}><Input mono value={s.namespace} placeholder="payroll" onChange={(e) => patch({ namespace: e.target.value.toLowerCase().trim() })} /></Field>
           <Field label="Port" error={portProblem(s.port) ?? undefined}><Input mono inputMode="numeric" value={s.port} onChange={(e) => patch({ port: e.target.value.trim() })} /></Field>
-        </div>
+        </FieldRow>
         <CheckList lines={probeLines} />
       </fieldset>
 
-      <div className="site-host-row">
+      <FieldRow>
         <Field label="Name" hint={`Used in permissions: ${s.name || 'payroll'}:read …`} error={s.name ? nameProblem(s.name) ?? undefined : undefined}>
           <Input mono value={s.name} placeholder="payroll" onChange={(e) => patch({ name: e.target.value.toLowerCase().trim(), nameTouched: true })} />
         </Field>
         <Field label="Display name"><Input value={s.displayName} placeholder="Payroll" maxLength={80} onChange={(e) => patch({ displayName: e.target.value, nameTouched: true })} /></Field>
-      </div>
+      </FieldRow>
       {problems.length > 0 && (s.label || s.service) && <p className="small muted m-0">Still needed: {problems.join(' · ')}</p>}
     </div>
   );

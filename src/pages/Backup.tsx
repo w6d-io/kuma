@@ -187,16 +187,16 @@ function BackupEnabled() {
       {/* snapshots */}
       <Card title="Snapshots" pad="none">
         <Table>
-          <thead><tr><th>When</th><th>Size</th><th className="mono">Key</th><th /></tr></thead>
+          <thead><tr><th>When</th><th className="num">Size</th><th className="mono">Key</th><th className="actions" /></tr></thead>
           <tbody>
             {loading && <LoadingRows rows={4} cols={4} />}
             {!loading && backups.length === 0 && <EmptyRow colSpan={4}>No backups yet — the scheduled job runs daily, or use “Back up now”.</EmptyRow>}
             {backups.map((b, i) => (
               <tr key={b.key}>
                 <td>{fmtDate(b.lastModified)} {i === 0 && <Badge tone="info">latest</Badge>}</td>
-                <td className="mono">{fmtBytes(b.size)}</td>
+                <td className="num mono">{fmtBytes(b.size)}</td>
                 <td className="mono small break-all">{b.key}</td>
-                <td className="shrink">
+                <td className="actions">
                   <Button variant="ghost" size="sm" onClick={() => setConfirmKey(b.key)} disabled={busy || !mayRestore} title={gate}>Restore</Button>
                 </td>
               </tr>

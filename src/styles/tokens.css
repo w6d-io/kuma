@@ -98,6 +98,14 @@
   /* ── Controls ─────────────────────────────────────────────────────── */
   --control-sm: 28px;
   --control-md: 36px;
+  --check-size: 16px;                       /* checkbox and radio box */
+  --switch-h: 18px;                         /* switch track */
+
+  /* ── Form rhythm ──────────────────────────────────────────────────── */
+  --field-gap: var(--space-4);              /* between fields stacked in a form */
+  --field-row-gap: var(--space-3);          /* between fields side by side in a FieldRow */
+  --field-label-gap: var(--space-1);        /* label → control */
+  --label-col-max: 12rem;                   /* widest label column in a FormGrid with labels aside */
 
   /* ── Elevation ────────────────────────────────────────────────────── */
   /* --shadow-sm, --shadow-md, --shadow-lg are Strada's; the dark theme restates them. */

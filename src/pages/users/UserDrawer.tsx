@@ -3,7 +3,7 @@ import { useApp } from '../../contexts/AppContext';
 import { useSession } from '../../api/hooks';
 import { useSiteGroups } from '../access/access';
 import { I } from '../../components/ui/Icons';
-import { Avatar, Badge, Button, Callout, Card, Drawer, Field, Input, Switch, Tabs } from '../../components/ui';
+import { Avatar, Badge, Button, Callout, Card, Drawer, Field, FormGrid, Input, Switch, Tabs } from '../../components/ui';
 import { useApplyChange } from '../../hooks/useApplyChange';
 import { formatHash } from '../../lib/route';
 import { permits } from '../../policy/model';
@@ -106,25 +106,23 @@ export function UserDrawer() {
           </>
         }
       >
-        <Field label="Email" required className="mb-12">
+        <FormGrid>
+        <Field label="Email" required>
           <Input mono type="text" inputMode="email" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="user@example.com" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
         </Field>
-        <Field label="Full name" required className="mb-12">
+        <Field label="Full name" required>
           <Input placeholder="Jane Doe" value={newName} onChange={e => setNewName(e.target.value)} />
         </Field>
         {Object.keys(state.groups).length > 0 && (
-          <div className="mb-12">
-            <label className="input-label">Groups <span className="muted">(optional)</span></label>
+          <div>
+            <div className="input-label">Groups <span className="muted">(optional)</span></div>
             <Card><SiteGroupRows {...siteRows} checked={newGroups} toggle={toggleNewGroup} /></Card>
           </div>
         )}
-        <div className="row justify-between py-12">
-          <div>
-            <div className="fw-medium text-base">Send invite email</div>
-            <div className="small muted">Emails them a link to set their password</div>
-          </div>
+        <Field label="Send invite email" inline hint="Emails them a link to set their password">
           <Switch on={sendInvite} onChange={setSendInvite} label="Send invite email" />
-        </div>
+        </Field>
+        </FormGrid>
       </Drawer>
     );
   }

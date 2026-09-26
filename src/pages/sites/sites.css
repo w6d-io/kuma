@@ -110,9 +110,6 @@
 .site-login-foot { display: flex; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; border-top: 1px solid var(--color-border); padding-top: var(--space-2); }
 
 /* ── settings / wizard ──────────────────────────────────────── */
-.site-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--space-3); }
-.site-form-grid .span-all { grid-column: 1 / -1; }
-.site-host-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--space-3); }
 .site-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: var(--space-2); }
 .btn-base.site-choice {
   display: flex; flex-direction: column; gap: var(--space-1); text-align: left; min-height: 44px;

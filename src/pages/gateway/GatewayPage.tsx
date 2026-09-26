@@ -65,7 +65,7 @@ export function GatewayPage() {
           The catalog below is what the gateway can run; whether each one is on, its config and the sites using it arrive with /api/admin/gateway.
         </Callout>
       )}
-      {gw.error && !unavailable ? <QueryError error={gw.error} what="the gateway config" /> : null}
+      {gw.error && !unavailable ? <QueryError error={gw.error} what="the gateway config" className="mb-12" /> : null}
       {!perms.canApply && perms.canRead && <Callout tone="info" icon={I.info} className="mb-12">You can look around. Changing the gateway needs a platform admin.</Callout>}
 
       <div className="site-toolbar">
@@ -84,6 +84,7 @@ export function GatewayPage() {
           return (
             <Card key={kind} pad="none" title={KIND_LABEL[kind]} sub={<span className="mono">{kind}{kind === 'errors' && gw.data?.errorFallback?.length ? ` · fallback: ${gw.data.errorFallback.join(', ')}` : ''}</span>}>
               <Table aria-label={KIND_LABEL[kind]} className="gw-table">
+                <colgroup><col className="gw-col-handler" /><col className="gw-col-state" /><col className="gw-col-used" /><col /></colgroup>
                 <thead><tr><Th>Handler</Th><Th>State</Th><Th>Used by</Th><Th>What it does</Th></tr></thead>
                 <tbody>
                   {gw.isLoading && <LoadingRows cols={4} rows={3} />}

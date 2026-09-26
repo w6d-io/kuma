@@ -94,6 +94,8 @@
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
 }
+/* A sm select keeps the caret's room: `.input.sm` would otherwise pull the text under the caret. */
+.select.sm { padding-right: var(--space-6); background-position: calc(100% - 13px) 55%, calc(100% - 8px) 55%; }
 .textarea { height: auto; min-height: calc(var(--control-md) * 2.5); padding: var(--space-2) var(--space-3); line-height: 1.5; resize: vertical; }
 
 .input-wrap { position: relative; display: flex; align-items: center; width: 100%; }
@@ -120,20 +122,23 @@
 .input-hint, .field-hint { font-size: var(--text-xs); color: var(--color-text-subtle); margin-top: var(--space-1); line-height: var(--leading-xs); }
 
 /* ── Field ────────────────────────────────────────────────────── */
+/* No margin of its own: what holds fields spaces them (FormGrid, FieldRow, a `stack gap-*`). A field
+   spacing itself from its sibling pushed the second of two side-by-side fields 12px down. */
 .field { display: flex; flex-direction: column; min-width: 0; }
-.field + .field { margin-top: var(--space-3); }
+.field-label { margin-bottom: var(--field-label-gap); }
 .field-required { color: var(--color-danger); }
+.field-foot { display: flex; flex-direction: column; gap: var(--space-half); margin-top: var(--space-1); min-width: 0; }
+.field-foot > .field-hint { margin-top: 0; }
 .field-warning, .field-error {
   display: flex; gap: var(--space-1); align-items: baseline;
-  font-size: var(--text-xs); line-height: var(--leading-xs); margin-top: var(--space-1);
+  font-size: var(--text-xs); line-height: var(--leading-xs);
 }
 .field-warning { color: var(--color-warning); }
 .field-error { color: var(--color-danger); }
 .field-warning::before { content: "⚠"; }
 .field-error::before { content: "✕"; }
-.field.inline { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
-.field.inline .field-label { margin: 0; text-transform: none; letter-spacing: 0; font-size: var(--text-base); color: var(--color-text); font-weight: var(--weight-medium); }
-.field.inline .field-hint, .field.inline .field-warning, .field.inline .field-error { flex-basis: 100%; margin-top: 0; }
+.field.inline { flex-direction: row; align-items: center; justify-content: space-between; column-gap: var(--space-3); flex-wrap: wrap; }
+.field.inline .field-label { margin: 0; text-transform: none; letter-spacing: 0; font-size: var(--text-base); line-height: var(--leading-base); color: var(--color-text); font-weight: var(--weight-medium); }
 
 /* ── Checkbox ─────────────────────────────────────────────────── */
 .checkbox { display: inline-flex; align-items: flex-start; gap: var(--space-2); cursor: pointer; font-size: var(--text-base); }
@@ -145,7 +150,7 @@
 /* ── Switch ───────────────────────────────────────────────────── */
 .switch {
   position: relative;
-  width: 32px; height: 18px;
+  width: 32px; height: var(--switch-h);
   padding: 0;
   background: var(--color-surface-3);
   border: 1px solid var(--color-border-strong);
@@ -183,7 +188,9 @@
 .tabs.full .tab { flex: 1; }
 .tab, .seg-opt {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
-  height: calc(var(--control-sm) - 2px);
+  /* Inset by the track's padding and border, so the whole control is exactly --control-sm (28px)
+     and lines up with a sm button or input beside it. */
+  height: calc(var(--control-sm) - 2 * var(--space-half) - 2px);
   padding: 0 var(--space-3);
   background: transparent;
   border: 1px solid transparent;

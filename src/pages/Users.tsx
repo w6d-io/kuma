@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useUsers, useGroupsMap, useUserSearch, useStats } from '../api/hooks';
 import { I } from '../components/ui/Icons';
-import { Avatar, Badge, Button, Card, EmptyRow, Input, PageHeader, Select, Table } from '../components/ui';
+import { Avatar, Badge, Button, Card, EmptyRow, Input, PageHeader, Select, Table, Toolbar, ToolbarSpacer } from '../components/ui';
 import { Pagination, usePagination } from '../components/ui/Pagination';
 import { SkeletonRows } from '../components/ui/Skeleton';
 import { kratosToUser, searchedToUser } from '../api/transforms';
@@ -106,17 +106,15 @@ export function UsersPage() {
         }
       />
       <Card>
-        <div className="row wrap gap-12 px-12 py-8 border-b">
-          <div className="flex-1 maxw-sm people-search">
-            <Input size="sm" leading={I.search} type="search" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="Search name or email…" value={q} onChange={e => setQ(e.target.value)} />
-          </div>
-          <Select size="sm" className="w-auto" value={groupFilter} onChange={e => setGroupFilter(e.target.value)}>
+        <Toolbar inset label="Filter users">
+            <Input size="sm" leading={I.search} type="search" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="Search name or email…" value={q} onChange={e => setQ(e.target.value)} aria-label="Search users" />
+          <Select size="sm" aria-label="Group" value={groupFilter} onChange={e => setGroupFilter(e.target.value)}>
             <option value="all">All groups</option>
             {Object.keys(groupsMap).map(g => <option key={g} value={g}>{g}</option>)}
           </Select>
-          <div className="flex-1" />
-          <span className="small muted mono">{searching ? `${filtered.length} shown` : `${filtered.length} / ${total}`}</span>
-        </div>
+          <ToolbarSpacer />
+          <span className="toolbar-note">{searching ? `${filtered.length} shown` : `${filtered.length} / ${total}`}</span>
+        </Toolbar>
         <Table aria-busy={loading || undefined}>
           <thead><tr><th>Identity</th><th>Groups</th><th>Organizations</th><th>2FA</th><th>Last seen</th><th></th></tr></thead>
           <tbody>
@@ -129,13 +127,13 @@ export function UsersPage() {
                       <div className="fw-medium">
                         {u.name} {!u.active && <Badge tone="warning">inactive</Badge>}
                       </div>
-                      <div className="small muted mono">{u.email}</div>
+                      <div className="small muted mono nowrap">{u.email}</div>
                     </div>
                   </div>
                 </td>
                 <td>
                   {u.groups.length === 0
-                    ? <span className="small muted">— no groups —</span>
+                    ? <span className="small muted nowrap">— no groups —</span>
                     : <span className="row wrap gap-4">{u.groups.map(g => <Badge key={g}>{g}</Badge>)}</span>}
                 </td>
                 <td>
@@ -148,7 +146,7 @@ export function UsersPage() {
                       ...(u.organizationId ? [u.organizationId] : []),
                       ...(u.organizations ?? []),
                     ]));
-                    if (orgs.length === 0) return <span className="small muted">— none —</span>;
+                    if (orgs.length === 0) return <span className="small muted nowrap">— none —</span>;
                     const preview = orgs.slice(0, 2);
                     return (
                       <span className="row wrap gap-4">

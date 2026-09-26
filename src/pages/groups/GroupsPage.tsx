@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useStats } from '../../api/hooks';
 import { useRbacUsers } from '../../api/rbacWrites';
-import { Badge, Button, ButtonBase, Card, EmptyRow, I, Input, PageHeader, Table } from '../../components/ui';
+import { Badge, Button, ButtonBase, Card, EmptyRow, I, Input, PageHeader, Table, Toolbar } from '../../components/ui';
 import { isEverything, isOrgGrantable, membersOf } from '../../lib/rbacEdit';
 import { ReadOnlyNote } from '../access/shared';
 import { useCanEditAccess } from '../access/access';
@@ -36,13 +36,13 @@ export function GroupsPage() {
       />
       <>
           {!canEdit && <ReadOnlyNote what="groups" />}
-          <div className="rb-filter mb-12">
-            <Input aria-label="Filter groups" leading={I.search} placeholder="Filter by group or site" value={filter} onChange={e => setFilter(e.target.value)} />
-          </div>
           <Card pad="none">
+            <Toolbar inset label="Filter groups">
+              <Input size="sm" aria-label="Filter groups" leading={I.search} placeholder="Filter by group or site" value={filter} onChange={e => setFilter(e.target.value)} />
+            </Toolbar>
             <Table className="rb-stack">
               <thead>
-                <tr><th>Group</th><th>Gives</th><th className="text-right">Members</th><th>Org admins can hand it out</th></tr>
+                <tr><th>Group</th><th>Gives</th><th className="num">Members</th><th>Org admins can hand it out</th></tr>
               </thead>
               <tbody>
                 {shown.length === 0 && <EmptyRow colSpan={4}>{names.length ? 'No group matches.' : 'No group yet.'}</EmptyRow>}
@@ -67,7 +67,7 @@ export function GroupsPage() {
                           </span>
                         )}
                       </td>
-                      <td className="text-right tabular" data-label="Members">{count(g)}</td>
+                      <td className="num" data-label="Members">{count(g)}</td>
                       <td data-label="Org admins can hand it out">
                         {grantable.ok
                           ? <Badge tone="success" mono={false}>yes</Badge>

@@ -1,0 +1,132 @@
+/* Kit — form layout: FormGrid, FieldRow, Toolbar, ActionBar, and the alignment of a checkbox, a radio
+   or a switch with the words beside it.
+
+   The rule every piece keeps: things side by side share a line. Fields in a row share the label line,
+   the control line and the message line; controls in a toolbar share one centre; a checkbox is centred
+   on the FIRST line of its label, however many lines follow. */
+
+/* ── FormGrid ─────────────────────────────────────────────────── */
+.form-grid { display: flex; flex-direction: column; gap: var(--field-gap); min-width: 0; }
+
+/* Labels aside: one label column as wide as the widest label (capped), controls in the column beside
+   it. Each field is a subgrid of the form, so every label shares that one column width. */
+.form-grid.aside {
+  display: grid;
+  grid-template-columns: fit-content(var(--label-col-max)) minmax(0, 1fr);
+  column-gap: var(--space-5);
+  row-gap: var(--field-gap);
+  align-items: start;
+}
+.form-grid.aside > * { grid-column: 2; }
+.form-grid.aside > .field:not(.inline) {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  row-gap: 0;
+}
+.form-grid.aside > .field:not(.inline) > .field-label {
+  grid-column: 1;
+  margin: 0;
+  /* The label's first line centred on a md control's height. */
+  padding-top: calc((var(--control-md) - var(--leading-xs)) / 2);
+  line-height: var(--leading-xs);
+}
+.form-grid.aside > .field:not(.inline) > .field-control,
+.form-grid.aside > .field:not(.inline) > .field-foot { grid-column: 2; }
+
+/* ── FieldRow ─────────────────────────────────────────────────── */
+/* Three shared lines — label, control, message — as a subgrid, so a wrapped label or a hint under one
+   field moves nothing in its neighbours. Columns come from FieldRow (`--form-cols`). */
+.form-row {
+  display: grid;
+  grid-template-columns: var(--form-cols, repeat(auto-fit, minmax(0, 1fr)));
+  grid-template-rows: auto auto auto;
+  grid-auto-flow: column;
+  column-gap: var(--field-row-gap);
+  row-gap: 0;
+  align-items: start;
+  min-width: 0;
+}
+.form-row > .field {
+  grid-row: span 3;
+  display: grid;
+  grid-template-rows: subgrid;
+  row-gap: 0;
+}
+/* A label that wraps grows upward: the control line stays shared. */
+.form-row > .field > .field-label { align-self: end; }
+/* A button or a checkbox beside the fields sits on the control line, centred on it. */
+.form-row > :not(.field) { grid-row: 2; align-self: center; }
+.form-grid.aside > .form-row { grid-column: 2; }
+
+/* A phone stacks the fields: plain columns, no shared lines left to keep. */
+@media (max-width: 640px) {
+  .form-row { display: flex; flex-direction: column; align-items: stretch; gap: var(--field-gap); }
+  .form-row > .field { display: flex; }
+  .form-row > .field > .field-label { align-self: auto; }
+  .form-row > :not(.field) { align-self: flex-start; }
+  .form-grid.aside { display: flex; flex-direction: column; }
+  .form-grid.aside > .field:not(.inline) { display: flex; }
+  .form-grid.aside > .field:not(.inline) > .field-label { padding-top: 0; margin-bottom: var(--field-label-gap); }
+}
+
+/* ── Checkbox · Radio ─────────────────────────────────────────── */
+/* The box is centred on the label's first line: the label line is pinned to --leading-base and the
+   box sits half the difference down. A hint below starts under the label text, not under the box. */
+.checkbox { --check-line: var(--leading-base); line-height: var(--check-line); }
+.checkbox.sm { --check-line: var(--leading-sm); font-size: var(--text-sm); }
+.checkbox input { margin: calc((var(--check-line) - var(--check-size)) / 2) 0 0; }
+.checkbox-text { gap: var(--space-half); min-width: 0; }
+.checkbox-hint { line-height: var(--leading-xs); }
+/* In a table cell or beside controls, a checkbox without words is only its box. */
+.checkbox.bare { gap: 0; }
+
+/* ── Switch row ───────────────────────────────────────────────── */
+/* Label and switch on one centre line; the hint tucked under the label, not a row-gap away. */
+.field.inline { row-gap: var(--space-1); }
+.field.inline > .field-control { display: flex; align-items: center; min-height: var(--leading-base); }
+.field.inline > .field-foot { flex-basis: 100%; margin-top: 0; }
+
+/* ── Toolbar ──────────────────────────────────────────────────── */
+/* Every child one height, so every child one centre. A search box grows; the rest keep their width. */
+.toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
+.toolbar > .input-wrap, .toolbar > input.input { flex: 1 1 14rem; width: auto; max-width: 24rem; min-width: 0; }
+.toolbar > select.input { width: auto; flex: none; }
+.toolbar-spacer { flex: 1 1 0; }
+.toolbar.inset { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border); }
+.toolbar-note { font-size: var(--text-sm); line-height: var(--leading-sm); color: var(--color-text-subtle); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.toolbar.sm > .btn:not(.sm), .toolbar.sm > .input:not(.sm), .toolbar.sm > .input-wrap > .input:not(.sm) { height: var(--control-sm); font-size: var(--text-sm); }
+@media (max-width: 640px) {
+  .toolbar > .input-wrap, .toolbar > input.input { flex-basis: 100%; max-width: none; }
+  .toolbar-spacer { display: none; }
+}
+
+/* ── ActionBar ────────────────────────────────────────────────── */
+.action-bar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-2); }
+.action-bar.start, .action-bar.start > .action-bar-end { justify-content: flex-start; }
+.action-bar.divider { border-top: 1px solid var(--color-border); padding-top: var(--space-3); }
+.action-bar-start { display: flex; align-items: center; gap: var(--space-2); margin-right: auto; min-width: 0; }
+.action-bar-end { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
+
+/* ── Table columns ────────────────────────────────────────────── */
+/* A number column: right-aligned, header included, in tabular figures so the digits stack. */
+.table th.num, .table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.table th.num .th-sort { flex-direction: row-reverse; }
+/* The utilities lose to `.table th { text-align: left }` on their own; inside a table they win. */
+.table .text-right { text-align: right; }
+.table .text-center { text-align: center; }
+/* The row's actions: as narrow as its buttons, at the far right, never wrapping. */
+.table th.actions, .table td.actions { width: 1%; text-align: right; white-space: nowrap; }
+.table td.actions > * + * { margin-left: var(--space-1); }
+.table th.check, .table td.check { width: 1%; padding-right: 0; }
+.table td.check .checkbox { vertical-align: middle; }
+/* A row header reads as the row's first cell, not as a column heading. */
+.table tbody th {
+  text-transform: none; letter-spacing: 0; background: transparent; white-space: normal;
+  font-size: var(--text-base); color: var(--color-text); padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border); text-align: left;
+}
+.table tbody tr:last-child th { border-bottom: none; }
+.table tbody th.small { font-size: var(--text-sm); }
+/* Tables stacked one above the other share their columns when told to. */
+.table.fixed { table-layout: fixed; }

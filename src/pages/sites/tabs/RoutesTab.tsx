@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
-import { Badge, Button, ButtonBase, Callout, Card, CodeView, EmptyRow, I, Input, Select, Switch, Table, Th, cx } from '../../../components/ui';
+import { Badge, Button, ButtonBase, Callout, Card, CodeView, EmptyRow, I, Input, Select, Switch, Table, Th, Toolbar, cx } from '../../../components/ui';
 import { Method } from '../../../components/ui/Primitives';
 import { displayPath } from '../../../lib/sites/paths';
 import { routeProblems } from '../../../lib/sites/validate';
@@ -70,16 +70,16 @@ export function RoutesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnl
           {!readOnly && <Button size="sm" variant="primary" icon={I.plus} kbd="a" onClick={add}>Add route</Button>}
         </>}
       >
-        <div className="site-toolbar p-12">
+        <Toolbar inset label="Filter routes">
           <Select size="sm" aria-label="Filter by gate" value={gateFilter} onChange={(e) => setGateFilter(e.target.value)}>
             <option value="">All gates</option>
             {gates.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
           </Select>
           <Input size="sm" mono leading={I.search} aria-label="Search path" placeholder="search path" value={filter} onChange={(e) => setFilter(e.target.value)} />
-        </div>
+        </Toolbar>
         <Table className="site-routes" aria-label="Routes">
           <thead>
-            <tr><Th>#</Th><Th>Methods</Th><Th>Path</Th><Th>Gate</Th><Th>Access</Th><Th>Org</Th></tr>
+            <tr><Th kind="num">#</Th><Th>Methods</Th><Th>Path</Th><Th>Gate</Th><Th>Access</Th><Th>Org</Th></tr>
           </thead>
           <tbody>
             {items.length === 0 && (
@@ -91,7 +91,7 @@ export function RoutesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnl
               return (
                 <Fragment key={r.id}>
                   <tr className={cx(problem && 'site-row-problem', open && 'site-row-open')}>
-                    <td className="small muted tabular">{problem ? <span className="text-warning" role="img" aria-label="problem">{I.alert}</span> : i + 1}</td>
+                    <td className="num small muted">{problem ? <span className="text-warning" role="img" aria-label="problem">{I.alert}</span> : i + 1}</td>
                     <td><span className="site-method-list">{r.methods.map((m) => <Method key={m} m={m} />)}</span></td>
                     <td>
                       {readOnly

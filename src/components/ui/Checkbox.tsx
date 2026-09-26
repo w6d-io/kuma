@@ -6,20 +6,22 @@ import { cx } from './cx';
  * `onChange` hands back the new state rather than the event. `indeterminate` draws a partial
  * selection — a "select all" over a list that is only partly selected.
  */
-export function Checkbox({ checked, indeterminate, onChange, label, hint, disabled, className, name, value, id }: {
+export function Checkbox({ checked, indeterminate, onChange, label, hint, disabled, size = 'md', className, name, value, id }: {
   checked: boolean;
   indeterminate?: boolean;
   onChange: (checked: boolean) => void;
   label: ReactNode;
   hint?: ReactNode;
   disabled?: boolean;
+  /** sm for a sub-option set in smaller type; the box stays centred on the first line either way. */
+  size?: 'sm' | 'md';
   className?: string;
   name?: string;
   value?: string;
   id?: string;
 }) {
   return (
-    <label className={cx('checkbox', disabled && 'disabled', className)}>
+    <label className={cx('checkbox', size === 'sm' && 'sm', disabled && 'disabled', className)}>
       <input
         id={id}
         type="checkbox"

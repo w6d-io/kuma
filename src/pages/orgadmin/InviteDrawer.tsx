@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Card, Checkbox, Drawer, EmptyHint, Field, Input, Switch, cx } from '../../components/ui';
+import { Button, Card, Checkbox, Drawer, EmptyHint, Field, FormGrid, Input, Switch, cx } from '../../components/ui';
 import { makeToastErr, type PushToast } from './toastErr';
 import { useCreateOrgUser } from '../../api/hooks';
 
@@ -70,25 +70,23 @@ export function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
         </>
       }
     >
-      <Field label="Email" required className="mb-12">
+      <FormGrid>
+      <Field label="Email" required>
         <Input mono type="text" inputMode="email" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="user@example.com" value={email} onChange={e => setEmail(e.target.value)} autoFocus />
       </Field>
-      <Field label={<>Name <span className="muted">(optional)</span></>} className="mb-12">
+      <Field label={<>Name <span className="muted">(optional)</span></>}>
         <Input placeholder="Jane Doe" value={name} onChange={e => setName(e.target.value)} />
       </Field>
       {/* No list at all where there is nothing to hand out on invite: My org grants after joining. */}
       {assignable.length > 0 && (
-        <Field label={<>Groups <span className="muted">(optional · only groups you may assign)</span></>} className="mb-12">
+        <Field label={<>Groups <span className="muted">(optional · only groups you may assign)</span></>}>
           <GroupPicker assignable={assignable} checked={groups} toggle={toggle} />
         </Field>
       )}
-      <div className="row justify-between py-8">
-        <div>
-          <div className="fw-medium text-base">Send invite email</div>
-          <div className="small muted">Emails them a link to set their password</div>
-        </div>
-        <Switch on={sendInvite} onChange={setSendInvite} />
-      </div>
+      <Field label="Send invite email" inline hint="Emails them a link to set their password">
+        <Switch on={sendInvite} onChange={setSendInvite} label="Send invite email" />
+      </Field>
+      </FormGrid>
     </Drawer>
   );
 }

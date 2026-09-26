@@ -43,6 +43,8 @@ export interface FieldProps {
   required?: boolean;
   /** Label beside the control rather than above it — for a switch or a checkbox row. */
   inline?: boolean;
+  /** Inside a `FieldRow`: how many shares of the row this field takes. Service 2 · namespace 2 · port 1. */
+  span?: 1 | 2 | 3;
   className?: string;
   children: ReactNode;
 }
@@ -63,9 +65,15 @@ export function Field({ label, htmlFor, hint, warning, error, required = false, 
           {required && <span className="field-required" aria-hidden="true"> *</span>}
         </label>
         <div className="field-control">{children}</div>
-        {hint && <div id={hintId} className="field-hint">{hint}</div>}
-        {warning && <div id={warnId} className="field-warning">{warning}</div>}
-        {error && <div id={errId} className="field-error">{error}</div>}
+        {/* One box for everything said about the value, so fields side by side in a FieldRow keep
+            their labels, controls and messages on three shared lines. */}
+        {describedBy && (
+          <div className="field-foot">
+            {hint && <div id={hintId} className="field-hint">{hint}</div>}
+            {warning && <div id={warnId} className="field-warning">{warning}</div>}
+            {error && <div id={errId} className="field-error">{error}</div>}
+          </div>
+        )}
       </div>
     </FieldContext.Provider>
   );

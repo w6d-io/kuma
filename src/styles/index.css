@@ -20,6 +20,7 @@
 @import './base.css';
 @import './utilities.css';
 @import './kit/controls.css';
+@import './kit/form.css';
 @import './kit/surfaces.css';
 @import './kit/overlays.css';
 @import './kit/flow.css';

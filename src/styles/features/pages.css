@@ -90,4 +90,6 @@
 /* ── The one way a screen says it could not load ──────────────── */
 .api-error { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-6); }
 .api-error.compact { padding: var(--space-4); }
-.api-error-ico { width: 16px; height: 16px; display: grid; place-items: center; color: var(--color-danger); flex-shrink: 0; margin-top: var(--space-half); }
+.api-error-ico { width: 16px; height: var(--leading-base); display: grid; place-items: center; color: var(--color-danger); flex-shrink: 0; }
+/* Retry centred on the title's line, like a callout's actions. */
+.api-error > .btn.sm { margin-block: calc((var(--leading-base) - var(--control-sm)) / 2); }

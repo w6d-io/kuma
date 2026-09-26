@@ -12,7 +12,7 @@ import {
 } from '../api/hooks';
 import { api, type RecertCampaignSummary, type RecertItem, type RecertOnExpiry, type RecertStatus } from '../api/client';
 import { MultiSelectPills } from '../components/ui/Primitives';
-import { Badge, Button, ButtonBase, Card, ConfirmDialog, EmptyHint, EmptyRow, Field, I, Input, LoadingRows, RadioGroup, PageHeader, Table, Textarea, cx, type BadgeTone } from '../components/ui';
+import { ActionBar, Badge, Button, ButtonBase, Card, ConfirmDialog, EmptyHint, EmptyRow, Field, FormGrid, I, Input, LoadingRows, PageHeader, RadioGroup, Table, Textarea, cx, type BadgeTone } from '../components/ui';
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
 
@@ -78,7 +78,7 @@ function CreateCampaign({ onDone }: { onDone: () => void }) {
 
   return (
     <Card title="New campaign" sub="One review item per (user, group) in scope · explicit reviewers · one-shot" className="mb-12">
-      <div className="recert-form">
+      <FormGrid className="recert-form">
         <Field label="Name">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Q3 access review" />
         </Field>
@@ -113,11 +113,11 @@ function CreateCampaign({ onDone }: { onDone: () => void }) {
             ]}
           />
         </div>
-        <div className="row">
+        <ActionBar align="start">
           <Button variant="primary" disabled={!valid || create.isPending} onClick={submit}>Create draft</Button>
           <Button variant="ghost" onClick={onDone}>Cancel</Button>
-        </div>
-      </div>
+        </ActionBar>
+      </FormGrid>
     </Card>
   );
 }

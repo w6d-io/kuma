@@ -69,14 +69,23 @@
   border-radius: var(--radius-md);
   background: var(--color-surface);
   font-size: var(--text-base);
-  line-height: 1.5;
+  line-height: var(--leading-base);
 }
-.callout-ico { width: 16px; height: 16px; display: grid; place-items: center; flex: none; margin-top: var(--space-half); color: var(--color-info); }
+/* The icon is one text line tall, so it centres on the first line; the actions are pulled up by half
+   their extra height so their centre is that line's centre too. */
+.callout-ico { width: 16px; height: var(--leading-base); display: grid; place-items: center; flex: none; color: var(--color-info); }
 .callout-body { flex: 1; min-width: 0; }
 .callout-body > p { margin: 0; }
 .callout-body > p + p { margin-top: var(--space-2); }
 .callout-title { font-weight: var(--weight-semibold); margin-bottom: var(--space-half); }
-.callout-actions { display: flex; gap: var(--space-2); flex: none; }
+.callout-actions { display: flex; align-items: center; gap: var(--space-2); flex: none; margin-block: calc((var(--leading-base) - var(--control-sm)) / 2); }
+.callout-actions:has(> .btn:not(.sm)) { margin-block: calc((var(--leading-base) - var(--control-md)) / 2); }
+/* A phone puts the actions under the words, starting where the words start. */
+@media (max-width: 640px) {
+  .callout { flex-wrap: wrap; }
+  .callout-body { flex-basis: calc(100% - var(--space-5)); }
+  .callout-actions { flex-basis: 100%; flex-wrap: wrap; margin: 0 0 0 var(--space-5); }
+}
 .callout.success { border-left-color: var(--color-success); background: var(--color-success-soft); }
 .callout.success .callout-ico { color: var(--color-success); }
 .callout.warning { border-left-color: var(--color-warning); background: var(--color-warning-soft); }

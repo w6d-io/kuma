@@ -82,7 +82,7 @@ export function OrgSitesSettings() {
                 <tr>
                   <th>Organization</th>
                   <th>Sites</th>
-                  <th />
+                  <th className="actions" />
                 </tr>
               </thead>
               <tbody>
@@ -94,7 +94,7 @@ export function OrgSitesSettings() {
                         ? <span className="small muted">— none —</span>
                         : <span className="row wrap gap-4">{svcs.map(s => <Badge key={s}>{s}</Badge>)}</span>}
                     </td>
-                    <td className="settings-top shrink align-right">
+                    <td className="settings-top actions">
                       <Button variant="ghost" size="sm" onClick={() => setNewOrgId(orgId)} title="Edit sites">Edit</Button>
                       <Button variant="ghost" size="sm" iconOnly icon={I.trash} onClick={() => setConfirmOrg(orgId)} title="Remove sites" aria-label="Remove sites" />
                     </td>

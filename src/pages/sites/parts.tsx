@@ -126,8 +126,8 @@ export function NotAvailable({ what, compact = true }: { what: string; compact?:
 }
 
 /** One query's error, as a callout — "not available yet" for the router's 404. */
-export function QueryError({ error, what }: { error: unknown; what: string }) {
+export function QueryError({ error, what, className }: { error: unknown; what: string; className?: string }) {
   if (notAvailable(error)) return <NotAvailable what={what} />;
   const v = describeApiError(error);
-  return <Callout tone="danger" icon={I.alert} title={v.title}>{v.detail}</Callout>;
+  return <Callout tone="danger" icon={I.alert} title={v.title} className={className}>{v.detail}</Callout>;
 }

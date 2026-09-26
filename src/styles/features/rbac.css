@@ -12,7 +12,9 @@
 /* A group's roles per site: one row per site, its roles side by side. */
 .rb-site-row { border: 0; border-top: 1px solid var(--color-border); padding: var(--space-2) 0 0; margin: 0; min-width: 0; }
 .rb-site-row legend { padding: 0 var(--space-1) 0 0; margin-bottom: var(--space-2); }
-.rb-role-row { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); }
+/* Roles on a grid of equal columns, so the checkboxes of every site line up under each other. */
+.rb-role-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: var(--space-3) var(--space-4); }
+.rb-site-row + .rb-site-row { margin-top: var(--space-2); }
 .rb-access { align-items: flex-start; border-left: 2px solid var(--color-border); padding-left: var(--space-3); display: flex; flex-direction: column; gap: var(--space-1); }
 
 /* The review before a save: what is added, removed, renamed. */

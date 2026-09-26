@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Badge, Button, ButtonBase, Callout, Card, Drawer, Field, I, Input, RadioGroup, Segmented, Switch, cx } from '../../../components/ui';
+import { Badge, Button, ButtonBase, Callout, Card, Drawer, Field, FormGrid, I, Input, RadioGroup, Segmented, Switch, cx } from '../../../components/ui';
 import { useSitesPlatform } from '../../../api/sites';
 import {
   FAILS_LABEL, GETS, GETS_LABEL, PASS_LABEL, WHO, WHO_LABEL, isCustomized, missingHandlers, presetsOf, withPreset, SANDBOX_ENABLED,
@@ -145,7 +145,7 @@ function GateBasic({ gate, site, enabled, readOnly, onChange, onSite, onLocked }
       </section>
       <section>
         <h4>Also</h4>
-        <div className="stack gap-8">
+        <FormGrid>
           <Field label="Label"><Input value={gate.label} disabled={readOnly} onChange={(e) => onChange({ ...gate, label: e.target.value.slice(0, 80) || gate.label })} /></Field>
           <Field label="Answer browser pre-flight (OPTIONS) without sign-in" inline hint="Adds a separate allow-all OPTIONS rule for this gate's paths — for APIs called from another origin.">
             <Switch on={!!gate.preflight} disabled={readOnly} label="Pre-flight" onChange={(on) => onChange({ ...gate, preflight: on || undefined })} />
@@ -159,7 +159,7 @@ function GateBasic({ gate, site, enabled, readOnly, onChange, onSite, onLocked }
           <Field label="Remove path prefix" hint="Site-wide. Oathkeeper removes the first occurrence (a substring replace) — it must be a literal prefix of every path.">
             <Input mono placeholder="/api" disabled={readOnly} value={site.upstream.stripPath ?? ''} onChange={(e) => onSite((s) => ({ ...s, upstream: { ...s.upstream, stripPath: e.target.value || undefined } }))} />
           </Field>
-        </div>
+        </FormGrid>
       </section>
     </div>
   );

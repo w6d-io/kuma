@@ -186,6 +186,7 @@ export function SettingsPage() {
   return (
     <>
       <PageHeader title="Admin settings" sub="Admin operations." />
+      <div className="stack gap-16">
 
       {accountUrl && (
         <Card pad="md">
@@ -237,6 +238,7 @@ export function SettingsPage() {
                   {m.id === 'code' && st.enabled && (
                     <Checkbox
                       className="settings-sub-option"
+                      size="sm"
                       checked={!!st.passwordlessEnabled}
                       disabled={setAuthMethods.isPending}
                       onChange={v => toggleAuthMethod('code', { passwordlessEnabled: v })}
@@ -291,7 +293,7 @@ export function SettingsPage() {
                   <th>Taken before</th>
                   <th>By</th>
                   <th>Contents</th>
-                  <th />
+                  <th className="actions" />
                 </tr>
               </thead>
               <tbody>
@@ -303,7 +305,7 @@ export function SettingsPage() {
                     <td className="small muted">
                       {h.counts.services} svc · {h.counts.groups} groups · {h.counts.roles} roles · {h.counts.oathkeeperRules} rules
                     </td>
-                    <td className="shrink align-right">
+                    <td className="actions">
                       <Button variant="ghost" size="sm" disabled={rollbackImport.isPending} onClick={() => setConfirmRollback(h.id)}>
                         Roll back
                       </Button>
@@ -389,6 +391,7 @@ export function SettingsPage() {
       />
 
       <ExportBundleModal open={exportOpen} onClose={() => setExportOpen(false)} />
+      </div>
     </>
   );
 }

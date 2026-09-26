@@ -139,7 +139,7 @@ function RolesTab({ site, system }: { site: string; system: boolean }) {
       >
         <Table className="rb-stack">
           <thead>
-            <tr><th>Role</th><th>Permissions</th><th>Given by groups</th><th className="text-right">People</th>{canEdit && <th aria-label="Actions" />}</tr>
+            <tr><th>Role</th><th>Permissions</th><th>Given by groups</th><th className="num">People</th>{canEdit && <th className="actions" aria-label="Actions" />}</tr>
           </thead>
           <tbody>
             {names.length === 0 && <EmptyRow colSpan={canEdit ? 5 : 4}>{unknown ? 'Unknown.' : 'This site has no role yet.'}</EmptyRow>}
@@ -155,9 +155,9 @@ function RolesTab({ site, system }: { site: string; system: boolean }) {
                       <span className="row wrap gap-4">{groups.map(g => <Badge key={g} tone="info">{g}</Badge>)}</span>
                     )}
                   </td>
-                  <td className="text-right tabular" data-label="People">{people ?? '…'}</td>
+                  <td className="num" data-label="People">{people ?? '…'}</td>
                   {canEdit && (
-                    <td className="text-right nowrap rb-actions">
+                    <td className="actions rb-actions">
                       <Button size="sm" variant="ghost" icon={I.edit} onClick={() => setEditing({ role })} aria-label={`Edit ${role}`}>Edit</Button>
                       <Button size="sm" variant="ghost" iconOnly icon={I.trash} onClick={() => setDeleting(role)} aria-label={`Delete ${role}`} />
                     </td>

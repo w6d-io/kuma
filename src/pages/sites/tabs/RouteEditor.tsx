@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { Button, Field, I, Input, RadioGroup, Select, Switch } from '../../../components/ui';
+import { ActionBar, Button, Field, FormGrid, I, Input, RadioGroup, Select, Switch } from '../../../components/ui';
 import {
   displayPath, examplePath, formatSegments, guessOrgParam, normalizePath, orgParamProblem, parseSegments, pathParams, pathProblem,
   METHOD_PRESETS, type Segment,
@@ -115,7 +115,7 @@ export function RouteEditor({ route, gates, permissions, rowNumber, problem, onC
             { value: 'deny', label: 'Refused', hint: 'everyone is refused' },
           ]}
         />
-        <div className="stack gap-8">
+        <FormGrid>
           {kind === 'permission' && (
             <Field label="Permission" hint="resource:verb — a new name is created on save; add it to a role on Access.">
               <Input mono list={listId} value={route.access.kind === 'permission' ? route.access.permission : ''} onChange={(e) => onChange({ ...route, access: { kind: 'permission', permission: e.target.value.trim() } })} />
@@ -149,7 +149,7 @@ export function RouteEditor({ route, gates, permissions, rowNumber, problem, onC
               </Select>
             </Field>
           )}
-        </div>
+        </FormGrid>
       </div>
 
       {!pathErr && (
@@ -159,10 +159,9 @@ export function RouteEditor({ route, gates, permissions, rowNumber, problem, onC
         </p>
       )}
       {problem && <p className="field-error m-0">{problem}</p>}
-      <div className="row gap-8 justify-end">
-        <Button variant="danger" size="sm" icon={I.trash} onClick={onDelete}>Delete row</Button>
+      <ActionBar start={<Button variant="danger" size="sm" icon={I.trash} onClick={onDelete}>Delete row</Button>}>
         <Button size="sm" variant="primary" onClick={onDone}>Done</Button>
-      </div>
+      </ActionBar>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Button, Callout, Card, ConfirmDialog, Field, I, Input, RadioGroup, Select, Textarea } from '../../../components/ui';
+import { Button, Callout, Card, ConfirmDialog, Field, FieldRow, FormGrid, I, Input, RadioGroup, Select, Textarea } from '../../../components/ui';
 import { sitesApi, useInvalidateSite } from '../../../api/sites';
 import { goSites, sitesHref } from '../../../lib/sites/route';
 import { labelProblem, namespaceProblem, portProblem, serviceProblem } from '../../../lib/sites/validate';
@@ -34,45 +34,49 @@ export function SettingsTab({ ed, readOnly, canApply }: { ed: SiteEditor; readOn
   return (
     <div className="stack gap-16">
       <Card title="Site">
-        <div className="site-form-grid">
-          <Field label="Name" hint="Used in permissions (payroll:read …); cannot change."><Input mono value={site.name} disabled /></Field>
-          <Field label="Display name"><Input value={site.displayName} disabled={readOnly} maxLength={80} onChange={(e) => set((s) => ({ ...s, displayName: e.target.value || s.displayName }))} /></Field>
-          <Field label="Description" className="span-all"><Textarea rows={2} value={site.description ?? ''} disabled={readOnly} maxLength={500} onChange={(e) => set((s) => ({ ...s, description: e.target.value || undefined }))} /></Field>
-        </div>
+        <FormGrid>
+          <FieldRow>
+            <Field label="Name" hint="Used in permissions (payroll:read …); cannot change."><Input mono value={site.name} disabled /></Field>
+            <Field label="Display name"><Input value={site.displayName} disabled={readOnly} maxLength={80} onChange={(e) => set((s) => ({ ...s, displayName: e.target.value || s.displayName }))} /></Field>
+          </FieldRow>
+          <Field label="Description"><Textarea rows={2} value={site.description ?? ''} disabled={readOnly} maxLength={500} onChange={(e) => set((s) => ({ ...s, description: e.target.value || undefined }))} /></Field>
+        </FormGrid>
       </Card>
 
       <Card title="Address" sub="Changing the host is high risk in Review.">
-        <div className="site-form-grid">
-          <Field label="Host label" error={labelProblem(label) ?? undefined} hint={`under ${zone}`}>
-            <Input mono value={label} disabled={readOnly} onChange={(e) => set((s) => ({ ...s, address: { ...s.address, host: `${e.target.value.toLowerCase()}.${zone}` } }))} />
-          </Field>
-          <Field label="Path prefix" hint="Only when sharing the host with another site, e.g. /payroll.">
-            <Input mono value={site.address.pathPrefix ?? ''} disabled={readOnly} onChange={(e) => set((s) => ({ ...s, address: { host: s.address.host, ...(e.target.value ? { pathPrefix: e.target.value } : {}) } }))} />
-          </Field>
-          <RadioGroup<'zone' | 'vanity'> label="Exposure" name="exposure" value={site.exposure?.mode ?? 'zone'} disabled={readOnly} className="span-all" onChange={(mode) => set((s) => ({ ...s, exposure: { mode } }))} options={[
+        <FormGrid>
+          <FieldRow>
+            <Field label="Host label" error={labelProblem(label) ?? undefined} hint={`under ${zone}`}>
+              <Input mono value={label} disabled={readOnly} onChange={(e) => set((s) => ({ ...s, address: { ...s.address, host: `${e.target.value.toLowerCase()}.${zone}` } }))} />
+            </Field>
+            <Field label="Path prefix" hint="Only when sharing the host with another site, e.g. /payroll.">
+              <Input mono value={site.address.pathPrefix ?? ''} disabled={readOnly} onChange={(e) => set((s) => ({ ...s, address: { host: s.address.host, ...(e.target.value ? { pathPrefix: e.target.value } : {}) } }))} />
+            </Field>
+          </FieldRow>
+          <RadioGroup<'zone' | 'vanity'> label="Exposure" name="exposure" value={site.exposure?.mode ?? 'zone'} disabled={readOnly} onChange={(mode) => set((s) => ({ ...s, exposure: { mode } }))} options={[
             { value: 'zone', label: 'Zone (default)', hint: 'the zone’s wildcard address and certificate already reach the gateway — live in seconds' },
             { value: 'vanity', label: 'Its own Ingress', hint: 'the operator creates one from a fixed template; a certificate when the zone has no wildcard' },
           ]} />
-        </div>
+        </FormGrid>
       </Card>
 
       <Card title="Runs at" sub="An in-cluster Service. The operator builds the URL; platform-internal services are refused.">
-        <div className="site-form-grid">
-          <Field label="Service" error={serviceProblem(u.service) ?? undefined}><Input mono value={u.service} disabled={readOnly} onChange={(e) => set((s) => ({ ...s, upstream: { ...s.upstream, service: e.target.value.trim() } }))} /></Field>
-          <Field label="Namespace" error={namespaceProblem(u.namespace) ?? undefined}><Input mono value={u.namespace} disabled={readOnly} onChange={(e) => set((s) => ({ ...s, upstream: { ...s.upstream, namespace: e.target.value.trim() } }))} /></Field>
+        <FieldRow>
+          <Field label="Service" span={2} error={serviceProblem(u.service) ?? undefined}><Input mono value={u.service} disabled={readOnly} onChange={(e) => set((s) => ({ ...s, upstream: { ...s.upstream, service: e.target.value.trim() } }))} /></Field>
+          <Field label="Namespace" span={2} error={namespaceProblem(u.namespace) ?? undefined}><Input mono value={u.namespace} disabled={readOnly} onChange={(e) => set((s) => ({ ...s, upstream: { ...s.upstream, namespace: e.target.value.trim() } }))} /></Field>
           <Field label="Port" error={portProblem(String(u.port)) ?? undefined}><Input mono inputMode="numeric" value={String(u.port)} disabled={readOnly} onChange={(e) => set((s) => ({ ...s, upstream: { ...s.upstream, port: Number(e.target.value) || 0 } }))} /></Field>
           <Field label="Scheme" hint={u.scheme === 'https' ? 'Needs a publicly trusted certificate (no custom CA).' : undefined}>
             <Select value={u.scheme ?? 'http'} disabled={readOnly} onChange={(e) => set((s) => ({ ...s, upstream: { ...s.upstream, scheme: e.target.value === 'https' ? 'https' : undefined } }))}>
               <option value="http">http</option><option value="https">https</option>
             </Select>
           </Field>
-        </div>
+        </FieldRow>
       </Card>
 
       {!readOnly && (
         <Card title="Clone" sub="Copies gates, routes, roles and login into a new draft — never live. People, organizations and host-bound overrides are not copied.">
           {clone ? (
-            <div className="row gap-8 wrap items-end">
+            <FieldRow>
               <Field label="New name"><Input mono value={clone.name} onChange={(e) => setClone({ ...clone, name: e.target.value.toLowerCase() })} /></Field>
               <Field label="New host"><Input mono value={clone.host} onChange={(e) => setClone({ ...clone, host: e.target.value.toLowerCase() })} /></Field>
               <Button variant="primary" loading={busy === 'Clone'} onClick={async () => {
@@ -80,7 +84,7 @@ export function SettingsTab({ ed, readOnly, canApply }: { ed: SiteEditor; readOn
                 if (out) goSites(sitesHref({ view: 'site', name: clone.name, tab: 'review' }));
               }}>Clone</Button>
               <Button onClick={() => setClone(null)}>Cancel</Button>
-            </div>
+            </FieldRow>
           ) : <Button icon={I.copy} onClick={() => setClone({ name: `${site.name}-copy`, host: `${label}-copy.${zone}` })}>Clone…</Button>}
         </Card>
       )}

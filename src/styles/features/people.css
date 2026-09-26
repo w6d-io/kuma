@@ -12,7 +12,7 @@
 .people-site-name { min-width: calc(var(--space-6) * 3); }
 
 /* One site-access group: the whole row is the checkbox's label, so the whole row is the target. */
-.site-group { display: flex; width: 100%; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
+.site-group { display: flex; width: 100%; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
 .site-group.on { background: var(--color-accent-soft); }
 .site-group .checkbox-text { flex: 1; min-width: 0; }
 .site-group .checkbox-hint { font-family: var(--font-mono); font-size: var(--text-sm); overflow-wrap: anywhere; }
@@ -22,4 +22,3 @@
 .btn.people-danger-outline { border-color: var(--color-danger); color: var(--color-danger); }
 
 /* The directory search keeps a usable width and pushes the filters to the next line on a phone. */
-.people-search { min-width: min(100%, 200px); }

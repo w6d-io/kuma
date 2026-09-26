@@ -49,7 +49,7 @@ function MatrixView({ site }: { site: Site }) {
     <Card pad="none" title={`Who can do what on ${site.displayName}`} sub="Org grants apply only on org-scoped routes and never remove site access. People counts arrive with the server matrix.">
       <Table className="site-matrix" aria-label="Access matrix">
         <thead>
-          <tr><Th scope="col">Who</Th>{m.columns.map((c) => <Th key={c} scope="col" className="mono small">{c}</Th>)}</tr>
+          <tr><Th scope="col">Who</Th>{m.columns.map((c) => <Th key={c} scope="col" align="center" className="mono small">{c}</Th>)}</tr>
         </thead>
         <tbody>
           {m.rows.map((r) => (
@@ -64,8 +64,8 @@ function MatrixView({ site }: { site: Site }) {
           ))}
         </tbody>
       </Table>
-      <div className="p-12"><CheckList lines={notes} /></div>
-      <p className="small muted m-0 p-12">{SIGNED_IN}: any account passes; {PUBLIC}: no sign-in.</p>
+      <div className="px-16"><CheckList lines={notes} /></div>
+      <p className="small muted m-0 px-16 py-12">{SIGNED_IN}: any account passes; {PUBLIC}: no sign-in.</p>
     </Card>
   );
 }
@@ -95,17 +95,17 @@ function RolesView({ site, readOnly, set }: { site: Site; readOnly: boolean; set
         </Select>
       </Field>
       <Table className="site-matrix mt-12" aria-label="Roles and permissions">
-        <thead><tr><Th scope="col">Role</Th>{perms.map((p) => <Th key={p} scope="col" className="mono small">{p}</Th>)}<Th scope="col">Everything</Th></tr></thead>
+        <thead><tr><Th scope="col">Role</Th>{perms.map((p) => <Th key={p} scope="col" align="center" className="mono small">{p}</Th>)}<Th scope="col" align="center">Everything</Th></tr></thead>
         <tbody>
           {Object.entries(roles).map(([role, held]) => (
             <tr key={role}>
               <th scope="row" className="mono small">{role}{!mapped.has(role) && <span className="muted"> (unmapped)</span>}</th>
               {perms.map((p) => (
                 <td key={p} className="align-center">
-                  <Checkbox label={<span className="sr-only">{role} {p}</span>} checked={held.includes('*') || held.includes(p)} disabled={readOnly || preset !== 'custom' || held.includes('*')} onChange={(on) => toggle(role, p, on)} />
+                  <Checkbox className="bare" label={<span className="sr-only">{role} {p}</span>} checked={held.includes('*') || held.includes(p)} disabled={readOnly || preset !== 'custom' || held.includes('*')} onChange={(on) => toggle(role, p, on)} />
                 </td>
               ))}
-              <td className="align-center"><Checkbox label={<span className="sr-only">{role} everything</span>} checked={held.includes('*')} disabled={readOnly || preset !== 'custom'} onChange={(on) => toggle(role, '*', on)} /></td>
+              <td className="align-center"><Checkbox className="bare" label={<span className="sr-only">{role} everything</span>} checked={held.includes('*')} disabled={readOnly || preset !== 'custom'} onChange={(on) => toggle(role, '*', on)} /></td>
             </tr>
           ))}
         </tbody>

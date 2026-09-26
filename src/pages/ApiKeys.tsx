@@ -5,7 +5,7 @@ import { accountsApi, type ApiKeySecretView, type ApiKeyView } from '../api/acco
 import { useOrgCatalog } from '../api/orgCatalog';
 import { OrgPicker } from '../components/OrgPicker';
 import { ApiErrorState } from '../components/ApiErrorState';
-import { Badge, Button, Card, ConfirmDialog, Drawer, EmptyHint, EmptyRow, Field, Input, LoadingRows, PageHeader, Table } from '../components/ui';
+import { Badge, Button, Card, ConfirmDialog, Drawer, EmptyHint, EmptyRow, Field, FieldRow, FormGrid, Input, LoadingRows, PageHeader, Table } from '../components/ui';
 import { parseScopes, allowedScopesFrom } from '../lib/apiKeys';
 import { orgLabel } from '../lib/orgOptions';
 import { toastFor } from '../lib/apiError';
@@ -73,7 +73,7 @@ function OrgApiKeys({ org, orgName }: { org: string; orgName: string }) {
       pad="none"
     >
       <Table>
-        <thead><tr><th>Label</th><th>Scopes</th><th>Created</th><th /></tr></thead>
+        <thead><tr><th>Label</th><th>Scopes</th><th>Created</th><th className="actions" /></tr></thead>
         <tbody>
           {q.isLoading && <LoadingRows rows={3} cols={4} />}
           {!q.isLoading && keys.length === 0 && (
@@ -89,7 +89,7 @@ function OrgApiKeys({ org, orgName }: { org: string; orgName: string }) {
               <td className="small muted nowrap">
                 {k.created_at ? timeAgo(k.created_at) : '—'}{k.created_by ? ` · ${k.created_by}` : ''}
               </td>
-              <td className="align-right">
+              <td className="actions">
                 <Button variant="ghost" size="sm" disabled={busy} onClick={() => setRevoking(k)}>Revoke</Button>
               </td>
             </tr>
@@ -167,15 +167,17 @@ function CreateKeyDrawer({ org, orgName, onClose, onCreated }: {
           Copy the secret now and store it somewhere safe. It cannot be shown again — if it is lost,
           revoke this key and create a new one.
         </div>
-        <Field label="Client ID">
-          <Input mono readOnly value={created.client_id} onFocus={e => e.currentTarget.select()} />
-        </Field>
-        <Field label="Secret">
-          <div className="row gap-8">
-            <Input mono className="flex-1" readOnly value={created.client_secret} onFocus={e => e.currentTarget.select()} />
+        <FormGrid>
+          <Field label="Client ID">
+            <Input mono readOnly value={created.client_id} onFocus={e => e.currentTarget.select()} />
+          </Field>
+          <FieldRow>
+            <Field label="Secret">
+              <Input mono readOnly value={created.client_secret} onFocus={e => e.currentTarget.select()} />
+            </Field>
             <Button onClick={copy}>Copy</Button>
-          </div>
-        </Field>
+          </FieldRow>
+        </FormGrid>
       </Drawer>
     );
   }
@@ -198,6 +200,7 @@ function CreateKeyDrawer({ org, orgName, onClose, onCreated }: {
         </>
       }
     >
+      <FormGrid>
       <Field label="Label" required>
         <Input id="key-label" placeholder="e.g. Billing sync" value={label} maxLength={200} onChange={e => setLabel(e.target.value)} />
       </Field>
@@ -210,6 +213,7 @@ function CreateKeyDrawer({ org, orgName, onClose, onCreated }: {
       >
         <Input id="key-scopes" mono value={scopesText} onChange={e => setScopesText(e.target.value)} />
       </Field>
+      </FormGrid>
     </Drawer>
   );
 }

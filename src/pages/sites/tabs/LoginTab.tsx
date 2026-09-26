@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Button, Callout, Card, Checkbox, Field, I, Input, RadioGroup } from '../../../components/ui';
+import { Button, Callout, Card, Checkbox, Field, FormGrid, I, Input, RadioGroup } from '../../../components/ui';
 import { sitesApi, notAvailable } from '../../../api/sites';
 import { accentProblem, helpUrlProblem, logoProblem, welcomeProblem } from '../../../lib/sites/validate';
 import { displayPath } from '../../../lib/sites/paths';
@@ -101,7 +101,7 @@ export function LoginTab({ ed, readOnly }: { ed: SiteEditor; readOnly: boolean }
 
       <Card title="Sign-in pages show" sub="Cosmetic only — never an access decision. The platform sign-in address stays visible (anti-phishing).">
         <div className="site-login-grid">
-          <div className="stack gap-12">
+          <FormGrid>
             <Field label="Name" hint="Defaults to the display name.">
               <Input value={branding.name ?? ''} placeholder={site.displayName} maxLength={80} disabled={readOnly} onChange={(e) => setBranding({ name: e.target.value })} />
             </Field>
@@ -131,7 +131,7 @@ export function LoginTab({ ed, readOnly }: { ed: SiteEditor; readOnly: boolean }
             <Field label="Help link" hint="Optional, https:// only." error={helpUrlProblem(branding.helpUrl ?? '') ?? undefined}>
               <Input mono value={branding.helpUrl ?? ''} placeholder={`https://${site.address.host}/help`} disabled={readOnly} onChange={(e) => setBranding({ helpUrl: e.target.value.trim() })} />
             </Field>
-          </div>
+          </FormGrid>
           <LoginPreview name={branding.name || site.displayName} welcome={branding.welcome} accent={accent && !accent.problem ? branding.accent : undefined} helpUrl={branding.helpUrl} logo={branding.logo} site={site.name} />
         </div>
       </Card>
@@ -141,7 +141,7 @@ export function LoginTab({ ed, readOnly }: { ed: SiteEditor; readOnly: boolean }
           { value: 'granted', label: 'Only people given access (groups / org grants)' },
           { value: 'any-account', label: 'Anyone with an account', hint: 'routes marked Signed-in are open to every account' },
         ]} />
-        <Field label="After sign-out send people to" className="mt-12" hint="Must be an allowed return address of the sign-in service." error={login.postLogoutUrl && !/^https:\/\//.test(login.postLogoutUrl) ? 'An https:// address.' : undefined}>
+        <Field label="After sign-out send people to" className="mt-16" hint="Must be an allowed return address of the sign-in service." error={login.postLogoutUrl && !/^https:\/\//.test(login.postLogoutUrl) ? 'An https:// address.' : undefined}>
           <Input mono value={login.postLogoutUrl ?? ''} placeholder={`https://${site.address.host}/`} disabled={readOnly} onChange={(e) => setLogin((l) => ({ ...l, postLogoutUrl: e.target.value.trim() || undefined }))} />
         </Field>
       </Card>

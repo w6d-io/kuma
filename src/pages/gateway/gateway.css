@@ -1,6 +1,14 @@
 /* Gateway handlers (GW-3). Tokens only; shares the Sites stylesheet for lists, checks and toolbars. */
 .gw-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--space-3); }
-.gw-table td:last-child { max-width: 28rem; }
+/* The four kinds are four tables one above the other: one set of column widths, so State, Used by
+   and What it does run down the page as straight columns. */
+@media (min-width: 481px) {
+  .gw-table { table-layout: fixed; }
+  .gw-col-handler { width: 34%; }
+  .gw-col-state { width: 10rem; }
+  .gw-col-used { width: 9rem; }
+  .gw-table td { overflow-wrap: anywhere; }
+}
 
 @media (max-width: 480px) {
   .gw-table th:last-child, .gw-table td:last-child { display: none; }

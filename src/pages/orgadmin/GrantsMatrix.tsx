@@ -73,7 +73,7 @@ export function GrantsMatrix({ org, orgName, members, loading, saved, assignable
               </Th>
             ))}
             <th />
-            <th />
+            <th className="actions" />
           </tr>
         </thead>
         <tbody>
@@ -117,7 +117,7 @@ export function GrantsMatrix({ org, orgName, members, loading, saved, assignable
                     </>
                   )}
                 </td>
-                <td className="text-right">
+                <td className="actions">
                   <Button variant="ghost" size="sm" onClick={() => onRemove(m)} title={`Remove from ${orgName} only`}>Remove</Button>
                 </td>
               </FragmentRow>

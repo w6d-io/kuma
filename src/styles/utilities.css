@@ -76,9 +76,9 @@
 
 /* ── Text ───────────────────────────────────────────────────── */
 .text-xs { font-size: var(--text-xs); line-height: var(--leading-xs); }
-.text-sm, .small { font-size: var(--text-sm); }
-.text-base { font-size: var(--text-base); }
-.text-md { font-size: var(--text-md); }
+.text-sm, .small { font-size: var(--text-sm); line-height: var(--leading-sm); }
+.text-base { font-size: var(--text-base); line-height: var(--leading-base); }
+.text-md { font-size: var(--text-md); line-height: var(--leading-md); }
 .text-lg { font-size: var(--text-lg); line-height: var(--leading-lg); }
 .text-xl { font-size: var(--text-xl); line-height: var(--leading-xl); }
 .fw-regular { font-weight: var(--weight-regular); }

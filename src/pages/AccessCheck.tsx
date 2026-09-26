@@ -4,7 +4,7 @@ import { useServices } from '../api/hooks';
 import { orgAccessApi, type AccessCheckResult } from '../api/orgAccess';
 import { METHODS, describeCheckError, explain, formFromQuery, requiredPermissions, validateCheck, type CheckForm } from '../lib/accessCheck';
 import { formatHash, parseHash } from '../lib/route';
-import { Badge, Button, Card, Callout, EmptyHint, Field, I, Input, PageHeader, Select, Table } from '../components/ui';
+import { Badge, Button, Callout, Card, EmptyHint, Field, FieldRow, I, Input, PageHeader, Select, Table } from '../components/ui';
 
 /**
  * "Why can't X do Y?" — asks the engine the same question the gateway asks, for somebody else, and
@@ -51,7 +51,8 @@ export function AccessCheckPage() {
         className="panel mb-12 ac-form"
         onSubmit={(e) => { e.preventDefault(); run(form); }}
       >
-        <Field label="Person (email)">
+        <FieldRow>
+        <Field label="Person (email)" span={2}>
           <Input id="ac-email" mono type="text" inputMode="email" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="user@example.com" value={form.email} onChange={set('email')} />
         </Field>
         <Field label="Method">
@@ -59,10 +60,10 @@ export function AccessCheckPage() {
             {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
           </Select>
         </Field>
-        <Field label="Path">
+        <Field label="Path" span={2}>
           <Input id="ac-path" mono placeholder="/api/clusters/42" value={form.path} onChange={set('path')} />
         </Field>
-        <Field label={<>Site <span className="muted">(optional)</span></>}>
+        <Field label={<>Site <span className="muted">(optional)</span></>} span={2}>
           <Select id="ac-app" value={form.app} onChange={set('app')}>
             <option value="">Work it out</option>
             {(services.data ?? []).map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
@@ -70,7 +71,8 @@ export function AccessCheckPage() {
           </Select>
         </Field>
         <Button variant="primary" type="submit" disabled={check.isPending}>{check.isPending ? 'Checking…' : 'Check'}</Button>
-        {problem && <div className="small text-danger span-all" role="alert">{problem}</div>}
+        </FieldRow>
+        {problem && <div className="small text-danger" role="alert">{problem}</div>}
       </form>
 
       {check.isError && <CheckError error={check.error} onRetry={() => run(form)} />}

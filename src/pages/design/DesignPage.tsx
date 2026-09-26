@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { PageHeader, Segmented } from '../../components/ui';
 import { TokensSection } from './TokensSection';
 import { ControlsSection } from './ControlsSection';
+import { LayoutSection } from './LayoutSection';
 import { SurfacesSection } from './SurfacesSection';
 import { OverlaysSection } from './OverlaysSection';
 import { FlowSection } from './FlowSection';
@@ -18,6 +19,7 @@ type Preview = 'page' | 'light' | 'dark';
 const SECTIONS = [
   { id: 'tokens', label: 'Tokens' },
   { id: 'controls', label: 'Controls' },
+  { id: 'layout', label: 'Layout' },
   { id: 'surfaces', label: 'Surfaces' },
   { id: 'overlays', label: 'Overlays' },
   { id: 'flow', label: 'Flows & code' },
@@ -46,6 +48,7 @@ export function DesignPage() {
       <div className="design-canvas" data-theme={preview === 'page' ? undefined : preview}>
         <TokensSection />
         <ControlsSection />
+        <LayoutSection />
         <SurfacesSection />
         <OverlaysSection />
         <FlowSection />
