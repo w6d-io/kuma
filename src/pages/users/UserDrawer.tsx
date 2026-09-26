@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../contexts/AppContext';
-import { useAuthorizationModel, usePermissionChain, useSession } from '../../api/hooks';
-import { api } from '../../api/client';
+import { useSession } from '../../api/hooks';
+import { useSiteGroups } from '../access/access';
 import { I } from '../../components/ui/Icons';
 import { Avatar, Badge, Button, Callout, Card, Drawer, Field, Input, Switch, Tabs } from '../../components/ui';
 import { useApplyChange } from '../../hooks/useApplyChange';
@@ -28,29 +27,8 @@ export function UserDrawer() {
   const { userDrawer, setUserDrawer, setPage, state, apiSetUserGroups, apiCreateUser } = useApp();
   const applyChange = useApplyChange();
   const { data: session } = useSession();
-  /**
-   * What this actor may hand out, asked of the model the engine decides against.
-   *
-   * What this replaced offered `state.groups` — the previous model's catalogue, read from a cache —
-   * and greyed the privileged ones when the session did NOT carry a role literally called
-   * `super_admin`. Neither survives: the policy defines no such role (global power is a group
-   * granting in every organisation, read off the shape), so every privileged row was greyed for
-   * everybody; and the names on offer were not the ones the policy knows, so assigning one wrote a
-   * membership that granted nothing while looking like it had worked.
-   */
-  const modelGroups = useAuthorizationModel().data?.groups ?? {};
-  const chain = usePermissionChain();
-  const assignable = useQuery({
-    queryKey: ['assignable-groups'],
-    queryFn: () => api.assignableGroups(),
-    staleTime: 30_000,
-  });
-  const siteRows = {
-    offered: assignable.data?.groups ?? [],
-    mayAssign: assignable.data?.mayAssign ?? false,
-    modelGroups,
-    legacy: state.groups,
-  };
+  // The same site groups Groups edits, from jinbe's /admin/rbac — what the mutation will accept.
+  const siteRows = useSiteGroups();
 
   // edit state
   const user = userDrawer?.user;
@@ -204,8 +182,6 @@ export function UserDrawer() {
                 groups={groups}
                 toggle={toggleGroup}
                 siteRows={siteRows}
-                assignable={{ isError: assignable.isError, isLoading: assignable.isLoading }}
-                chain={chain}
                 onOpenOrg={(orgId) => leaveTo(() => setPage('orgadmin', orgId))}
               />
             </>

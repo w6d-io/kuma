@@ -1,4 +1,3 @@
-import { grantsEveryOrganisation, type GroupDefinition } from '../policy/model';
 import type { AppState, User } from '../api/types';
 
 export function accessLevelOf(perms: string[]): string {
@@ -41,19 +40,4 @@ export function resolvePerms(user: User, state: AppState) {
     });
   });
   return { roles, perms, granters };
-}
-
-/**
- * A group is "privileged" when it grants in EVERY organisation.
- *
- * What this replaced walked `group → service → roles` in the registry this console used to keep, and
- * looked for the literal role `super_admin` or a role carrying `*`. The model the engine decides
- * against defines neither name, so it answered "not privileged" for every group that actually is —
- * and the escalation warning it feeds never appeared.
- *
- * The tree has no `*` to spot, so scope is the signal: a right held everywhere at once is not an
- * ordinary tenant role, whatever it carries.
- */
-export function isPrivilegedGroup(group: string, groups: Record<string, GroupDefinition>): boolean {
-  return grantsEveryOrganisation(groups[group]);
 }

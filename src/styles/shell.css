@@ -52,6 +52,15 @@
   color: var(--color-text-disabled);
   font-weight: 600;
 }
+/* A heading that folds its items away. Same look as a heading, plus a caret and a hover. */
+.nav-section-toggle {
+  display: flex; align-items: center; gap: var(--space-1);
+  width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer;
+}
+.nav-section-toggle:hover { color: var(--color-text-muted); }
+.nav-section-toggle .ico { width: 10px; display: inline-grid; place-items: center; }
+/* Space before a top-level entry that follows a heading's items, so it does not read as one of them. */
+.nav-gap { height: var(--space-2); }
 .nav-item {
   display: flex; align-items: center; gap: 10px;
   padding: 7px 9px 7px 11px;

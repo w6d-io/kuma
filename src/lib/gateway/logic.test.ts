@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  parseGatewayHash, gatewayHref, rowsOf, secretState, vaultRefProblem, configProblems, disableBlockers, secretKeys, kindOfHandler,
+  parseGatewayHash, gatewayHref, rowsOf, secretState, configProblems, disableBlockers, secretKeys, kindOfHandler,
 } from './logic';
 import { CATALOG, handlerInfo } from './catalog';
 import type { GatewayState } from './types';
@@ -37,22 +37,17 @@ describe('rowsOf', () => {
     expect(rowsOf(undefined, 'mutators').map((r) => r.name)).toContain('hydrator');
     expect(rowsOf(undefined, 'errors').map((r) => r.name)).toEqual(['json', 'redirect', 'www_authenticate']);
   });
-  it('names the sites that block disabling', () => {
+  it('names the sites and platform rules that block disabling', () => {
     expect(disableBlockers(rowsOf(state, 'authenticators')[0])).toEqual(['payroll']);
+    expect(disableBlockers({ usedBy: [{ site: 'shop', gates: [] }], platform: true, platformRules: ['kuma-api'] })).toEqual(['platform rule kuma-api', 'shop']);
   });
 });
 
 describe('secrets', () => {
-  it('tells masked, Vault and plaintext apart', () => {
+  it('tells masked, typed and empty apart', () => {
     expect(secretState({ masked: true })).toBe('masked');
-    expect(secretState({ vault: 'kv/a#b' })).toBe('vault');
-    expect(secretState('hunter2')).toBe('plaintext');
+    expect(secretState('hunter2')).toBe('typed');
     expect(secretState(undefined)).toBe('empty');
-  });
-  it('checks the Vault reference shape', () => {
-    expect(vaultRefProblem('kv/auth/hydrator#password')).toBeNull();
-    expect(vaultRefProblem('hydrator')).toMatch(/kv\//);
-    expect(vaultRefProblem('')).toMatch(/Vault path/);
   });
   it('knows the catalog secret fields', () => {
     const row = { info: handlerInfo('mutators', 'hydrator'), secrets: [] };
@@ -66,13 +61,13 @@ describe('configProblems', () => {
     expect(configProblems(hydrator, {}, true).map((p) => p.key)).toContain('api.url');
     expect(configProblems(hydrator, {}, false)).toEqual([]);
   });
-  it('refuses a typed secret and a bad duration', () => {
+  it('refuses a typed secret (set by the platform) and a bad duration', () => {
     const p = configProblems(hydrator, { api: { url: 'http://x', auth: { basic: { password: 'hunter2' } } }, cache: { ttl: '1 minute' } }, true);
     expect(p.map((x) => x.key)).toEqual(['api.auth.basic.password', 'cache.ttl']);
     expect(p.every((x) => x.blocking)).toBe(true);
   });
-  it('accepts a Vault reference and a masked value', () => {
-    expect(configProblems(hydrator, { api: { url: 'http://x', auth: { basic: { password: { vault: 'kv/auth/h#pw' } } } } }, true)).toEqual([]);
+  it('accepts a masked secret, or none', () => {
+    expect(configProblems(hydrator, { api: { url: 'http://x' } }, true)).toEqual([]);
     expect(configProblems(hydrator, { api: { url: 'http://x', auth: { basic: { password: { masked: true } } } } }, true)).toEqual([]);
   });
 });

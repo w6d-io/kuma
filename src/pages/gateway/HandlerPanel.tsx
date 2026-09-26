@@ -29,9 +29,9 @@ export function HandlerPanel({ row, level, onLevel, canEdit, onReview }: {
   const problems = configProblems(row, config, true);
   const problemOf = (k: string) => problems.find((p) => p.key === k)?.message;
   const blockers = disableBlockers(row);
-  const readOnly = !canEdit;
+  const readOnly = !canEdit || !!row.locked;
   // Required fields with a known platform default (the catalog placeholder), still empty.
-  const suggested = row.info.fields.filter((f) => f.required && f.placeholder && f.type !== 'secret' && problems.some((p) => p.key === f.key));
+  const suggested = row.info.fields.filter((f) => f.required && (row.defaults?.[f.key] !== undefined || f.placeholder) && f.type !== 'secret' && problems.some((p) => p.key === f.key));
 
   const change = (enabled?: boolean): HandlerChange => ({
     kind: row.kind, name: row.name,
@@ -48,10 +48,12 @@ export function HandlerPanel({ row, level, onLevel, canEdit, onReview }: {
         <span className="small muted">{restartWords(row.restart)}</span>
       </div>
       {row.info.caution && <Callout tone="warning" icon={I.alert}>{row.info.caution}</Callout>}
+      {row.locked && <Callout tone="neutral" icon={I.lock} title="Locked">{row.locked}</Callout>}
 
       <section className="stack gap-4">
         <h4 className="m-0 text-md">Used by</h4>
-        {row.usedBy.length === 0 ? <EmptyHint>No site uses it.</EmptyHint> : (
+        {row.platform && <p className="small m-0">{row.platformRules?.length ? <>Platform rules: <span className="mono">{row.platformRules.join(', ')}</span></> : 'The platform’s own rules (kuma, jinbe, sign-in) use it.'}</p>}
+        {row.usedBy.length === 0 ? (!row.platform && <EmptyHint>No site uses it.</EmptyHint>) : (
           <ul className="site-list small">
             {row.usedBy.map((u) => (
               <li key={u.site}><a href={`#/sites/${encodeURIComponent(u.site)}/gates${u.gates[0] ? `?gate=${encodeURIComponent(u.gates[0])}` : ''}`}>{u.site}</a>{u.gates.length ? <span className="muted"> · gates {u.gates.join(', ')}</span> : null}</li>
@@ -65,11 +67,11 @@ export function HandlerPanel({ row, level, onLevel, canEdit, onReview }: {
           <h4 className="m-0 text-md">Global config</h4>
           <Segmented label="Detail level" value={level} onChange={onLevel} options={[{ value: 'basic', label: 'Basic' }, { value: 'advanced', label: 'Advanced' }, { value: 'expert', label: 'Expert' }]} />
         </div>
-        <p className="small muted m-0">Every site’s gate starts from these values; a gate may override the per-rule ones. Secrets are Vault references only.</p>
+        <p className="small muted m-0">Every site’s gate starts from these values; a gate may override the per-rule ones. Secrets are set by the platform and shown masked.</p>
         {row.info.fields.length === 0 && <EmptyHint>This handler has no settings.</EmptyHint>}
         <div className="gw-fields">
           {fields.map((f) => secrets.has(f.key) || f.type === 'secret'
-            ? <SecretField key={f.key} label={f.label} required={f.required} value={getPath(config, f.key)} disabled={readOnly} onChange={(v) => setConfig((c) => setPath(c, f.key, v) ?? {})} />
+            ? <SecretField key={f.key} label={f.label} required={f.required} value={getPath(config, f.key)} />
             : (
               <div key={f.key}>
                 <HandlerFieldEditor
@@ -85,14 +87,14 @@ export function HandlerPanel({ row, level, onLevel, canEdit, onReview }: {
         </div>
         {hidden > 0 && <p className="small muted m-0">{hidden} more field{hidden === 1 ? '' : 's'} in {level === 'basic' ? 'Advanced and Expert' : 'Expert'}.</p>}
         {level === 'expert' && (
-          <Field label="Config as JSON" hint="Secret fields must stay {masked: true} or {vault: ref}." error={rawError ?? undefined}>
+          <Field label="Config as JSON" hint="Masked values stay {&quot;masked&quot;: true}; secrets can’t be set here." error={rawError ?? undefined}>
             <Textarea mono rows={10} value={raw} disabled={readOnly} onChange={(e) => setRaw(e.target.value)}
               onBlur={() => { try { const v = JSON.parse(raw); if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('an object'); setConfig(v); setRawError(null); } catch (err) { setRawError(`Not valid JSON: ${(err as Error).message}`); } }} />
           </Field>
         )}
       </section>
 
-      {canEdit && (
+      {canEdit && !row.locked && (
         <div className="row gap-8 wrap justify-end">
           {row.enabled && (
             <Button
@@ -110,13 +112,13 @@ export function HandlerPanel({ row, level, onLevel, canEdit, onReview }: {
       )}
       {canEdit && row.enabled && blockers.length > 0 && (
         <Callout tone="neutral" icon={I.lock} title="Can’t be disabled while sites use it">
-          {blockers.map((s, i) => <span key={s}>{i > 0 && ', '}<a href={`#/sites/${encodeURIComponent(s)}/gates`}>{s}</a></span>)} — move their gates to another method first.
+          {blockers.map((s, i) => <span key={s}>{i > 0 && ', '}{s.startsWith('the platform') ? s : <a href={`#/sites/${encodeURIComponent(s)}/gates`}>{s}</a>}</span>)} — move their gates to another method first.
         </Callout>
       )}
       {canEdit && !row.enabled && problems.some((p) => p.blocking) && (
         <div className="row gap-8 items-center justify-end">
           <span className="small muted">Fill the required fields (*) to enable it.</span>
-          {suggested.length > 0 && <Button size="sm" onClick={() => setConfig((c) => suggested.reduce((acc, f) => setPath(acc, f.key, f.type === 'list' ? [f.placeholder] : f.placeholder) ?? acc, c))}>Use the platform’s usual values</Button>}
+          {suggested.length > 0 && <Button size="sm" onClick={() => setConfig((c) => suggested.reduce((acc, f) => setPath(acc, f.key, row.defaults?.[f.key] ?? (f.type === 'list' ? [f.placeholder] : f.placeholder)) ?? acc, c))}>Use the platform’s usual values</Button>}
         </div>
       )}
     </div>

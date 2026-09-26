@@ -130,13 +130,13 @@ export const api = {
     }),
 
   updateGroup: (name: string, services: Record<string, string[]>) =>
-    request<{ commitId: string }>(`/admin/rbac/groups/${name}`, {
+    request<{ commitId: string }>(`/admin/rbac/groups/${encodeURIComponent(name)}`, {
       method: 'PUT',
       body: JSON.stringify({ services }),
     }),
 
   deleteGroup: (name: string) =>
-    request<void>(`/admin/rbac/groups/${name}`, { method: 'DELETE' }),
+    request<void>(`/admin/rbac/groups/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 
   // ─── Services ───
   getServices: () =>
@@ -148,6 +148,17 @@ export const api = {
   // ─── Roles (per service) ───
   getRoles: (serviceName: string) =>
     request<{ service: string; roles: JinbeRole[]; meta: { fileSha: string } }>(`/admin/rbac/services/${serviceName}/roles`),
+
+  /** Replace every role of a site. The whole map goes up: a role left out is deleted. */
+  setServiceRoles: (serviceName: string, roles: Record<string, string[]>) =>
+    request<{ success: boolean; message: string }>(`/admin/rbac/services/${encodeURIComponent(serviceName)}/roles`, {
+      method: 'PUT',
+      body: JSON.stringify({ roles }),
+    }),
+
+  /** Every person with the site groups they hold — the member lists of Groups and Roles. */
+  getRbacUsers: () =>
+    request<{ users: import('../lib/rbacEdit').RbacUser[] }>(`/admin/rbac/users`).then(r => r.users),
 
   // ─── Routes / Route map (per service) ───
   getServiceRoutes: (serviceName: string) =>
@@ -174,23 +185,6 @@ export const api = {
         applications?: string[];
       }[];
     }>('/admin/organizations'),
-
-  assignableGroups: () =>
-    request<{ groups: string[]; mayAssign: boolean }>('/admin/assignable-groups'),
-
-  /**
-   * The model the engine decides against: what each group grants, per organisation, and what each
-   * role carries. Read-only — it lives in Git and changes at a release.
-   */
-  authorizationModel: () =>
-    request<AuthorizationModel>('/admin/authorization-model'),
-
-  // ─── Enforced configuration (read-only) ───
-  // What actually decides, read from the cluster objects the engines load. There is no writer and
-  // there must not be one: the source of truth is a repository synced by Argo, so a write here
-  // would be reverted by the next sync without telling anybody.
-  getEnforcedConfig: () =>
-    request<{ documents: EnforcedDocument[] }>(`/admin/enforced-config`).then(r => r.documents),
 
   // ─── Access Rules (Oathkeeper) ───
   getAccessRules: () =>
@@ -664,71 +658,6 @@ export interface ImportPreview {
   warnings: { kind: string; message: string; detail?: string }[];
 }
 
-/** One object that decides something, as the service that reads the cluster answers it. */
-export interface EnforcedDocument {
-  /** The Kubernetes kind — `Rule` for the edge, `ConfigMap` for the policy data. */
-  kind: string;
-  name: string;
-  namespace: string;
-  /** What it decides, in the reader's terms rather than the cluster's. */
-  decides: string;
-  /** The object as YAML, pruned of what the API server adds. */
-  yaml: string;
-  /** The route table as rows, when this document holds one. Parsed by the service, not here. */
-  routes?: EnforcedRoute[];
-  /** What each role carries, when this document holds that instead. */
-  roles?: EnforcedRole[];
-  edge?: EnforcedEdge;
-  /** Who holds which role, and in which organisation. */
-  grants?: EnforcedGrant[];
-}
-
-/** For a `Rule`: what it lets in, where it goes, and which route table decides it. */
-export interface EnforcedEdge {
-  methods: string[];
-  url: string;
-  upstream?: string;
-  authenticators: string[];
-  authorizer: string;
-  /** The service the engine's payload names — the route table it looks up. Not carried by the rule. */
-  authorizesAs?: string;
-  tableDeclared?: boolean;
-}
-
-export interface EnforcedRoute {
-  method: string;
-  path: string;
-  /** `public` | `authenticated` | `authorized` — what the edge requires before forwarding. */
-  class: string;
-  /** Only for `authorized`: the permission the caller must hold. */
-  permission?: string;
-}
-
-export interface EnforcedRole {
-  role: string;
-  permissions: string[];
-}
-
-/** Who holds which role, and where — the last link of the chain a reader follows. */
-export interface EnforcedGrant {
-  /** The immutable identity the grant is keyed on. */
-  subject: string;
-  /** The address that identity carries today. Absent when the directory could not name it. */
-  email?: string;
-  held: {
-    organisation: string;
-    organisationName?: string;
-    roles: string[];
-    /**
-     * The group the roles came through — the hop that explains the rest.
-     *
-     * Optional because a deployment answering the previous shape omits it, and a screen must degrade
-     * to "who holds what" rather than break on the missing "why".
-     */
-    viaGroups?: string[];
-  }[];
-}
-
 export interface JinbeAccessRule {
   id: string;
   upstream: { url: string; preserve_host?: boolean; strip_path?: string };
@@ -909,8 +838,3 @@ export interface AuditStreamEvent {
 }
 
 
-/** A group grants roles per organisation; `*` means every organisation the caller is in. */
-export type AuthorizationModel = {
-  groups: Record<string, Record<string, string[]>>;
-  roles: Record<string, string[]>;
-};

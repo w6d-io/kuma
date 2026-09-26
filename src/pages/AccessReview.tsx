@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { useAccessReview, useAuditEvents, usePermissionChain } from '../api/hooks';
+import { useAccessReview, useAuditEvents } from '../api/hooks';
+import { SiteAccessTree } from './access/SiteAccessTree';
 import { ApiErrorState } from '../components/ApiErrorState';
-import { PermTree } from '../components/ui/Primitives';
 import { Avatar, Badge, Card, Drawer, EmptyHint, I, PageHeader, Table, type BadgeTone } from '../components/ui';
 import { timeAgo } from '../api/transforms';
 import { RiskBadge } from './audit/RiskBadge';
@@ -171,7 +171,6 @@ function AccessReviewDrawer({ identity, onClose }: {
 }) {
   // "Are they using it" — recent actions by this actor (fail-closed: empty ≠ error).
   const trailQ = useAuditEvents({ actor: identity?.email || '', limit: 8 }, !!identity);
-  const chain = usePermissionChain();
   if (!identity) return null;
   const tm = tierMeta(identity.tier);
   const trail = trailQ.data ?? [];
@@ -212,7 +211,7 @@ function AccessReviewDrawer({ identity, onClose }: {
       <div className="mb-12">
         <label className="input-label">Why they can do this</label>
         <Card pad="sm">
-          <PermTree user={{ name: identity.name || identity.email, email: identity.email, groups: identity.groups }} model={chain.model} routeTables={chain.routeTables} />
+          <SiteAccessTree user={{ name: identity.name || identity.email, email: identity.email, groups: identity.groups }} />
         </Card>
       </div>
 
