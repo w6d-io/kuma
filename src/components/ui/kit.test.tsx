@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, useState } from 'react';
+import { act, useState, type ReactElement } from 'react';
 import { cleanup, click, key, render, type } from './testing';
 import { Tabs, Segmented } from './Tabs';
 import { Table, Th, EmptyRow, LoadingRows, sortRows, nextSort } from './Table';
@@ -255,6 +255,17 @@ describe('small pieces', () => {
   it('Badge carries its tone', () => {
     const { container } = render(<Badge tone="danger">off</Badge>);
     expect(container.querySelector('.badge')!.className).toContain('danger');
+  });
+
+  it('Badge draws each label by what it means', () => {
+    const variant = (el: ReactElement) => render(el).container.querySelector('.badge')!.className.match(/is-(\w+)/)![1];
+    expect(variant(<Badge tone="success">live</Badge>)).toBe('status');
+    expect(variant(<Badge>billing.read</Badge>)).toBe('tag');
+    expect(variant(<Badge tone="plain">v12</Badge>)).toBe('tag');
+    expect(variant(<Badge tone="plain" mono={false}>draft</Badge>)).toBe('meta');
+    expect(variant(<Badge>{12}</Badge>)).toBe('count');
+    expect(variant(<Badge tone="plain">+{3} more</Badge>)).toBe('count');
+    expect(variant(<Badge variant="meta">system</Badge>)).toBe('meta');
   });
 
   it('EmptyState says what is empty and offers the way out', () => {

@@ -43,9 +43,9 @@ export function TokensSection() {
         </div>
       </Specimen>
       <div className="specimen-grid">
-        <Specimen name="--radius-*" note="Three corners, all Strada's.">
+        <Specimen name="--radius-*" note="Three corners, all Strada's. Round is for circles only (avatars, switches, radios); never a label.">
           <div className="row gap-16 wrap">
-            {['sm', 'md', 'pill'].map((r) => (
+            {['sm', 'md', 'round'].map((r) => (
               <div key={r} className="col items-start gap-4">
                 <span className="radius-demo" data-radius={r} />
                 <span className="mono text-xs">--radius-{r}</span>

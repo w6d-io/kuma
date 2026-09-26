@@ -61,7 +61,7 @@
   display: inline-block; flex: none;
   border: 2px solid currentColor;
   border-right-color: transparent;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-round);
   animation: spin 0.7s linear infinite;
 }
 
@@ -149,7 +149,7 @@
   padding: 0;
   background: var(--color-surface-3);
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-round);
   flex-shrink: 0;
   transition: background var(--duration-base), border-color var(--duration-base);
 }
@@ -159,7 +159,7 @@
   top: 1px; left: 1px;
   width: 14px; height: 14px;
   background: var(--color-surface);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-round);
   box-shadow: var(--shadow-sm);
   transition: left var(--duration-base) var(--easing);
 }
@@ -199,27 +199,26 @@
 .tab:disabled { opacity: 0.5; }
 .tab-ico { width: 14px; height: 14px; display: inline-grid; place-items: center; }
 .tab-count {
-  font-family: var(--font-mono); font-size: var(--text-xs);
-  padding: 0 var(--space-1); min-width: 18px; text-align: center;
-  background: var(--color-surface-3); border-radius: var(--radius-pill);
+  font-size: var(--text-xs); font-variant-numeric: tabular-nums;
   color: var(--color-text-subtle);
 }
-.tab.on .tab-count, .seg-opt.on .tab-count { background: var(--color-surface-2); color: var(--color-text-muted); }
+.tab.on .tab-count, .seg-opt.on .tab-count { color: var(--color-text-muted); }
 
-/* ── Pills: a multi-select of toggles ─────────────────────────── */
+/* ── Pills: a multi-select of toggles ─────────────────────────────
+   Square-cornered toggle tags, not capsules: off is an outlined tag, on is tinted with a check. */
 .pills { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .pill {
   display: inline-flex; align-items: center; gap: var(--space-1);
   height: 24px; padding: 0 var(--space-2);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
-  background: var(--color-surface-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
   color: var(--color-text-muted);
   font-family: var(--font-mono); font-size: var(--text-xs); font-weight: var(--weight-medium);
 }
 .pill:hover:not(.on) { border-color: var(--color-border-strong); color: var(--color-text); }
-.pill.on { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+.pill.on { background: var(--color-accent-soft); border-color: var(--color-accent-line); color: var(--color-accent); }
 
 /* ── RadioGroup ───────────────────────────────────────────────── */
 .radio-group { display: flex; flex-direction: column; gap: var(--space-2); }
-.checkbox input[type="radio"] { border-radius: var(--radius-pill); }
+.checkbox input[type="radio"] { border-radius: var(--radius-round); }

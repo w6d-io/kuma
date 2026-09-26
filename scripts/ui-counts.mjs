@@ -8,8 +8,11 @@
 //   strayHex      hex colours outside the tokens (CSS and TS/TSX alike)
 //   radii         every distinct border-radius value still written; the goal is tokens only
 //   inlineStyles  `style={` props in TSX
+//   roundLabels   CSS rules that make something fully round (--radius-round, 999px, 50%) whose
+//                 selector is not a circle by nature (ROUND_OK); labels are square, see Badge.tsx
 //
-// Prints one JSON object. `--check` exits 1 unless buttons and hex are 0 and every radius is a token.
+// Prints one JSON object. `--check` exits 1 unless buttons, hex and round labels are 0 and every
+// radius is a token.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +20,11 @@ import { fileURLToPath } from 'node:url';
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 const src = join(root, 'src');
 const EXCLUDED = ['components/ui/', 'styles/vendor/', 'styles/tokens.css'];
-const RADIUS_TOKENS = new Set(['0', 'var(--radius-sm)', 'var(--radius-md)', 'var(--radius-pill)']);
+const RADIUS_TOKENS = new Set(['0', 'var(--radius-sm)', 'var(--radius-md)', 'var(--radius-round)']);
+// The only things allowed a full round: avatars, switch tracks/thumbs, radios, spinners, scrollbar
+// thumbs, progress bars, numbered step/timeline markers, the level dot and the token demo.
+const ROUND_OK = /avatar|actor-dot|switch|radio|spinner|scrollbar|progress|step-marker|tl-marker|vstage-num|alevel|radius-demo/;
+const ROUND = /radius:\s*[^;]*(?:var\(--radius-(?:round|pill)\)|\b\d{3,}px|50%)/;
 
 function walk(dir) {
   return readdirSync(dir).flatMap((name) => {
@@ -31,7 +38,7 @@ const files = walk(src)
   .filter(({ rel }) => /\.(tsx?|css)$/.test(rel) && !/\.test\.tsx?$/.test(rel))
   .filter(({ rel }) => !EXCLUDED.some((x) => rel.startsWith(x)));
 
-const counts = { rawButtons: 0, strayHex: 0, radii: [], inlineStyles: 0 };
+const counts = { rawButtons: 0, strayHex: 0, radii: [], inlineStyles: 0, roundLabels: [] };
 const radii = new Set();
 const HEX = /#[0-9a-fA-F]{3,8}\b/g;
 
@@ -40,12 +47,20 @@ for (const { p, rel } of files) {
   if (rel.endsWith('.tsx')) {
     counts.rawButtons += (text.match(/<button\b/g) ?? []).length;
     counts.inlineStyles += (text.match(/\bstyle=\{/g) ?? []).length;
-    for (const m of text.matchAll(/borderRadius:\s*((?:[^,}()\n]|\([^)]*\))+)/g)) radii.add(m[1].trim());
+    for (const m of text.matchAll(/borderRadius:\s*((?:[^,}()\n]|\([^)]*\))+)/g)) {
+      radii.add(m[1].trim());
+      if (ROUND.test(`radius: ${m[1]}`)) counts.roundLabels.push(`${rel}: borderRadius ${m[1].trim()}`);
+    }
   }
   // Hex inside a string or a CSS value; `&#123;` entities and `#/page` hashes are not colours.
   const stripped = text.replace(/&#x?[0-9a-fA-F]+;/g, '');
   counts.strayHex += [...stripped.matchAll(HEX)].filter((m) => !/[\w/]/.test(stripped[m.index - 1] ?? '')).length;
   if (rel.endsWith('.css')) {
+    for (const [, sel, body] of text.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!ROUND.test(body)) continue;
+      const bad = sel.split(',').map((x) => x.trim()).filter((x) => !ROUND_OK.test(x));
+      if (bad.length) counts.roundLabels.push(`${rel}: ${bad.join(', ')}`);
+    }
     for (const m of text.matchAll(/border(?:-(?:top|bottom)-(?:left|right))?-radius:\s*([^;}]+)/g)) {
       for (const v of m[1].trim().split(/\s+(?![^(]*\))/)) radii.add(v);
     }
@@ -58,9 +73,9 @@ console.log(JSON.stringify(counts));
 
 if (process.argv.includes('--check')) {
   const badRadii = counts.radii.filter((r) => !RADIUS_TOKENS.has(r));
-  const ok = counts.rawButtons === 0 && counts.strayHex === 0 && badRadii.length === 0;
+  const ok = counts.rawButtons === 0 && counts.strayHex === 0 && badRadii.length === 0 && counts.roundLabels.length === 0;
   if (!ok) {
-    console.error(`ui-counts: raw buttons ${counts.rawButtons}, stray hex ${counts.strayHex}, radii outside tokens: ${badRadii.join(' ') || 'none'}`);
+    console.error(`ui-counts: raw buttons ${counts.rawButtons}, stray hex ${counts.strayHex}, radii outside tokens: ${badRadii.join(' ') || 'none'}, round labels: ${counts.roundLabels.join('; ') || 'none'}`);
     process.exit(1);
   }
 }
