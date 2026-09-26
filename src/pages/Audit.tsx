@@ -1,259 +1,202 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { Button, I, PageHeader } from '../components/ui';
-import { Pagination, usePagination } from '../components/ui/Pagination';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '../api/client';
+import { useMyOrganizationNames } from '../api/hooks';
+import { MAX_ENTRIES, type AuditQuery, type AuditScope } from '../api/audit';
+import { Button, Callout, Card, EmptyState, I, Input, PageHeader } from '../components/ui';
 import { useApp } from '../contexts/AppContext';
-import { useAudit, useAuditSummary, useAuditEvents } from '../api/hooks';
-import type { AuditEvent } from '../api/types';
-import { failurePct, localDayKey, riskOf, trend } from './audit/lib';
-import { AuditAnalysis, AuditRiskHero, AuditSummaryBand } from './audit/AuditOverview';
-import { AuditLog, AuditLogBody, type AuditTab, type StatusFilter } from './audit/AuditLog';
+import {
+  EMPTY_FILTERS, PRESET_LABEL, activeCount, clearFilters, filtersFromParams, filtersToParams, toQuery, zoomTo, type AuditFilters,
+} from '../lib/audit/filters';
+import { parseEventHash } from '../lib/audit/format';
+import { summaryWindow } from '../lib/audit/histogram';
+import { mergeLive } from '../lib/audit/live';
+import { formatHash, parseHash } from '../lib/route';
+import { AuditExportDialog } from './audit/AuditExportDialog';
+import { AuditFacets } from './audit/AuditFacets';
+import { AuditHistogram } from './audit/AuditHistogram';
+import { AuditError, AuditEvents, AuditLoading } from './audit/AuditTimeline';
+import { AuditToolbar, SavedViewsBar } from './audit/AuditToolbar';
+import { AuditEventPage } from './audit/AuditEventPage';
+import { useAuditEventPages, useAuditFacets, useAuditHistogram, useLiveTail, useSavedViews } from './audit/queries';
 
-// Shared with Dashboard, AccessReview and the per-user trail.
-export { riskOf } from './audit/lib';
-export type { RiskInfo } from './audit/lib';
-export { RiskBadge } from './audit/RiskBadge';
+/** The live tail follows the same facets; its range is "from now on". */
+function withoutRange(q: AuditQuery): Omit<AuditQuery, 'from' | 'to'> {
+  const rest: Partial<AuditQuery> = { ...q };
+  delete rest.from;
+  delete rest.to;
+  return rest;
+}
+const fmtDay = (iso: string) => new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short' });
 
+/**
+ * Audit (AUD-11): who did what, when — server-paged from the Loki-backed audit API.
+ *
+ * Facets and the histogram cover the whole selected range; rows come a page at a time. The address
+ * holds the filters (`#/audit?range=7d&result=denied`), so any view can be pasted or saved, and
+ * `#/audit/event/<id>` opens one event on its own.
+ */
 export function AuditPage() {
-  const { setPage, setAuditFocus, auditFocus } = useApp();
-  // Read the real audit stream directly (live query), NOT AppContext.audit —
-  // that mirror was seeded with SEED placeholder demo events in DEV and a
-  // `> 0` guard kept the fake rows when live audit was empty (GHOST-3). The
-  // audit log must never show fabricated entries.
-  const { data: audit = [], isError: auditError, isLoading: auditLoading } = useAudit();
-  const summaryQ = useAuditSummary('24h');
-  const summary = summaryQ.data;
-  // Server-authoritative high-risk slice (spans retained history, not the 200-row
-  // window). Fail-closed: on error fall back to client riskOf over the window.
-  const riskQ = useAuditEvents({ risk: 'high', limit: 100 });
-  const riskEvents = useMemo<AuditEvent[]>(() => {
-    if (riskQ.isSuccess) return riskQ.data;
-    if (riskQ.isError) return audit.filter(e => riskOf(e).level !== 'none');
-    return [];
-  }, [riskQ.isSuccess, riskQ.isError, riskQ.data, audit]);
-  const riskFromWindow = !riskQ.isSuccess; // hero/Signals sourced from loaded window
+  const [hash, setHash] = useState(() => window.location.hash);
+  useEffect(() => {
+    const on = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', on);
+    return () => window.removeEventListener('hashchange', on);
+  }, []);
+  const eventRef = parseEventHash(hash);
+  if (eventRef) return <AuditEventPage id={eventRef.id} ts={eventRef.ts} />;
+  return <AuditTimelinePage />;
+}
 
-  const [q, setQ] = useState("");
-  const [tab, setTab] = useState<AuditTab>("changes");
-  const [cat, setCat] = useState("all");
-  const [statusF, setStatusF] = useState<StatusFilter>("all");
+function AuditTimelinePage() {
+  const { setPage, auditFocus, setAuditFocus } = useApp();
+  const qc = useQueryClient();
+  const [filters, setFiltersRaw] = useState<AuditFilters>(() => filtersFromParams(parseHash(window.location.hash).query));
+  // The range is resolved when the filters change, not on every render, so the cache key holds still.
+  const [now, setNow] = useState(() => Date.now());
+  const [scope, setScope] = useState<AuditScope | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
-  const logRef = useRef<HTMLDivElement>(null);
+  const [live, setLive] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [q, setQ] = useState(filters.q ?? '');
 
-  const scrollToLog = () => logRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const setFilters = useCallback((f: AuditFilters) => {
+    setFiltersRaw(f);
+    setNow(Date.now());
+    setOpenId(null);
+    history.replaceState(null, '', `#${formatHash('audit', null, filtersToParams(f))}`);
+  }, []);
 
-  // Deep-link intent from other surfaces (Dashboard "Signals" cards, hero Review
-  // that crossed a page). Applied once, then cleared.
+  // The Overview's "Signals" card lands here asking for the high-risk slice.
   useEffect(() => {
     if (!auditFocus) return;
-    if (auditFocus.tab) setTab(auditFocus.tab as typeof tab);
-    if (auditFocus.eventId) setOpenId(auditFocus.eventId);
+    if (auditFocus.tab === 'signals') setFilters({ ...EMPTY_FILTERS, severity: 'high' });
     setAuditFocus(null);
-    // Let the tab switch commit before scrolling.
-    const id = setTimeout(scrollToLog, 60);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auditFocus]);
+  }, [auditFocus, setAuditFocus, setFilters]);
 
-  // The three log layers (contract D1): Changes = the compliance record
-  // (kind=change), Access = request/traffic telemetry (kind=access), Auth =
-  // session/authn decisions (kind=auth). Signals = risk-only (any kind).
-  const kindOf = (a: AuditEvent): string =>
-    a.kind || (a.category === 'access' ? 'access' : a.category === 'auth' ? 'auth' : a.category === 'system' ? 'system' : 'change');
+  const query = useMemo(() => toQuery(filters, scope, now), [filters, scope, now]);
+  const eventsQ = useAuditEventPages(query);
+  const facetsQ = useAuditFacets(query, eventsQ.isSuccess);
+  const summaryQ = useAuditHistogram(summaryWindow(filters.range), query.org, eventsQ.isSuccess);
+  const saved = useSavedViews();
 
-  // Signals is driven by the server risk slice; the other tabs by the window.
-  const inTab = tab === 'signals'
-    ? riskEvents
-    : audit.filter(a => {
-        const k = kindOf(a);
-        if (tab === "changes") return k === "change" || k === "system";
-        return k === tab;
-      });
+  const firstPage = eventsQ.data?.pages[0];
+  useEffect(() => { if (firstPage?.scope) setScope(firstPage.scope); }, [firstPage?.scope]);
+  const platform = scope?.platform ?? false;
 
-  const filtered = inTab.filter(a => {
-    if (cat !== "all" && a.category !== cat) return false;
-    if (statusF === "failed" && a.status !== "failed" && a.verb !== "fail" && a.verb !== "deny") return false;
-    if (statusF === "ok" && (a.status === "failed" || a.verb === "fail" || a.verb === "deny")) return false;
-    if (q) {
-      const hay = `${a.who} ${a.verb} ${a.target} ${a.ip || ""} ${a.reason || ""} ${a.service || ""} ${a.path || ""} ${a.method || ""} ${a.changes?.summary || ""}`.toLowerCase();
-      if (!hay.includes(q.toLowerCase())) return false;
-    }
-    return true;
-  });
+  const orgNamesQ = useMyOrganizationNames().data;
+  const orgNames = useMemo(() => orgNamesQ ?? {}, [orgNamesQ]);
+  const allOrgs = useQuery({ queryKey: ['all-orgs'], queryFn: () => api.allOrganizations(), enabled: platform, staleTime: 5 * 60_000 });
+  const orgList = useMemo(() => (allOrgs.data?.organizations ?? []).map((o) => ({ id: o.id, name: o.name })), [allOrgs.data]);
+  const orgName = useCallback((id: string) => orgList.find((o) => o.id === id)?.name ?? orgNames[id] ?? id, [orgList, orgNames]);
 
-  const tabCounts = {
-    changes: audit.filter(a => { const k = kindOf(a); return k === "change" || k === "system"; }).length,
-    access:  audit.filter(a => kindOf(a) === "access").length,
-    auth:    audit.filter(a => kindOf(a) === "auth").length,
-    signals: riskEvents.length,
-  };
-  // Category pills reflect the active tab's rows only.
-  const catCounts = inTab.reduce<Record<string, number>>((acc, a) => { acc[a.category] = (acc[a.category] || 0) + 1; return acc; }, {});
-  const failedCount = inTab.filter(a => a.status === "failed" || a.verb === "fail" || a.verb === "deny").length;
-  const pg = usePagination(filtered.length, 50);
-  const selectTab = (t: typeof tab) => { setTab(t); setCat("all"); pg.setPage(0); };
-  const paged = filtered.slice(pg.from, pg.to);
+  const tail = useLiveTail(withoutRange(query), live);
+  useEffect(() => { if (tail.mode === 'stopped') setLive(false); }, [tail.mode]);
 
-  const groups = (() => {
-    const gs: { day: string; label: string; entries: typeof filtered }[] = [];
-    let last = "";
-    for (const e of paged) {
-      const day = localDayKey(e.ts) || e.when;
-      if (day !== last) {
-        const today = localDayKey(new Date().toISOString());
-        const yesterday = localDayKey(new Date(Date.now() - 86400000).toISOString());
-        const label = day === today ? "Today" : day === yesterday ? "Yesterday" : day;
-        gs.push({ day, label, entries: [] });
-        last = day;
-      }
-      gs[gs.length - 1].entries.push(e);
-    }
-    return gs;
-  })();
+  const loaded = useMemo(() => eventsQ.data?.pages.flatMap((p) => p.events) ?? [], [eventsQ.data]);
+  const events = useMemo(() => (tail.events.length ? mergeLive(loaded, tail.events, loaded.length + tail.events.length) : loaded), [loaded, tail.events]);
+  const truncated = eventsQ.data?.pages.some((p) => p.truncated) ?? false;
+  const range = firstPage?.range ?? { from: query.from, to: query.to };
 
-  // Client-side CSV export of the currently filtered events. (Bounded to the
-  // loaded window today; server-side /audit/export is the full-range path.)
-  const exportCsv = () => {
-    const cols = ["ts", "who", "verb", "category", "target", "service", "method", "path", "status", "statusCode", "ip", "reason", "severity"] as const;
-    const esc = (v: unknown) => {
-      const s = v == null ? "" : String(v);
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const body = filtered.map(e => cols.map(c => esc((e as unknown as Record<string, unknown>)[c])).join(","));
-    const csv = [cols.join(","), ...body].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `audit-${tab}-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const scopeText = !scope ? '' : platform
+    ? (filters.org ? orgName(filters.org) : 'all organisations')
+    : scope.orgs.map(orgName).join(', ') || 'your organisation';
 
-  // ── Summary band values (server window, else honest loaded-window fallback) ──
-  const usingServerSummary = summaryQ.isSuccess && !!summary;
-  const windowLabel = usingServerSummary ? (summary!.window || 'last 24h') : 'loaded window';
-  const activityVal = usingServerSummary ? summary!.total : audit.length;
-  const activityTrend = usingServerSummary ? trend(summary!.total, summary!.prevTotal) : null;
-  const changesVal = usingServerSummary ? (summary!.byKind?.change ?? 0) : audit.filter(a => kindOf(a) === 'change').length;
-  const changesTrend = usingServerSummary ? trend(summary!.byKind?.change, summary!.prevByKind?.change) : null;
-  const failPct = failurePct(usingServerSummary ? summary : undefined, usingServerSummary ? undefined : audit);
-  const peopleVal = usingServerSummary ? (summary!.activeActors ?? 0) : new Set(audit.map(a => a.who).filter(w => w && w !== 'system' && w !== 'anon')).size;
-  const peopleTrend = usingServerSummary ? trend(summary!.activeActors, summary!.prevActiveActors) : null;
-
-  // Analysis: category volume + failure overlay, and top denials/actors.
-  const catBars = useMemo(() => {
-    let rows: { key: string; total: number; failed: number }[];
-    if (usingServerSummary && summary!.byCategory) {
-      rows = Object.entries(summary!.byCategory).map(([key, v]) => ({ key, total: v.total, failed: v.failed }));
-    } else {
-      const acc: Record<string, { total: number; failed: number }> = {};
-      for (const e of audit) {
-        const k = e.category || 'system';
-        acc[k] = acc[k] || { total: 0, failed: 0 };
-        acc[k].total++;
-        if (e.status === 'failed' || e.verb === 'fail' || e.verb === 'deny') acc[k].failed++;
-      }
-      rows = Object.entries(acc).map(([key, v]) => ({ key, ...v }));
-    }
-    return rows.sort((a, b) => b.total - a.total).slice(0, 8);
-  }, [usingServerSummary, summary, audit]);
-  const maxBar = Math.max(1, ...catBars.map(b => b.total));
-
-  const topDenied = useMemo(() => {
-    if (usingServerSummary && summary!.topDenied)
-      return summary!.topDenied.slice(0, 6).map(d => ({ label: (d as { target?: string; key?: string }).target ?? (d as { key?: string }).key ?? '—', count: d.count }));
-    const acc: Record<string, number> = {};
-    for (const e of audit) {
-      if (e.status === 'failed' || e.verb === 'fail' || e.verb === 'deny') {
-        const k = e.who && e.who !== 'system' ? e.who : (e.target || 'unknown');
-        acc[k] = (acc[k] || 0) + 1;
-      }
-    }
-    return Object.entries(acc).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count).slice(0, 6);
-  }, [usingServerSummary, summary, audit]);
-
-  const topActors = useMemo(() => {
-    if (usingServerSummary && summary!.topActors)
-      return summary!.topActors.slice(0, 6).map(d => ({ label: (d as { actor?: string; key?: string }).actor ?? (d as { key?: string }).key ?? '—', count: d.count }));
-    const acc: Record<string, number> = {};
-    for (const e of audit) {
-      if (kindOf(e) === 'change' && e.who && e.who !== 'system' && e.who !== 'anon') acc[e.who] = (acc[e.who] || 0) + 1;
-    }
-    return Object.entries(acc).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count).slice(0, 6);
-  }, [usingServerSummary, summary, audit]);
-
-  const heroEvents = riskEvents.slice(0, 6);
-
-  const focusEvent = (e: AuditEvent) => {
-    selectTab('signals');
-    setOpenId(e.id);
-    setTimeout(scrollToLog, 60);
-  };
+  // A shared view belongs to one organisation: the one on screen, or an org admin's own.
+  const shareOrg = platform ? filters.org : scope?.orgs.length === 1 ? scope.orgs[0] : undefined;
+  const refresh = () => { setNow(Date.now()); void qc.invalidateQueries({ queryKey: ['audit', 'log'] }); };
+  const openUser = (id: string) => setFilters({ ...clearFilters(filters), actor: id });
+  const applySearch = () => setFilters({ ...filters, q: q.trim() || undefined });
 
   return (
     <>
       <PageHeader
         title="Audit"
         sub={<>
-          Who can do what, and who did what · <span className="mono">{windowLabel}</span>
-          {!usingServerSummary && !summaryQ.isLoading && <> · <span className="muted">live summary unavailable — showing the loaded window</span></>}
+          Who did what, when{scope && <> · scope: <span className="fw-medium">{scopeText}</span></>}
+          {scope && !platform && <span className="muted"> (you&rsquo;re an org admin — you see {scope.orgs.length > 1 ? 'these organisations' : 'this organisation'} only)</span>}
         </>}
-        actions={<Button icon={I.shield} onClick={() => setPage('accessreview')}>Access review</Button>}
+        actions={<>
+          <Button icon={I.shield} onClick={() => setPage('accessreview')}>Access review</Button>
+        </>}
       />
 
-      <AuditSummaryBand
-        windowLabel={windowLabel}
-        activityVal={activityVal} activityTrend={activityTrend}
-        changesVal={changesVal} changesTrend={changesTrend}
-        failPct={failPct}
-        peopleVal={peopleVal} peopleTrend={peopleTrend}
-        onActivity={scrollToLog}
-        onChanges={() => { selectTab('changes'); scrollToLog(); }}
-        onFailures={() => { setStatusF('failed'); scrollToLog(); }}
-        onPeople={() => setPage('accessreview')}
-      />
+      <AuditToolbar filters={filters} onChange={setFilters} platform={platform} orgs={orgList}
+        live={tail.mode} onLive={setLive} onRefresh={refresh} onExport={() => setExporting(true)} />
 
-      <AuditRiskHero
-        loading={riskQ.isLoading && !riskQ.isError}
-        fromWindow={riskFromWindow}
-        total={riskEvents.length}
-        events={heroEvents}
-        onAll={() => { selectTab('signals'); scrollToLog(); }}
-        onReview={focusEvent}
-      />
+      <div className="audit-layout">
+        <aside aria-label="Filters">
+          <AuditFacets facets={facetsQ.data} filters={filters} onChange={setFilters} platform={platform} orgName={orgName} />
+        </aside>
 
-      <AuditAnalysis
-        catBars={catBars} maxBar={maxBar} topDenied={topDenied} topActors={topActors}
-        onCategory={(key) => { selectTab('changes'); setCat(key); scrollToLog(); }}
-      />
+        <div className="audit-main">
+          <div className="audit-searchbar">
+            <form className="audit-search" onSubmit={(e) => { e.preventDefault(); applySearch(); }}>
+              <Input size="sm" leading={I.search} placeholder="Search target, reason…" maxLength={64} value={q} aria-label="Search"
+                onChange={(e) => setQ(e.target.value)} onBlur={() => { if ((filters.q ?? '') !== q.trim()) applySearch(); }} />
+            </form>
+            <SavedViewsBar views={saved.views} filters={filters} onApply={(f) => { setQ(f.q ?? ''); setFilters(f); }}
+              onSave={(name, shared) => saved.save.mutateAsync({ name, params: filtersToParams(filters), shared, orgId: shareOrg })}
+              onDelete={(v) => saved.remove.mutate(v)} local={saved.local} canShare={!!shareOrg} />
+          </div>
 
-      <AuditLog
-        logRef={logRef} tab={tab} onTab={selectTab} tabCounts={tabCounts}
-        inTabCount={inTab.length} failedCount={failedCount}
-        q={q} onQ={setQ} onExport={exportCsv} exportDisabled={filtered.length === 0}
-        cat={cat} onCat={setCat} catCounts={catCounts} statusF={statusF} onStatus={setStatusF}
-      >
-        <AuditLogBody
-          auditError={auditError}
-          riskError={riskQ.isError}
-          riskEmpty={riskEvents.length === 0}
-          loading={auditLoading || (tab === 'signals' && riskQ.isLoading)}
-          signals={tab === 'signals'}
-          empty={filtered.length === 0}
-          groups={groups}
-          openId={openId}
-          onToggle={(id) => setOpenId(openId === id ? null : id)}
-        />
-      </AuditLog>
+          <Card pad="sm" className="audit-histo-card">
+            <div className="row justify-between gap-8 wrap">
+              <span className="small muted">All events in {query.org ? orgName(query.org) : 'scope'} · {filters.range === 'custom' ? 'no histogram for a custom range' : PRESET_LABEL[filters.range]}</span>
+              {summaryQ.data && <span className="mono small">{summaryQ.data.total.toLocaleString()} events</span>}
+              {!summaryQ.data && facetsQ.data?.total != null && <span className="mono small">{facetsQ.data.total.toLocaleString()} matching</span>}
+            </div>
+            <AuditHistogram summary={summaryQ.data} loading={summaryQ.isLoading && eventsQ.isSuccess}
+              onZoom={(t, ms) => setFilters(zoomTo(filters, t, ms))} />
+          </Card>
 
-      {filtered.length > pg.pageSize && (
-        <Pagination page={pg.page} pageSize={pg.pageSize} total={filtered.length} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} sizes={[25, 50, 100, 200]} />
-      )}
-      <div className="small muted mt-12 text-center">
-        Showing {filtered.length === 0 ? 0 : pg.from + 1}–{Math.min(pg.to, filtered.length)} of {filtered.length} events{filtered.length < inTab.length ? ` (${inTab.length} in ${tab})` : ""} · read-only
+          {tail.mode === 'sse' || tail.mode === 'poll' ? (
+            <div className="audit-live small" role="status"><span className="audit-live-dot" aria-hidden="true" /> Live{tail.mode === 'poll' ? ' (checking every 10 s)' : ''} · {tail.events.length} new</div>
+          ) : tail.mode === 'stopped' ? (
+            <Callout tone="neutral" icon={I.clock} actions={<Button size="sm" onClick={() => { tail.reset(); setLive(true); }}>Resume</Button>}>
+              Live view stopped after 15 min.
+            </Callout>
+          ) : null}
+
+          {truncated && (
+            <Callout tone="warning" icon={I.info}>
+              Showing the newest {MAX_ENTRIES.toLocaleString('en-US').replace(',', ' ')} of more events in this range. Narrow the range or export for the full set.
+            </Callout>
+          )}
+
+          <Card pad="none" className="audit-list">
+            {eventsQ.isError ? (
+              <div className="p-12"><AuditError error={eventsQ.error} onRetry={() => eventsQ.refetch()} /></div>
+            ) : eventsQ.isLoading ? <AuditLoading /> : events.length === 0 ? (
+              <EmptyState compact icon={I.audit} title="No events"
+                action={<div className="row gap-8 wrap justify-center">
+                  {activeCount(filters) > 0 && <Button size="sm" onClick={() => { setQ(''); setFilters(clearFilters(filters)); }}>Clear filters</Button>}
+                  {filters.range !== '30d' && <Button size="sm" onClick={() => setFilters({ ...filters, range: '30d', from: undefined, to: undefined })}>Widen to 30 days</Button>}
+                </div>}>
+                No events in {scopeText || 'scope'} between {fmtDay(range.from)} and {fmtDay(range.to)} matching these filters.
+              </EmptyState>
+            ) : (
+              <AuditEvents events={events} openId={openId} platform={platform} orgName={orgName} onOpenUser={openUser}
+                onToggle={(id) => setOpenId((cur) => (cur === id ? null : id))} />
+            )}
+          </Card>
+
+          {eventsQ.hasNextPage && (
+            <div className="row justify-center mt-12">
+              <Button variant="ghost" icon={I.caret} loading={eventsQ.isFetchingNextPage} onClick={() => void eventsQ.fetchNextPage()}>Load older</Button>
+            </div>
+          )}
+          {eventsQ.isSuccess && (
+            <div className="small muted mt-12 text-center">
+              {events.length.toLocaleString()} loaded{eventsQ.hasNextPage ? ' · more available' : ''}{firstPage?.queryMs != null ? ` · ${firstPage.queryMs} ms` : ''} · read-only
+            </div>
+          )}
+        </div>
       </div>
-      <div className="small muted mt-4 text-center audit-faint">
-        Retention is bounded by the audit stream cap and is not tamper-evident (Redis-only store). A durable/WORM store is a documented upgrade path.
-      </div>
+
+      <AuditExportDialog open={exporting} onClose={() => setExporting(false)} query={query}
+        rangeLabel={`${fmtDay(range.from)} – ${fmtDay(range.to)}${activeCount(filters) ? ` · ${activeCount(filters)} filter${activeCount(filters) > 1 ? 's' : ''}` : ''}`} />
     </>
   );
 }
+

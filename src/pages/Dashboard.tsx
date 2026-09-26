@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useSession, useAudit, useStats, useAuditEvents } from '../api/hooks';
 import { Avatar, Badge, Button, ButtonBase, Card, EmptyRow, PageHeader, Stat, Table, I, cx, type BadgeTone } from '../components/ui';
-import { riskOf } from './Audit';
+import { riskOf } from './audit/lib';
 
 export function DashboardPage() {
   const app = useApp();

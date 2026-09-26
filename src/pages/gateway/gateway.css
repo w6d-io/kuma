@@ -1,0 +1,9 @@
+/* Gateway handlers (GW-3). Tokens only; shares the Sites stylesheet for lists, checks and toolbars. */
+.gw-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--space-3); }
+.gw-table td:last-child { max-width: 28rem; }
+
+@media (max-width: 480px) {
+  .gw-table th:last-child, .gw-table td:last-child { display: none; }
+  .gw-fields { grid-template-columns: 1fr; }
+  .gw-table .btn-base.site-row-name { flex-direction: column; align-items: flex-start; gap: 0; }
+}
