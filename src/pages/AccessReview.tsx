@@ -4,7 +4,7 @@ import { ApiErrorState } from '../components/ApiErrorState';
 import { PermTree } from '../components/ui/Primitives';
 import { Avatar, Badge, Card, Drawer, EmptyHint, I, PageHeader, Table, type BadgeTone } from '../components/ui';
 import { timeAgo } from '../api/transforms';
-import { RiskBadge } from './Audit';
+import { RiskBadge } from './audit/RiskBadge';
 import type { AccessReviewIdentity } from '../api/types';
 import { SkeletonPanel } from '../components/ui/Skeleton';
 
