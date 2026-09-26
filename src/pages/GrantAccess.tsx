@@ -1,15 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession, useUserSearch, useAuthorizationModel, usePermissionChain } from '../api/hooks';
-import { PermTree, AccessLevel } from '../components/ui/Primitives';
+import { useSession, useUserSearch } from '../api/hooks';
+import { AccessLevel } from '../components/ui/Primitives';
+import { SiteAccessTree } from './access/SiteAccessTree';
+import { useSiteGroups } from './access/access';
+import { groupOutcome } from '../lib/rbacEdit';
 import { Avatar, Badge, Button, ButtonBase, Callout, Card, Checkbox, Drawer, Field, I, Input, Stepper, cx } from '../components/ui';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
 import { searchedToUser } from '../api/transforms';
-import type { User } from '../api/types';
-import { PRIVILEGED_MUTATION, permits, scopesOf, resolveRoles, summarise, grantsEveryOrganisation, type GroupDefinition, type RoleCatalogue } from '../policy/model';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '../api/client';
+import type { GroupsMap, RolesMap, User } from '../api/types';
+import { PRIVILEGED_MUTATION, permits } from '../policy/model';
 
 // Intent-first "Grant access" wizard. The RBAC data model is service → role →
 // group → user; the old assign drawer made an operator assemble that graph by
@@ -39,52 +40,29 @@ function useDebounced<T>(value: T, ms = 250): T {
 
 type Step = 'who' | 'what' | 'review';
 
-/**
- * What a group grants, read from the model the ENGINE decides against.
- *
- * What this replaced walked the old service → role → group tables, which come from Redis and are
- * not what any decision is made against. An outcome shown from there is a promise the mutation does
- * not keep: a group offered here could grant nothing, and one the engine knows could be missing.
- */
-function outcomeOf(group: string, model: { groups: Record<string, GroupDefinition>; roles: RoleCatalogue }) {
-  const definition = model.groups[group];
-  const scopes = scopesOf(definition);
-  const { permissions, undefined: unknownRoles } = resolveRoles(
-    [...new Set(scopes.flatMap((sc) => sc.roles))],
-    model.roles,
-  );
+/** What a group grants, from the site groups and roles jinbe serves the engine. */
+function outcomeOf(group: string, groups: GroupsMap, roles: RolesMap, privileged: (g: string) => boolean) {
+  const o = groupOutcome(groups[group], roles);
   return {
     g: group,
-    perms: permissions,
-    unknownRoles,
-    scopes,
-    summary: summarise(definition, model.roles),
-    level: permissions.length === 0 ? 'none' : accessLevelOf(permissions),
-    privileged: grantsEveryOrganisation(definition),
+    perms: o.permissions,
+    unknownRoles: o.unknownRoles,
+    sites: o.access.map((a) => a.site),
+    summary: o.summary,
+    level: o.permissions.length === 0 ? 'none' : o.access.some((a) => a.everything) ? 'admin' : accessLevelOf(o.permissions),
+    privileged: privileged(group),
   };
 }
 
 export function GrantAccess() {
-  const { grant, setGrant, apiSetUserGroups, setUserDrawer } = useApp();
+  const { grant, setGrant, apiSetUserGroups, setUserDrawer, state } = useApp();
   const applyChange = useApplyChange();
   const { data: session } = useSession();
-  // Mirror of jinbe's escalation guard: handing out a group held in every organisation needs the
+  // Mirror of jinbe's escalation guard: handing out a group that administers the platform needs the
   // permission below. jinbe refuses with 422 either way; this only greys the control and says why.
   const mayGrantPrivileged = permits(session?.permissions, PRIVILEGED_MUTATION);
-  // From the model the engine decides against, so what is offered — and what "privileged" means —
-  // is what the mutation will be judged on.
-  const modelQ = useAuthorizationModel();
-  const model = useMemo(
-    () => ({ groups: modelQ.data?.groups ?? {}, roles: modelQ.data?.roles ?? {} }),
-    [modelQ.data],
-  );
-  const modelGroups = model.groups;
-  const chain = usePermissionChain();
-  const assignable = useQuery({
-    queryKey: ['assignable-groups'],
-    queryFn: () => api.assignableGroups(),
-    staleTime: 30_000,
-  });
+  // The same site groups Groups edits, so what is offered is what the mutation accepts.
+  const siteGroups = useSiteGroups();
 
   const [step, setStep] = useState<Step>('who');
   const [selected, setSelected] = useState<User | null>(null);
@@ -123,20 +101,19 @@ export function GrantAccess() {
     const low = gq.trim().toLowerCase();
     // What this actor may hand out, plus anything the person already holds — a membership that is
     // no longer offered must stay visible and removable, or it becomes impossible to take away.
-    const offered = assignable.data?.groups ?? Object.keys(model.groups);
-    const names = [...new Set([...offered, ...(selected?.groups ?? [])])].sort();
+    const names = [...new Set([...siteGroups.offered, ...(selected?.groups ?? [])])].sort();
     return names
-      .map((g) => outcomeOf(g, model))
+      .map((g) => outcomeOf(g, state.groups, state.roles, siteGroups.privileged))
       .filter((o) => {
         if (!low) return true;
         return (
           o.g.toLowerCase().includes(low) ||
           o.summary.toLowerCase().includes(low) ||
-          o.scopes.some((sc) => sc.key.toLowerCase().includes(low) || sc.roles.some((r) => r.toLowerCase().includes(low))) ||
+          o.sites.some((site) => site.toLowerCase().includes(low)) ||
           o.perms.some((p) => p.toLowerCase().includes(low))
         );
       });
-  }, [model, assignable.data, selected, gq]);
+  }, [state.groups, state.roles, siteGroups, selected, gq]);
 
   if (!grant) return null;
 
@@ -148,7 +125,7 @@ export function GrantAccess() {
 
   // A newly-added privileged group is what triggers the gates (holding one you
   // already have is fine — this is about escalation, not the status quo).
-  const escalating = groups.filter((g) => !before.has(g) && grantsEveryOrganisation(modelGroups[g]));
+  const escalating = groups.filter((g) => !before.has(g) && siteGroups.privileged(g));
   const actorBlock = escalating.length > 0 && !mayGrantPrivileged;
   const mfaBlock = escalating.length > 0 && user?.mfa === false;
 
@@ -300,7 +277,7 @@ export function GrantAccess() {
           <Card className="ga-list tall">
             {outcomes.length === 0 && (
               <div className="small muted p-12">
-                No outcome matches “{gq}”. Groups come from the model in Git.
+                No group matches “{gq}”. Groups are managed under People → Groups.
               </div>
             )}
             {outcomes.map((o) => {
@@ -309,7 +286,7 @@ export function GrantAccess() {
               const blockedByMfa = o.privileged && user.mfa === false && !on;
               const blocked = blockedByActor || blockedByMfa;
               const title = blockedByActor
-                ? `“${o.g}” grants in every organisation. Assigning it needs admin.membership:write.`
+                ? `“${o.g}” administers the platform. Assigning it needs admin.membership:write.`
                 : blockedByMfa
                 ? `“${o.g}” grants admin privileges. ${user.name} must enroll a second factor (TOTP / security key / backup codes) first.`
                 : undefined;
@@ -324,7 +301,7 @@ export function GrantAccess() {
                         <span className="row">
                           <span className="fw-medium text-base flex-1">
                             {o.g}
-                            {o.privileged && <Badge tone="warning" title="Grants in every organisation"><span className="chip-ico">{I.lock}</span>privileged</Badge>}
+                            {o.privileged && <Badge tone="warning" title="Gives everything on a system site"><span className="chip-ico">{I.lock}</span>platform admin</Badge>}
                             {blockedByActor && <Badge tone="danger">needs admin.membership:write</Badge>}
                             {blockedByMfa && !blockedByActor && <Badge tone="danger">2FA required</Badge>}
                           </span>
@@ -339,7 +316,7 @@ export function GrantAccess() {
                                 difference between "this gives nothing" and "this points at something
                                 that is missing". */}
                             {o.unknownRoles.length > 0 && (
-                              <Badge tone="danger" title="Named by the group but not defined in the model">
+                              <Badge tone="danger" title="Named by the group but not defined on that site">
                                 undefined role: {o.unknownRoles.join(', ')}
                               </Badge>
                             )}
@@ -361,7 +338,7 @@ export function GrantAccess() {
           {(actorBlock || mfaBlock) && (
             <Callout tone="danger" icon={I.alert} title="Can't apply — privileged grant blocked" className="mb-12">
               <div className="small text-muted">
-                {actorBlock && <>Assigning <b>{escalating.join(', ')}</b> grants in every organisation; that needs admin.membership:write. </>}
+                {actorBlock && <>Assigning <b>{escalating.join(', ')}</b> administers the platform; that needs admin.membership:write. </>}
                 {mfaBlock && <>{user.name} must enroll a second factor before receiving <b>{escalating.join(', ')}</b>. </>}
                 jinbe enforces this regardless (422).
               </div>
@@ -375,7 +352,7 @@ export function GrantAccess() {
                 {added.map((g) => (
                   <div key={g} className="row gap-8 mb-4">
                     <Badge tone="success">+ add</Badge><span className="mono small">{g}</span>
-                    {grantsEveryOrganisation(modelGroups[g]) && <Badge tone="warning" title="Grants in every organisation"><span className="chip-ico">{I.lock}</span></Badge>}
+                    {siteGroups.privileged(g) && <Badge tone="warning" title="Gives everything on a system site"><span className="chip-ico">{I.lock}</span></Badge>}
                   </div>
                 ))}
                 {removed.map((g) => (
@@ -393,7 +370,7 @@ export function GrantAccess() {
             <div>
               <label className="input-label">Resulting access</label>
               <Card pad="sm">
-                <PermTree user={{ ...user, groups }} model={chain.model} routeTables={chain.routeTables} />
+                <SiteAccessTree user={{ ...user, groups }} />
               </Card>
             </div>
           </div>

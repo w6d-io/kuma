@@ -3,7 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Callout, Field, I, Textarea, Timeline } from '../../components/ui';
 import { gatewayApi, gatewayKeys, useRollout } from '../../api/gateway';
 import { notAvailable } from '../../api/sites';
-import type { GatewayPreview, GatewayState, HandlerChange, Rollout } from '../../lib/gateway/types';
+import type { GatewayPreview, HandlerChange, Rollout } from '../../lib/gateway/types';
+import type { AdaptedState } from '../../lib/gateway/adapt';
 import { CheckList, RiskBadge } from '../sites/parts';
 import { describeSiteError, useSiteAction } from '../sites/useAction';
 
@@ -13,7 +14,7 @@ import { describeSiteError, useSiteAction } from '../sites/useAction';
  * the config and starts a rollout the timeline follows pod by pod.
  */
 
-function RolloutView({ rollout, onRollback, busy, canRollback }: { rollout: Rollout; onRollback: (v?: number) => void; busy: boolean; canRollback: boolean }) {
+function RolloutView({ rollout, onRollback, busy, canRollback }: { rollout: Rollout; onRollback: () => void; busy: boolean; canRollback: boolean }) {
   const items = rollout.stages.map((s) => ({ id: s.id, label: s.label ?? s.id, state: s.state === 'skipped' ? 'done' as const : s.state, detail: s.detail }));
   return (
     <div className="stack gap-12">
@@ -24,17 +25,17 @@ function RolloutView({ rollout, onRollback, busy, canRollback }: { rollout: Roll
           {rollout.pods.map((p) => <li key={p.name}><span className="mono">{p.name}</span> · {p.component} · {p.ready ? '✓ ready' : '◌ starting'}{p.version ? ` · v${p.version}` : ''}</li>)}
         </ul>
       ) : null}
-      {canRollback && rollout.previousVersion && rollout.state !== 'running' && (
+      {canRollback && rollout.state !== 'running' && (
         <div className="row gap-8 items-center">
           {rollout.state === 'failed' && <span className="small text-danger">The new config did not come up everywhere.</span>}
-          <Button variant="danger" size="sm" loading={busy} onClick={() => onRollback(rollout.previousVersion)}>Roll back to v{rollout.previousVersion}</Button>
+          <Button variant="danger" size="sm" loading={busy} onClick={onRollback}>Roll back to the previous config</Button>
         </div>
       )}
     </div>
   );
 }
 
-export function ChangeReview({ changes, state, onDone, canApply }: { changes: HandlerChange[]; state: GatewayState | undefined; onDone: () => void; canApply: boolean }) {
+export function ChangeReview({ changes, state, onDone, canApply }: { changes: HandlerChange[]; state: AdaptedState | undefined; onDone: () => void; canApply: boolean }) {
   const qc = useQueryClient();
   const { run, busy } = useSiteAction();
   const [preview, setPreview] = useState<GatewayPreview | null>(null);
@@ -48,7 +49,8 @@ export function ChangeReview({ changes, state, onDone, canApply }: { changes: Ha
     let cancelled = false;
     setPreview(null);
     setError(null);
-    gatewayApi.preview(changes).then((p) => { if (!cancelled) setPreview(p); }).catch((err) => {
+    if (!state) return;
+    gatewayApi.preview(state, changes).then((p) => { if (!cancelled) setPreview(p); }).catch((err) => {
       if (!cancelled) setError(notAvailable(err) ? 'The gateway preview is not available on this server yet.' : describeSiteError(err));
     });
     return () => { cancelled = true; };
@@ -59,15 +61,15 @@ export function ChangeReview({ changes, state, onDone, canApply }: { changes: Ha
 
   async function apply() {
     if (!state) return;
-    const out = await run('Apply', () => gatewayApi.apply(changes, state.etag, note || undefined), 'Gateway change applied — rolling out');
+    const out = await run('Apply', () => gatewayApi.apply(state, changes, note || undefined), state.managed === false ? 'Gateway config adopted and applied — rolling out' : 'Gateway change applied — rolling out');
     if (out) {
       setStarted(true);
       void qc.invalidateQueries({ queryKey: gatewayKeys.rollout });
       void qc.invalidateQueries({ queryKey: gatewayKeys.state });
     }
   }
-  async function rollback(v?: number) {
-    const out = await run('Rollback', () => gatewayApi.rollback(v), `Rolling back to v${v}`);
+  async function rollback() {
+    const out = await run('Rollback', () => gatewayApi.rollback(note || undefined), 'Rolling back to the previous config');
     if (out) void qc.invalidateQueries({ queryKey: gatewayKeys.rollout });
   }
 
@@ -87,14 +89,15 @@ export function ChangeReview({ changes, state, onDone, canApply }: { changes: Ha
     <div className="stack gap-12">
       <h3 className="m-0 text-md">Review the gateway change</h3>
       {production && <Callout tone="danger" icon={I.alert} title="PRODUCTION">The change reaches every site on this gateway. A note is required.</Callout>}
+      {state?.managed === false && <Callout tone="info" icon={I.info} title="First change from kuma">The live gateway config is not managed yet ({state.source ?? 'chart'}). Applying adopts it as it is, plus this change.</Callout>}
       {error && <Callout tone="warning" icon={I.alert}>{error}</Callout>}
       {!preview && !error && <CheckList lines={[{ level: 'pending', text: 'Checking the change against the gateway and every site…' }]} />}
       {preview && (
         <>
           <div className="row gap-8 items-center wrap"><RiskBadge level={preview.risk.level} /><span className="small">{preview.risk.flags.map((f) => f.message).join('; ') || 'No flags.'}</span></div>
           {preview.blocked.map((b) => (
-            <Callout key={`${b.kind}/${b.name}`} tone="danger" icon={I.lock} title={`${b.name} is still used by ${b.sites.length} site${b.sites.length === 1 ? '' : 's'}`}>
-              Move these sites' gates to another method first: {b.sites.map((s, i) => <span key={s}>{i > 0 && ', '}<a href={`#/sites/${encodeURIComponent(s)}/gates`}>{s}</a></span>)}.
+            <Callout key={`${b.kind}/${b.name}`} tone="danger" icon={I.lock} title={`${b.name} is still in use`}>
+              {b.message ?? 'Move the gates that use it to another method first'}{b.sites.length ? <>: {b.sites.map((s, i) => <span key={s}>{i > 0 && ', '}<a href={`#/sites/${encodeURIComponent(s)}/gates`}>{s}</a></span>)}</> : null}.
             </Callout>
           ))}
           <CheckList lines={preview.checks.map((c) => ({ level: c.level === 'error' ? 'error' : 'warn', text: c.message }))} />
@@ -103,7 +106,7 @@ export function ChangeReview({ changes, state, onDone, canApply }: { changes: Ha
               <li key={`${c.kind}/${c.name}/${f.path}/${i}`} className="site-diff-chg"><span className="mono small">{c.name} · {f.path}: {JSON.stringify(f.before) ?? '—'} → {JSON.stringify(f.after) ?? '—'}</span></li>
             )))}
           </ul>
-          <p className="small m-0">Restarts: {preview.restart.components.join(', ') || 'nothing'}{preview.restart.expectedSec ? ` · about ${preview.restart.expectedSec} s, one pod at a time` : ''}. Requests keep being served during a rolling restart.</p>
+          <p className="small m-0">{preview.restart.message ?? `Restarts: ${preview.restart.components.join(', ') || 'nothing'}`}{preview.restart.expectedSec ? ` · about ${preview.restart.expectedSec} s, one pod at a time` : ''}. Requests keep being served during a rolling restart.</p>
         </>
       )}
       <Field label="Note for history" required={production}><Textarea rows={2} maxLength={280} value={note} onChange={(e) => setNote(e.target.value)} /></Field>

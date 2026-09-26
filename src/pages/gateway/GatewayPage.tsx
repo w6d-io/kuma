@@ -6,7 +6,8 @@ import { KIND_LABEL } from '../../lib/gateway/catalog';
 import { gatewayHref, parseGatewayHash, rowsOf, type GatewayView } from '../../lib/gateway/logic';
 import { HANDLER_KINDS, type HandlerChange, type HandlerKind } from '../../lib/gateway/types';
 import { QueryError } from '../sites/parts';
-import { useSitePerms } from '../sites/usePerms';
+import { useSession } from '../../api/hooks';
+import { permits } from '../../policy/model';
 import { HandlerPanel } from './HandlerPanel';
 import { ChangeReview } from './ChangeReview';
 import '../sites/sites.css';
@@ -32,7 +33,10 @@ const go = (href: string) => { if (window.location.hash !== href) window.locatio
 
 export function GatewayPage() {
   const view = useGatewayView();
-  const perms = useSitePerms();
+  const { data: session } = useSession();
+  // Changing the gateway is `sites:apply` at jinbe; platform write admins are let through to the
+  // server, which decides.
+  const perms = { canRead: permits(session?.permissions, 'admin:read'), canApply: permits(session?.permissions, 'sites:apply') || permits(session?.permissions, 'admin:write') };
   const gw = useGateway();
   const rollout = useRollout();
   const [review, setReview] = useState<HandlerChange[] | null>(null);
@@ -46,6 +50,11 @@ export function GatewayPage() {
   return (
     <div className="page-enter">
       <PageHeader title="Gateway handlers" sub="How the gateway recognises callers, checks permissions, what services receive and how errors look — for every site at once." />
+      {gw.data?.managed === false && (
+        <Callout tone="info" icon={I.info} className="mb-12" title="Not managed by kuma yet">
+          The gateway runs its {gw.data.source ?? 'chart'} config. The first change applied here adopts it as it is — nothing else moves.
+        </Callout>
+      )}
       {rollout.data?.state === 'running' && (
         <Callout tone="info" icon={I.sync} className="mb-12" title={`Rolling out gateway config v${rollout.data.version}`}>
           {rollout.data.stages.filter((s) => s.state === 'done').length} of {rollout.data.stages.length} steps done. Requests keep being served.
@@ -73,7 +82,7 @@ export function GatewayPage() {
         {kinds.map((kind) => {
           const rows = rowsOf(gw.data, kind);
           return (
-            <Card key={kind} pad="none" title={KIND_LABEL[kind]} sub={<span className="mono">{kind}</span>}>
+            <Card key={kind} pad="none" title={KIND_LABEL[kind]} sub={<span className="mono">{kind}{kind === 'errors' && gw.data?.errorFallback?.length ? ` · fallback: ${gw.data.errorFallback.join(', ')}` : ''}</span>}>
               <Table aria-label={KIND_LABEL[kind]} className="gw-table">
                 <thead><tr><Th>Handler</Th><Th>State</Th><Th>Used by</Th><Th>What it does</Th></tr></thead>
                 <tbody>
@@ -88,9 +97,11 @@ export function GatewayPage() {
                       </td>
                       <td>
                         {unavailable ? <Badge tone="neutral" mono={false}>unknown</Badge>
-                          : <Badge tone={r.enabled ? 'success' : 'neutral'} icon={r.enabled ? I.check : I.lock} mono={false}>{r.enabled ? 'Enabled' : 'Not enabled'}</Badge>}
+                          : r.live !== undefined && r.live !== r.enabled
+                            ? <Badge tone="info" icon={I.sync} mono={false}>{r.enabled ? 'Enabling…' : 'Disabling…'}</Badge>
+                            : <Badge tone={r.enabled ? 'success' : 'neutral'} icon={r.enabled ? I.check : I.lock} mono={false}>{r.enabled ? 'Enabled' : 'Not enabled'}</Badge>}
                       </td>
-                      <td className="small">{r.usedBy.length ? `${r.usedBy.length} site${r.usedBy.length === 1 ? '' : 's'}` : '—'}</td>
+                      <td className="small">{[r.platform && 'platform', r.usedBy.length && `${r.usedBy.length} site${r.usedBy.length === 1 ? '' : 's'}`].filter(Boolean).join(' · ') || '—'}{r.locked ? <> <Badge tone="plain" mono={false} icon={I.lock}>locked</Badge></> : null}</td>
                       <td className="small muted">{r.info.summary}</td>
                     </tr>
                   ))}

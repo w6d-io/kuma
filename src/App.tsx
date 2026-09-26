@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { redirectToLogin } from './auth/loginRedirect';
-import { NAV, hasAnyPerm } from './nav';
+import { NAV, COLLAPSIBLE, hasAnyPerm, navBlocks, navItemFor, type NavSection } from './nav';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { useSession, useStats, useRealtime, useUserSearch } from './api/hooks';
 import { searchedToUser } from './api/transforms';
@@ -11,10 +11,12 @@ import { UsersPage, UserDrawer } from './pages/Users';
 import { OrgAdminPage } from './pages/OrgAdmin';
 import { AccessCheckPage } from './pages/AccessCheck';
 import { useMyOrg } from './hooks/useMyOrg';
-import { GroupsPage } from './pages/Groups';
+import { GroupsPage } from './pages/groups/GroupsPage';
+import { RolesPage } from './pages/access/RolesPage';
+import { SitesPage } from './pages/sites/SitesPage';
+import { GatewayPage } from './pages/gateway/GatewayPage';
 import { OrganizationsPage } from './pages/Organizations';
 import { ApiKeysPage } from './pages/ApiKeys';
-import { ApisPage } from './pages/Apis';
 import { GrantAccess } from './pages/GrantAccess';
 import { AuditPage } from './pages/Audit';
 import { AccessReviewPage } from './pages/AccessReview';
@@ -92,7 +94,11 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
   // Filter nav by user permissions — non-admins only see Overview + Settings.
   const myOrg = useMyOrg();
   const visibleNav = NAV.filter((n) => hasAnyPerm(session?.permissions, n.perms) && (n.id !== "orgadmin" || myOrg.show))
-  const sections = [...new Set(visibleNav.map((n) => n.section))]
+  const blocks = navBlocks(visibleNav)
+  const activeId = navItemFor(page)?.id
+  const [openSections, setOpenSections] = useState<ReadonlySet<NavSection>>(new Set())
+  const toggleSection = (s: NavSection) =>
+    setOpenSections(prev => new Set(prev.has(s) ? [...prev].filter(x => x !== s) : [...prev, s]))
 
   return (
     <>
@@ -110,24 +116,33 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
             403 · access denied
           </div>
         )}
-        {sections.map(sec => (
-          <Fragment key={sec}>
-            <div className="nav-section">{sec}</div>
-            {visibleNav.filter(n => n.section === sec).map(n => {
-              const count =
-                n.id === "users" ? (stats?.total ?? state.users.length) :
-                n.id === "groups" ? Object.keys(state.groups).length :
-                null;
-              return (
-                <ButtonBase key={n.id} className={cx("nav-item", page === n.id && "active")} aria-current={page === n.id ? "page" : undefined} onClick={() => { setPage(n.id); onNavigate?.(); }}>
-                  <span className="ico">{n.ico}</span>
-                  {n.name}
-                  {count != null && showCounts && <span className="count">{count}</span>}
+        {blocks.map((block, bi) => {
+          const folded = block.section && COLLAPSIBLE.has(block.section) && !openSections.has(block.section) && !block.items.some(n => n.id === activeId);
+          const afterSection = !block.section && bi > 0 && !!blocks[bi - 1].section;
+          return (
+            <Fragment key={block.section ?? block.items[0].id}>
+              {afterSection && <div className="nav-gap" aria-hidden="true" />}
+              {block.section && COLLAPSIBLE.has(block.section) ? (
+                <ButtonBase className="nav-section nav-section-toggle" aria-expanded={!folded} onClick={() => toggleSection(block.section!)}>
+                  <span className="ico">{folded ? I.caretRight : I.caret}</span>{block.section}
                 </ButtonBase>
-              );
-            })}
-          </Fragment>
-        ))}
+              ) : block.section && <div className="nav-section">{block.section}</div>}
+              {!folded && block.items.map(n => {
+                const count =
+                  n.id === "users" ? (stats?.total ?? state.users.length) :
+                  n.id === "groups" ? Object.keys(state.groups).length :
+                  null;
+                return (
+                  <ButtonBase key={n.id} className={cx("nav-item", activeId === n.id && "active")} aria-current={activeId === n.id ? "page" : undefined} onClick={() => { setPage(n.id); onNavigate?.(); }}>
+                    <span className="ico">{n.ico}</span>
+                    {n.name}
+                    {count != null && showCounts && <span className="count">{count}</span>}
+                  </ButtonBase>
+                );
+              })}
+            </Fragment>
+          );
+        })}
       </nav>
       <div className="sidebar-theme">
         <ButtonBase
@@ -165,7 +180,7 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
 
 function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
   const { page, pipeline, theme, cycleTheme, persona, tweaks, isLive, isLoading, apiError, state } = useApp();
-  const title = NAV.find(n => n.id === page)?.name || "Console";
+  const title = navItemFor(page)?.name || "Console";
   const showPipe = tweaks?.showPipeline !== false;
   const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
 
@@ -264,7 +279,10 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
       kind: "user", label: u.name, sub: u.email, run: () => { setUserDrawer({ mode: "edit", user: u }); }
     }));
     const grps = Object.keys(state.groups).filter(match).slice(0, 6).map(g => ({
-      kind: "group", label: `Group · ${g}`, sub: "open Groups", run: () => { setPage("groups"); }
+      kind: "group", label: `Group · ${g}`, sub: "open the group", run: () => { setPage("groups", g); }
+    }));
+    const sites = state.services.map(sv => sv.name).filter(match).slice(0, 6).map(name => ({
+      kind: "service", label: `Roles · ${name}`, sub: "roles & permissions", run: () => { setPage("roles", name); }
     }));
     const actions = [
       { kind: "action", label: "Grant access to a user", sub: "guided", run: () => { setGrant({}); } },
@@ -275,6 +293,7 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
       { name: "Navigate", items: nav },
       { name: "Users", items: users },
       { name: "Groups", items: grps },
+      { name: "Sites", items: sites },
     ].filter(g => g.items.length > 0);
     // Context setters are stable; results recompute on q/state/theme/search only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -411,10 +430,8 @@ function AppShell() {
   // dashboard. A failed/401 session is handled by the Topbar redirect, not here.
   useEffect(() => {
     if (!sessionReady) return
-    // `enforced` is the old id of this screen, kept so a bookmark still opens it. It has
-    // no NAV entry — resolve to the canonical id so they inherit the same gate.
-    const canonical = page === 'enforced' ? 'apis' : page
-    const nav = NAV.find((n) => n.id === canonical)
+    // An old id with no rail entry of its own inherits the gate of the page that replaced it.
+    const nav = navItemFor(page)
     if (!nav) return
     if (!hasAnyPerm(session?.permissions, nav.perms)) {
       // Land the user on a surface they can actually use. Platform admins get
@@ -446,7 +463,9 @@ function AppShell() {
             {page === "dashboard" && <DashboardPage />}
             {page === "users" && <UsersPage />}
             {page === "groups" && <GroupsPage />}
-            {(page === "apis" || page === "enforced") && <ApisPage />}
+            {page === "roles" && <RolesPage />}
+            {page === "sites" && <SitesPage />}
+            {page === "gateway" && <GatewayPage />}
             {page === "organizations" && <OrganizationsPage />}
             {page === "apikeys" && <ApiKeysPage />}
             {page === "audit" && <AuditPage />}

@@ -162,7 +162,7 @@ export function DashboardPage() {
 
         <Card title="Quick actions" sub="Common operations">
           <div className="grid g2">
-            <QuickAction ico={I.shield} title="See what is enforced" sub="Each API, its routes, and who can reach them" onClick={() => setPage("apis")} />
+            <QuickAction ico={I.shield} title="Who can do what" sub="Each site's routes, the permission they need, and who holds it" onClick={() => setPage("roles")} />
           </div>
         </Card>
       </div>

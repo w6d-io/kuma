@@ -1,0 +1,54 @@
+/* Roles & permissions, Groups: the site layer's editors. */
+
+.rb-site-pick { min-width: 220px; }
+.rb-filter { max-width: 360px; min-width: 200px; }
+.rb-filter .input-wrap { width: 100%; }
+
+/* A role's permission picker: one set per resource, checkboxes flowing in columns. */
+.rb-perm-set { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3) var(--space-3); margin: 0; min-width: 0; }
+.rb-perm-set legend { padding: 0 var(--space-1); }
+.rb-perm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-2) var(--space-4); }
+
+/* A group's roles per site: one row per site, its roles side by side. */
+.rb-site-row { border: 0; border-top: 1px solid var(--color-border); padding: var(--space-2) 0 0; margin: 0; min-width: 0; }
+.rb-site-row legend { padding: 0 var(--space-1) 0 0; margin-bottom: var(--space-2); }
+.rb-role-row { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); }
+.rb-access { align-items: flex-start; border-left: 2px solid var(--color-border); padding-left: var(--space-3); display: flex; flex-direction: column; gap: var(--space-1); }
+
+/* The review before a save: what is added, removed, renamed. */
+.rb-diff { list-style: none; margin: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--text-sm); }
+.rb-diff .add { color: var(--color-success); }
+.rb-diff .del { color: var(--color-danger); }
+.rb-diff .chg { color: var(--color-warning); }
+
+/* Routes under a permission; each links to the Access checker. */
+.rb-routes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-half); font-size: var(--text-sm); }
+.rb-routes.cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-1) var(--space-4); }
+.rb-routes a { display: flex; gap: var(--space-2); color: var(--color-text); text-decoration: none; overflow-wrap: anywhere; min-width: 0; }
+.rb-routes a:hover { color: var(--color-accent); text-decoration: underline; }
+.rb-method { flex: none; min-width: 4.5em; color: var(--color-text-subtle); font-weight: var(--weight-medium); }
+
+.rb-chip-link, .rb-row-link { border: 0; background: transparent; padding: 0; cursor: pointer; color: inherit; }
+.rb-row-link { font-family: var(--font-mono); }
+.rb-row-link:hover { color: var(--color-accent); text-decoration: underline; }
+
+.rb-members { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.rb-members li + li { border-top: 1px solid var(--color-border); }
+.rb-member { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-half); width: 100%; padding: var(--space-2) var(--space-1); border: 0; background: transparent; text-align: left; cursor: pointer; border-radius: var(--radius-sm); }
+.rb-member:hover { background: var(--color-surface-2); }
+
+/* Phone width: each table row becomes a card, every cell labelled by its column. */
+@media (max-width: 600px) {
+  .rb-stack thead { display: none; }
+  .rb-stack, .rb-stack tbody, .rb-stack tr, .rb-stack td { display: block; width: 100%; }
+  .rb-stack tr { padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border); }
+  .rb-stack tr:last-child { border-bottom: none; }
+  .table.rb-stack td { border-bottom: none; padding-top: var(--space-1); padding-bottom: var(--space-1); text-align: left; white-space: normal; }
+  .rb-stack td[data-label]::before {
+    content: attr(data-label); display: block; margin-bottom: var(--space-half);
+    font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-subtle);
+  }
+  .rb-stack td.rb-actions { text-align: right; }
+}
+
+.rb-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); }

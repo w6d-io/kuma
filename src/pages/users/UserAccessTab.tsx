@@ -5,12 +5,11 @@ import { useUserIdentity } from '../../api/hooks';
 import { membershipsOf } from '../../api/transforms';
 import { orgLabel } from '../../lib/orgOptions';
 import { sameGroups } from '../../lib/orgGrants';
-import { PermTree } from '../../components/ui/Primitives';
 import { Badge, Button, Card } from '../../components/ui';
 import { ApiErrorState } from '../../components/ApiErrorState';
 import { I } from '../../components/ui/Icons';
 import type { User } from '../../api/types';
-import type { RouteTable } from '../../policy/model';
+import { SiteAccessTree } from '../access/SiteAccessTree';
 import { SiteGroupRows } from './SiteGroupRows';
 import { UserOrgsTab } from './UserOrgsTab';
 
@@ -24,13 +23,11 @@ type SiteRowsProps = Omit<React.ComponentProps<typeof SiteGroupRows>, 'checked' 
  * never removes site access — edited on that org's My org page, linked from each row. Membership of
  * orgs is changed at the bottom of the right column (it used to be a tab of its own).
  */
-export function UserAccessTab({ user, groups, toggle, siteRows, assignable, chain, onOpenOrg }: {
+export function UserAccessTab({ user, groups, toggle, siteRows, onOpenOrg }: {
   user: User;
   groups: string[];
   toggle: (g: string) => void;
   siteRows: SiteRowsProps;
-  assignable: { isError: boolean; isLoading: boolean };
-  chain: { model: { groups: Record<string, Record<string, string[]>>; roles: Record<string, string[]> }; routeTables?: RouteTable[] };
   onOpenOrg: (orgId: string) => void;
 }) {
   const accessQ = useQuery({ queryKey: ['user-access', user.id], queryFn: () => orgAccessApi.userAccess(user.id), retry: false });
@@ -42,12 +39,7 @@ export function UserAccessTab({ user, groups, toggle, siteRows, assignable, chai
       <section aria-labelledby="site-access-h">
         <h3 id="site-access-h" className="mt-0 mb-2 text-base">Site access <span className="muted fw-regular">(everywhere)</span></h3>
         <div className="small muted mb-8">From their groups. Holds on every site, whatever org they are in.</div>
-        {/* "You may not" and "I could not tell" must not look alike: one is an answer, the other a failure. */}
-        {assignable.isError ? (
-          <div className="small text-danger mb-8">
-            The authorization model could not be read, so what you may assign is unknown.
-          </div>
-        ) : !assignable.isLoading && !siteRows.mayAssign ? (
+        {!siteRows.mayAssign ? (
           <div className="small muted mb-8">
             You cannot assign groups: your roles do not include managing members. Below is what this person already holds.
           </div>
@@ -59,7 +51,7 @@ export function UserAccessTab({ user, groups, toggle, siteRows, assignable, chai
         {!changed && accessQ.data && Object.keys(accessQ.data.site.byService).length > 0 ? (
           <SiteRoles byService={accessQ.data.site.byService} />
         ) : (
-          <Card pad="sm"><PermTree user={{ ...user, groups }} model={chain.model} routeTables={chain.routeTables} /></Card>
+          <Card pad="sm"><SiteAccessTree user={{ ...user, groups }} /></Card>
         )}
       </section>
 

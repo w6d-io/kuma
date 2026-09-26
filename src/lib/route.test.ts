@@ -70,3 +70,41 @@ describe('the living style guide', () => {
     expect(formatHash('design')).toBe('/design');
   });
 });
+
+describe('old links from before the new navigation', () => {
+  it('sends the retired simulator to the access checker', () => {
+    expect(parseHash('#/simulator')).toEqual({ page: 'accesscheck', param: null });
+  });
+
+  it('sends services to sites, keeping the site named', () => {
+    expect(parseHash('#/services/payroll')).toEqual({ page: 'sites', param: 'payroll' });
+  });
+
+  it('sends routes to the permissions view of the site', () => {
+    expect(parseHash('#/routes/jinbe')).toEqual({ page: 'roles', param: 'jinbe', query: { tab: 'permissions' } });
+  });
+
+  it('lets an explicit query win over the redirect default', () => {
+    expect(parseHash('#/routes/jinbe?tab=roles').query).toEqual({ tab: 'roles' });
+  });
+
+  it('sends the old gateway rules, APIs and enforced screens to gateway handlers', () => {
+    expect(parseHash('#/rules')).toEqual({ page: 'gateway', param: null });
+    expect(parseHash('#/apis')).toEqual({ page: 'gateway', param: null });
+    expect(parseHash('#/enforced')).toEqual({ page: 'gateway', param: null });
+  });
+
+  it('opens roles by site and writes it back the same way', () => {
+    expect(parseHash('#/roles/kuma?tab=permissions')).toEqual({ page: 'roles', param: 'kuma', query: { tab: 'permissions' } });
+    expect(formatHash('roles', 'kuma', { tab: 'permissions' })).toBe('/roles/kuma?tab=permissions');
+  });
+});
+
+describe('pages that read deeper segments themselves', () => {
+  it('keeps sites, gateway and audit on their page with the second segment as param', () => {
+    expect(parseHash('#/sites/payroll/routes?route=r1')).toEqual({ page: 'sites', param: 'payroll', query: { route: 'r1' } });
+    expect(parseHash('#/sites/new?step=kind')).toEqual({ page: 'sites', param: 'new', query: { step: 'kind' } });
+    expect(parseHash('#/gateway/authenticators/jwt?level=expert')).toEqual({ page: 'gateway', param: 'authenticators', query: { level: 'expert' } });
+    expect(parseHash('#/audit/event/e1?ts=x')).toEqual({ page: 'audit', param: 'event', query: { ts: 'x' } });
+  });
+});

@@ -1,7 +1,7 @@
 import { getPath, isDuration } from '../sites/handlerFields';
 import { secretLooking } from '../sites/validate';
 import { CATALOG, handlerInfo, type HandlerInfo } from './catalog';
-import { HANDLER_KINDS, type GatewayHandler, type GatewayState, type HandlerKind, type SecretValue } from './types';
+import { HANDLER_KINDS, type GatewayHandler, type GatewayState, type HandlerKind } from './types';
 
 /** The Gateway handlers page's pure parts: address, merge with the catalog, secrets, checks. */
 
@@ -37,31 +37,22 @@ export function rowsOf(state: GatewayState | undefined, kind: HandlerKind): Hand
   return names.map((name) => {
     const s = server.find((h) => h.name === name);
     return {
-      kind, name, info: handlerInfo(kind, name), known: !!s,
+      kind, name, info: (s as { info?: HandlerInfo } | undefined)?.info ?? handlerInfo(kind, name), known: !!s,
       enabled: s?.enabled ?? false, config: s?.config ?? {}, secrets: s?.secrets, usedBy: s?.usedBy ?? [], restart: s?.restart,
+      defaults: s?.defaults, locked: s?.locked, platform: s?.platform, platformRules: s?.platformRules, live: s?.live,
     };
   });
 }
 
 // ── secrets ───────────────────────────────────────────────────
 
-export type SecretState = 'empty' | 'masked' | 'vault' | 'plaintext';
+export type SecretState = 'empty' | 'masked' | 'typed';
 
 export function secretState(v: unknown): SecretState {
   if (v === undefined || v === null || v === '') return 'empty';
   if (typeof v === 'object' && (v as { masked?: unknown }).masked === true) return 'masked';
-  if (typeof v === 'object' && typeof (v as { vault?: unknown }).vault === 'string') return 'vault';
-  return 'plaintext';
+  return 'typed';
 }
-
-/** `kv/path/to/secret#key` — a Vault KV path and the key inside it. */
-export function vaultRefProblem(ref: string): string | null {
-  if (!ref) return 'Give the Vault path and key, like kv/auth/hydrator#password.';
-  if (!/^[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)+#[A-Za-z0-9_.-]+$/.test(ref)) return 'A Vault reference looks like kv/auth/hydrator#password (path, then # and the key).';
-  return null;
-}
-
-export const vaultRef = (ref: string): SecretValue => ({ vault: ref.trim() });
 
 /** Dotted keys holding secrets: what the server says, plus the catalog's secret fields. */
 export function secretKeys(row: Pick<HandlerRow, 'secrets' | 'info'>): string[] {
@@ -78,22 +69,22 @@ export function configProblems(row: Pick<HandlerRow, 'info' | 'secrets'>, config
   for (const f of row.info.fields) {
     const v = getPath(config, f.key);
     const empty = v === undefined || v === '' || (Array.isArray(v) && v.length === 0) || (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length === 0);
-    if (f.required && enabling && empty) out.push({ key: f.key, message: `${f.label} is required once this handler is on — the gateway refuses to start without it.`, blocking: true });
+    if (f.required && enabling && empty && !secrets.has(f.key)) out.push({ key: f.key, message: `${f.label} is required once this handler is on — the gateway refuses to start without it.`, blocking: true });
     if (f.type === 'duration' && typeof v === 'string' && v && !isDuration(v)) out.push({ key: f.key, message: `${f.label}: a duration like 1s, 100ms or 5m.`, blocking: true });
     if (secrets.has(f.key)) {
       const st = secretState(v);
-      if (st === 'plaintext') out.push({ key: f.key, message: `${f.label} must be a Vault reference, never a value typed here.`, blocking: true });
-      if (st === 'vault' && vaultRefProblem((v as { vault: string }).vault)) out.push({ key: f.key, message: vaultRefProblem((v as { vault: string }).vault)!, blocking: true });
+      if (st === 'typed') out.push({ key: f.key, message: `${f.label} is set by the platform (chart values, from a Secret), not here.`, blocking: true });
     } else if (typeof v === 'string' && secretLooking(v)) {
-      out.push({ key: f.key, message: `${f.label} looks like a secret. Put secrets in Vault and reference them.`, blocking: true });
+      out.push({ key: f.key, message: `${f.label} looks like a credential. Gateway config is readable in the cluster; credentials are set by the platform.`, blocking: true });
     }
   }
   return out;
 }
 
 /** Why a handler cannot be turned off now: the sites whose gates use it. */
-export function disableBlockers(row: Pick<GatewayHandler, 'usedBy'>): string[] {
-  return row.usedBy.map((u) => u.site);
+export function disableBlockers(row: Pick<GatewayHandler, 'usedBy' | 'platform' | 'platformRules'>): string[] {
+  const rules = row.platformRules?.length ? row.platformRules.map((r) => `platform rule ${r}`) : row.platform ? ['the platform’s own rules'] : [];
+  return [...rules, ...row.usedBy.map((u) => u.site)];
 }
 
 /** What restarts, in words. */
