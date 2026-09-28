@@ -237,6 +237,18 @@ export const api = {
       }[];
     }>('/admin/organizations'),
 
+  /** A new organisation from a name; the tenant is derived from it when not given. */
+  createOrganization: (body: { name: string; tenant?: string }) =>
+    request<OrganizationRecord>('/admin/organizations', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Rename, re-tenant, or set the whole set of applications. Only what is sent changes. */
+  updateOrganization: (id: string, body: { name?: string; tenant?: string; applications?: string[] }) =>
+    request<OrganizationRecord>(`/admin/organizations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  /** Only an organisation nobody belongs to: jinbe answers 409 organisation_in_use otherwise. */
+  deleteOrganization: (id: string) =>
+    request<void>(`/admin/organizations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   // ─── Access Rules (Oathkeeper) ───
   getAccessRules: () =>
     request<{ rules: JinbeAccessRule[] }>(`/admin/rbac/access-rules`).then(r => r.rules),
@@ -631,6 +643,14 @@ export interface SearchedUser {
   organizationId: string | null;
   active: boolean;
   mfa?: boolean; // real second-factor status (jinbe enriches search hits via hasMFA)
+}
+
+/** An organisation as the admin routes answer it. */
+export interface OrganizationRecord {
+  id: string;
+  name: string;
+  tenant: string;
+  applications: string[];
 }
 
 /** One person found by GET /admin/users/lookup. `null` = that part could not be read, not "none". */
