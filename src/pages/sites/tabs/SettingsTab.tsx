@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button, Callout, Card, ConfirmDialog, Field, FieldRow, FormGrid, I, Input, RadioGroup, Select, Textarea } from '../../../components/ui';
 import { sitesApi, useInvalidateSite } from '../../../api/sites';
 import { goSites, sitesHref } from '../../../lib/sites/route';
-import { labelProblem, namespaceProblem, portProblem, serviceProblem } from '../../../lib/sites/validate';
+import { namespaceProblem, portProblem, serviceProblem } from '../../../lib/sites/validate';
 import type { Site } from '../../../lib/sites/types';
 import type { SiteEditor } from '../useSiteEditor';
 import { useSiteAction } from '../useAction';
@@ -12,12 +12,13 @@ import { useBrand } from './brand';
 import { BrandPreview } from './LoginPreview';
 
 /**
- * Settings (site-ux.md §10.4–10.6): name, brand, address and upstream (drafted like any change), then the
+ * Settings (site-ux.md §10.4–10.6): name, brand, address (Edit address: checked before it is saved) and
+ * upstream (drafted like any change), then the
  * actions that change what the gateway serves at once — pause/resume and delete with its blast
  * radius — which need a super admin and a recent second factor.
  */
 
-export function SettingsTab({ ed, readOnly, canApply }: { ed: SiteEditor; readOnly: boolean; canApply: boolean }) {
+export function SettingsTab({ ed, readOnly, canApply, onEditAddress }: { ed: SiteEditor; readOnly: boolean; canApply: boolean; onEditAddress: () => void }) {
   const site = ed.site;
   const invalidate = useInvalidateSite();
   const { run, busy } = useSiteAction();
@@ -55,16 +56,13 @@ export function SettingsTab({ ed, readOnly, canApply }: { ed: SiteEditor; readOn
         <p className="small mt-16 mb-0">The welcome text, help link and every sign-in page in full are on <a href={sitesHref({ view: 'site', name: ed.name, tab: 'login' })}>Login</a>.</p>
       </Card>
 
-      <Card title="Address" sub="Changing the host is high risk in Review.">
+      <Card
+        title="Address"
+        sub="Label, zone and path prefix. Every check runs against the new address before it is saved; moving a live site breaks links to the old one."
+        actions={!readOnly && <Button size="sm" icon={I.edit} onClick={onEditAddress}>Edit address</Button>}
+      >
         <FormGrid>
-          <FieldRow>
-            <Field label="Host label" error={labelProblem(label) ?? undefined} hint={`under ${zone}`}>
-              <Input mono value={label} disabled={readOnly} onChange={(e) => set((s) => ({ ...s, address: { ...s.address, host: `${e.target.value.toLowerCase()}.${zone}` } }))} />
-            </Field>
-            <Field label="Path prefix" hint="Only when sharing the host with another site, e.g. /payroll.">
-              <Input mono value={site.address.pathPrefix ?? ''} disabled={readOnly} onChange={(e) => set((s) => ({ ...s, address: { host: s.address.host, ...(e.target.value ? { pathPrefix: e.target.value } : {}) } }))} />
-            </Field>
-          </FieldRow>
+          <p className="m-0"><span className="mono">https://{site.address.host}{site.address.pathPrefix ?? ''}/</span>{ed.saved && ed.saved.address.host !== site.address.host ? <span className="small muted"> (drafted; live: {ed.saved.address.host})</span> : null}</p>
           <RadioGroup<'zone' | 'vanity'> label="Exposure" name="exposure" value={site.exposure?.mode ?? 'zone'} disabled={readOnly} onChange={(mode) => set((s) => ({ ...s, exposure: { mode } }))} options={[
             { value: 'zone', label: 'Zone (default)', hint: 'the zone’s wildcard address and certificate already reach the gateway — live in seconds' },
             { value: 'vanity', label: 'Its own Ingress', hint: 'the operator creates one from a fixed template; a certificate when the zone has no wildcard' },

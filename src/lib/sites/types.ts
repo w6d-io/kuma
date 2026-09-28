@@ -50,6 +50,8 @@ export interface SiteLogin {
   reach: 'granted' | 'any-account';
   branding?: { name?: string; logo?: string; accent?: string; welcome?: string; helpUrl?: string };
   postLogoutUrl?: string;
+  /** Where a visitor lands after signing in to this site; on the site's own host. */
+  defaultReturnUrl?: string;
 }
 
 export interface Site {
@@ -115,7 +117,19 @@ export interface SiteDraft {
   updatedAt?: string;
 }
 
-export interface Check { level: 'error' | 'warn'; code: string; message: string; path?: string }
+/** One side of an address change, as jinbe describes it on `address_changed`. */
+export interface AddressView { host: string; pathPrefix: string | null; zone: string | null; url: string }
+
+export interface Check {
+  level: 'error' | 'warn';
+  code: string;
+  message: string;
+  path?: string;
+  /** address_changed: the address visitors reach now and the one they will. */
+  address?: { from: AddressView; to: AddressView };
+  /** A value jinbe offers to write at `path` to clear the check (a landing page left on the old host). */
+  fix?: { path: string; value: string };
+}
 
 export type RiskLevel = 'low' | 'medium' | 'high';
 export interface Risk { level: RiskLevel; flags: Array<{ code: string; level: RiskLevel; message: string }> }

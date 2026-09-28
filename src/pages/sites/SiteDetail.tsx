@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge, Button, Callout, EmptyState, I, PageHeader, SkeletonPanel, Tabs } from '../../components/ui';
 import { goSites, sitesHref, type SiteTab } from '../../lib/sites/route';
 import { useSiteEditor } from './useSiteEditor';
@@ -16,6 +16,7 @@ import { SettingsTab } from './tabs/SettingsTab';
 import { ReviewTab } from './tabs/ReviewTab';
 import { PendingRequests } from './PendingRequests';
 import { useInvalidateSite } from '../../api/sites';
+import { EditAddressDialog } from './EditAddress';
 
 /**
  * One site (site-ux.md §5.2): who it is, whether there is a draft, and its tabs. The draft banner is
@@ -26,6 +27,7 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
   const perms = useSitePerms();
   const readOnly = ed.system || !perms.canDraft;
   const invalidate = useInvalidateSite();
+  const [editAddress, setEditAddress] = useState(false);
   const go = (t: SiteTab, q?: Record<string, string | undefined>) => goSites(sitesHref({ view: 'site', name, tab: t, query: q }));
 
   // ⌘↵ / Ctrl↵ opens Review (§10.8); ⌘S saves the draft now.
@@ -72,7 +74,10 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
         eyebrow={<Button variant="ghost" size="sm" icon={I.caretLeft} onClick={() => goSites(sitesHref({ view: 'list' }))}>Sites</Button>}
         title={s.displayName ?? name}
         status={<span className="row gap-8"><StatusBadge status={status} />{liveVersion && <Badge tone="plain">v{liveVersion}</Badge>}</span>}
-        sub={<span className="mono">{s.address?.host}{s.address?.pathPrefix ?? ''} → {upstream}</span>}
+        sub={<span className="row gap-4 items-center wrap">
+          <span className="mono">{s.address?.host}{s.address?.pathPrefix ?? ''} → {upstream}</span>
+          {!readOnly && ed.site && <Button variant="ghost" size="sm" iconOnly icon={I.edit} aria-label="Edit address" title="Edit address" onClick={() => setEditAddress(true)} />}
+        </span>}
         actions={<>
           <Button size="md" icon={I.route} kbd="t" onClick={() => go('routes', { test: 'GET /' })}>Test a URL</Button>
           {s.address?.host && <Button size="md" trailing={I.arrowOut} onClick={() => window.open(`https://${s.address!.host}${s.address!.pathPrefix ?? ''}/`, '_blank', 'noopener')}>Open site</Button>}
@@ -113,9 +118,10 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
         {tab === 'login' && !ed.system && <LoginTab ed={ed} readOnly={readOnly} />}
         {tab === 'status' && <StatusTab ed={ed} />}
         {tab === 'history' && <HistoryTab ed={ed} readOnly={readOnly || !perms.canApply} query={query} go={go} />}
-        {tab === 'settings' && !ed.system && <SettingsTab ed={ed} readOnly={readOnly} canApply={perms.canApply} />}
+        {tab === 'settings' && !ed.system && <SettingsTab ed={ed} readOnly={readOnly} canApply={perms.canApply} onEditAddress={() => setEditAddress(true)} />}
         {tab === 'review' && !readOnly && <ReviewTab ed={ed} canApply={perms.canApply} go={go} />}
       </div>
+      {!readOnly && <EditAddressDialog ed={ed} open={editAddress} onClose={() => setEditAddress(false)} canApply={perms.canApply} onApplied={() => go('status')} />}
     </div>
   );
 }
