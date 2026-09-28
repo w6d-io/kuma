@@ -448,6 +448,16 @@ export const api = {
       body: JSON.stringify({ groups }),
     }),
 
+  // ─── Sign-in protection: bot check per Kratos flow + who may sign up (enforced by a Kratos hook) ───
+  getSignInProtection: () =>
+    request<SignInProtectionView>('/admin/settings/sign-in-protection'),
+
+  setSignInProtection: (settings: SignInProtection) =>
+    request<SignInProtectionView>('/admin/settings/sign-in-protection', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    }),
+
   setAuthMethods: (patch: AuthConfigPatch) =>
     request<AuthConfigState>('/admin/auth/methods', {
       method: 'PUT',
@@ -537,6 +547,35 @@ export interface SecondFactorGroups {
   groups: string[];
   /** What an unset setting means (super_admins), to offer a reset. */
   defaultGroups: string[];
+}
+
+/** GET/PUT /admin/settings/sign-in-protection — jinbe src/sign-in-protection/settings.ts. */
+export type BotCheckFlow = 'registration' | 'login' | 'recovery' | 'verification';
+export type RegistrationMode = 'open' | 'allowlist' | 'closed';
+export interface SignInProtection {
+  captcha: { flows: Record<BotCheckFlow, boolean>; failMode: 'closed' | 'open' };
+  registration: {
+    mode: RegistrationMode;
+    allowEmails: string[];
+    allowDomains: string[];
+    denyDomains: string[];
+    blockDisposable: boolean;
+  };
+}
+export interface SignInProtectionView {
+  settings: SignInProtection;
+  defaults: SignInProtection;
+  /** Who checks the answers. Never the secret: only whether it is set. */
+  provider: {
+    provider: 'turnstile' | 'hcaptcha' | 'recaptcha';
+    configured: boolean;
+    siteKey: string | null;
+    secretSet: boolean;
+    testKeys: boolean;
+    problem: string | null;
+  };
+  /** Size of the built-in disposable-inbox list. */
+  disposableDomains: number;
 }
 
 // Kratos self-service auth methods managed via /admin/auth/methods.
