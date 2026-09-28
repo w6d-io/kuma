@@ -1,4 +1,4 @@
-import { contrastRatio, DARK_SURFACE, LIGHT_SURFACE, parseHex } from './color';
+import { contrastRatio, DARK_SURFACE, INK, LIGHT_SURFACE, parseHex, type Rgb } from './color';
 import { orgParamProblem, pathProblem } from './paths';
 import type { Route } from './types';
 
@@ -64,14 +64,30 @@ export function logoProblem(file: { type: string; size: number }): string | null
   return null;
 }
 
-/** The accent's contrast on both sign-in surfaces, and why it is refused (< 4.5:1 on either). */
-export function accentProblem(v: string): { light: number; dark: number; problem: string | null } {
+/**
+ * The accent rule of the sign-in pages, exactly as kratos-login-ui applies it (accentPassesContrast):
+ * the button label — white or ink, whichever reads better — reaches 4.5:1 on the accent, and links
+ * and focus rings stay visible at 3:1 on the light card and 2.5:1 on the dark one (what the platform
+ * default accent achieves there). A refusal names the part that fails and its ratio.
+ */
+export const ACCENT_MIN = { label: 4.5, light: 3, dark: 2.5 } as const;
+
+export interface AccentCheck { label: number; light: number; dark: number; labelColour: Rgb; problem: string | null }
+
+export function accentProblem(v: string): AccentCheck {
   const rgb = parseHex(v);
-  if (!rgb) return { light: 0, dark: 0, problem: 'Write the colour as #rrggbb.' };
-  const light = contrastRatio(rgb, LIGHT_SURFACE);
+  if (!rgb) return { label: 0, light: 0, dark: 0, labelColour: LIGHT_SURFACE, problem: 'Write the colour as #rrggbb.' };
+  const onWhite = contrastRatio(rgb, LIGHT_SURFACE);
+  const labelColour = onWhite >= contrastRatio(rgb, INK) ? LIGHT_SURFACE : INK;
+  const label = contrastRatio(rgb, labelColour);
+  const light = onWhite;
   const dark = contrastRatio(rgb, DARK_SURFACE);
-  const fails = [light < 4.5 && `light (${light.toFixed(1)}:1)`, dark < 4.5 && `dark (${dark.toFixed(1)}:1)`].filter(Boolean);
-  return { light, dark, problem: fails.length ? `Too little contrast on ${fails.join(' and ')}; 4.5:1 is needed on both.` : null };
+  const fails = [
+    label < ACCENT_MIN.label && `button text ${label.toFixed(1)}:1 (needs ${ACCENT_MIN.label}:1)`,
+    light < ACCENT_MIN.light && `light page ${light.toFixed(1)}:1 (needs ${ACCENT_MIN.light}:1)`,
+    dark < ACCENT_MIN.dark && `dark page ${dark.toFixed(1)}:1 (needs ${ACCENT_MIN.dark}:1)`,
+  ].filter(Boolean);
+  return { label, light, dark, labelColour, problem: fails.length ? `Too little contrast: ${fails.join(', ')}.` : null };
 }
 
 /** Per route id, the first thing wrong with it: methods, path, duplicates within the site, org param. */

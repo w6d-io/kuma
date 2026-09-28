@@ -10,6 +10,26 @@ const BASE = (_rawBase.startsWith('${') ? '' : _rawBase).replace(/\/$/, '') || '
 /** Resolved API base — exported for EventSource (SSE), which can't use `request`. */
 export const API_BASE = BASE;
 
+/**
+ * The error a failed call throws. The API's human-readable message ('Group X grants admin
+ * privileges; the target user must enroll a second factor…') rather than just the error code, so a
+ * toast explains what went wrong — and the code and whole body beside it, so describeApiError can
+ * tell one outage from another (a 503 is OPA, Kubernetes, gatekit or Loki by its `error`).
+ */
+export async function errorFrom(res: Response, message?: string): Promise<Error> {
+  const body = await res.json().catch(() => ({}));
+  const msg = message ?? (body.message || body.error || `HTTP ${res.status}`);
+  return Object.assign(new Error(msg), {
+    status: res.status,
+    code: body.error,
+    // Carried onto the error so a refusal can say it changed nothing. The service sets it on every
+    // gate refusal, and without it here the console can only show the previous state and leave the
+    // reader to guess whether part of the change went through.
+    applied: body.applied,
+    details: body,
+  });
+}
+
 export async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   // A token when the deployment signs in against an authority, the session cookie otherwise. Sent
   // together rather than exclusively: which one the API accepts is its decision, and a console that
@@ -27,23 +47,7 @@ export async function request<T>(path: string, opts?: RequestInit): Promise<T> {
     },
     ...opts,
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    // Surface the API's human-readable message ('Group X grants admin
-    // privileges; the target user must enroll a second factor…') instead
-    // of just the error code, so the toast in kuma actually explains
-    // what went wrong.
-    const msg = body.message || body.error || `HTTP ${res.status}`;
-    throw Object.assign(new Error(msg), {
-      status: res.status,
-      code: body.error,
-      // Carried onto the error so a refusal can say it changed nothing. The service sets it on every
-      // gate refusal, and without it here the console can only show the previous state and leave the
-      // reader to guess whether part of the change went through.
-      applied: body.applied,
-      details: body,
-    });
-  }
+  if (!res.ok) throw await errorFrom(res);
   if (res.status === 204) return undefined as T;
   return res.json();
 }
@@ -244,10 +248,7 @@ export const api = {
     }
     const q = qs.toString()
     const res = await fetch(`${BASE}/admin/audit/export${q ? `?${q}` : ''}`, { credentials: 'include' })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      throw Object.assign(new Error(body.message || `HTTP ${res.status}`), { status: res.status })
-    }
+    if (!res.ok) throw await errorFrom(res)
     const blob = await res.blob()
     const ext = (p.format || 'csv')
     const url = URL.createObjectURL(blob)
@@ -301,10 +302,7 @@ export const api = {
   // Frozen completion report — downloaded as a JSON file (audit evidence).
   downloadRecertReport: async (id: string): Promise<void> => {
     const res = await fetch(`${BASE}/admin/recert/campaigns/${encodeURIComponent(id)}/report`, { credentials: 'include' });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw Object.assign(new Error(body.message || `HTTP ${res.status}`), { status: res.status });
-    }
+    if (!res.ok) throw await errorFrom(res);
     const report = await res.json();
     const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -319,10 +317,7 @@ export const api = {
   exportBundle: async (sections?: string[]): Promise<void> => {
     const q = sections && sections.length ? `?sections=${sections.join(',')}` : '';
     const res = await fetch(`${BASE}/admin/rbac/bundle/export${q}`, { credentials: 'include' });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw Object.assign(new Error(body.message || `HTTP ${res.status}`), { status: res.status });
-    }
+    if (!res.ok) throw await errorFrom(res);
     const bundle = await res.json();
     const filename = `auth-bundle-${new Date().toISOString().slice(0, 10)}.json`;
     const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });

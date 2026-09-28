@@ -1,4 +1,4 @@
-import { API_BASE, request } from './client';
+import { API_BASE, errorFrom, request } from './client';
 import { bearerToken } from '../auth/session';
 import { isNotAvailable } from './orgAccess';
 
@@ -215,7 +215,7 @@ export const auditApi = {
     const path = url.replace(/^\/api(?=\/)/, '');
     const token = await bearerToken();
     const res = await fetch(`${API_BASE}${path}`, { credentials: 'include', headers: token ? { Authorization: `Bearer ${token}` } : {} });
-    if (!res.ok) throw Object.assign(new Error(res.status === 410 ? 'This export has expired; run it again.' : `HTTP ${res.status}`), { status: res.status });
+    if (!res.ok) throw await errorFrom(res, res.status === 410 ? 'This export has expired; run it again.' : undefined);
     const href = URL.createObjectURL(await res.blob());
     const a = document.createElement('a');
     a.href = href;

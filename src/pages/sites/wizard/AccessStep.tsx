@@ -94,7 +94,7 @@ export function AccessStep({ s, patch }: { s: WizardState; patch: (p: Partial<Wi
           </div>
         )}
       </fieldset>
-      <p className="small m-0">Sign-in uses the platform sign-in (password, passkeys…). Per-site 2FA and branding are on the site’s Login tab.</p>
+      <p className="small m-0">Sign-in uses the platform sign-in (password, passkeys…). Per-site 2FA is on the site’s Login tab; its name, logo and accent on Settings → Brand.</p>
     </div>
   );
 }

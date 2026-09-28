@@ -99,14 +99,15 @@
 .site-route-picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: var(--space-1); }
 .site-login-preview {
   --site-accent: var(--color-accent);
+  --site-accent-text: var(--color-on-accent);
   display: flex; flex-direction: column; gap: var(--space-2);
   padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2);
 }
 .site-login-brand { display: flex; gap: var(--space-2); align-items: center; }
 .site-login-logo { width: 32px; height: 32px; border-radius: var(--radius-sm); object-fit: contain; }
-.site-login-logo.placeholder { display: grid; place-items: center; background: var(--site-accent); color: var(--color-on-accent); font-weight: var(--weight-semibold); }
+.site-login-logo.placeholder { display: grid; place-items: center; background: var(--site-accent); color: var(--site-accent-text); font-weight: var(--weight-semibold); }
 .site-login-field { padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text-muted); font-size: var(--text-sm); }
-.site-login-cta { padding: var(--space-2); border-radius: var(--radius-sm); background: var(--site-accent); color: var(--color-on-accent); text-align: center; font-weight: var(--weight-medium); }
+.site-login-cta { padding: var(--space-2); border-radius: var(--radius-sm); background: var(--site-accent); color: var(--site-accent-text); text-align: center; font-weight: var(--weight-medium); }
 .site-login-foot { display: flex; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; border-top: 1px solid var(--color-border); padding-top: var(--space-2); }
 
 /* ── settings / wizard ──────────────────────────────────────── */

@@ -21,16 +21,58 @@ export function statusOf(err: unknown): number | undefined {
   return typeof s === 'number' ? s : undefined;
 }
 
+/**
+ * What each outage jinbe names in a 503 body (`{error: <code>, message}`) means. Only the OPA codes
+ * blame the access engine: a Kubernetes or Loki outage read as "access engine" sent people to the
+ * wrong team. Without `detail`, the server's message is the detail — it is already precise.
+ */
+const ENGINE = {
+  title: 'Access engine unreachable',
+  detail: 'The access engine (OPA) did not answer, so nothing could be checked. This is an outage, not a missing permission.',
+};
+const OUTAGES: Record<string, { title: string; detail?: string }> = {
+  // sites/mine.ts: OPA could not say which sites the caller holds.
+  policy_unavailable: ENGINE,
+  // sites/kube-sites.ts KubeUnavailable — Site CRs, zones, the gateway.
+  kubernetes_unavailable: { title: 'Kubernetes unreachable', detail: 'The Kubernetes API did not answer, so nothing was changed.' },
+  // sites/gatekit.client.ts GatekitUnavailable — preview and apply compile every rule first.
+  checks_unavailable: { title: 'Rule checks unavailable', detail: 'gatekit, which checks every gateway rule before it is written, did not answer, so nothing was changed.' },
+  // sites/apply.service.ts: permissions went out, the gateway rules did not.
+  rules_pending: { title: 'Gateway rules not written' },
+  // audit/query: Loki refused or timed out.
+  audit_store_unavailable: { title: 'Audit log unreachable', detail: 'Loki, where audit events are kept, did not answer. Nothing is lost — it could not be read right now.' },
+  // routes/observability: Tempo.
+  trace_store_unavailable: { title: 'Traces unreachable', detail: 'Tempo, where request traces are kept, did not answer.' },
+  // services/user-groups.service.ts: the group catalogue (Redis) could not be read.
+  authorization_model_unavailable: { title: 'Group catalogue unreachable' },
+  // middleware/error-handler.ts KratosApiError ≥ 500.
+  'Identity service unavailable': { title: 'Identity service unreachable', detail: 'Kratos, which holds accounts and sign-in, did not answer.' },
+  // routes/auth-config.routes.ts: the Kratos config file.
+  KratosConfigError: { title: 'Sign-in settings unavailable' },
+};
+// The authorization guards answer a bare `Service Unavailable` and say OPA only in the message.
+const ENGINE_MESSAGE = /verify authorization|\bOPA\b/;
+const BARE = /^(Service Unavailable|HTTP 503)$/;
+
+function unavailable(err: unknown): ApiErrorView {
+  const e = (err ?? {}) as { code?: unknown; message?: unknown; details?: { error?: unknown } };
+  const code = typeof e.code === 'string' ? e.code : typeof e.details?.error === 'string' ? e.details.error : undefined;
+  // What the server said in words: its message, or a sentence sent as the `error` itself (the
+  // generic handler does that) — never a bare "Service Unavailable" or "HTTP 503".
+  const known = code && Object.hasOwn(OUTAGES, code) ? OUTAGES[code] : undefined;
+  const said = [e.message, code].find((m): m is string => typeof m === 'string' && !!m && !BARE.test(m) && !(m === code && known));
+  const view = known ?? (said && ENGINE_MESSAGE.test(said) ? ENGINE : undefined);
+  return {
+    kind: 'unreachable',
+    title: view?.title ?? 'Service unavailable',
+    detail: view?.detail ?? said ?? 'A service this needs did not answer. Try again in a moment.',
+    retryable: true,
+  };
+}
+
 export function describeApiError(err: unknown, ctx: { groups?: string[] } = {}): ApiErrorView {
   const status = statusOf(err);
-  if (status === 503) {
-    return {
-      kind: 'unreachable',
-      title: 'Engine unreachable',
-      detail: 'The access engine did not answer, so nothing could be checked. This is an outage, not a missing permission.',
-      retryable: true,
-    };
-  }
+  if (status === 503) return unavailable(err);
   if (status === 401) {
     return { kind: 'expired', title: 'Session expired', detail: 'Sign in again to continue.', retryable: false };
   }

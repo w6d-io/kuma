@@ -1,14 +1,19 @@
 /**
- * WCAG 2 contrast, for the per-site accent on the sign-in pages (site-ux.md §11.1: ≥ 4.5:1 on the
- * light and the dark sign-in surface). Colours are RGB triples — the surfaces are written as numbers
- * here rather than hex so no stray colour value lives outside the tokens.
+ * WCAG 2 contrast, for the per-site accent on the sign-in pages. The colours are the ones
+ * kratos-login-ui draws with (src/lib/branding.ts) — kuma must accept exactly what the sign-in pages
+ * show. They are RGB triples rather than hex so no stray colour value lives outside the tokens.
  */
 
 export type Rgb = [number, number, number];
 
-/** The sign-in page surfaces the accent is drawn on (white, and the dark theme's surface). */
+/** White: the light card, and one of the two button labels (login-ui WHITE). */
 export const LIGHT_SURFACE: Rgb = [255, 255, 255];
-export const DARK_SURFACE: Rgb = [31, 32, 35];
+/** The other button label (login-ui INK). */
+export const INK: Rgb = [14, 21, 37];
+/** The dark card (login-ui DARK_SURFACE — globals.css [data-dark] --bg-elevated). */
+export const DARK_SURFACE: Rgb = [17, 21, 29];
+
+export const rgbCss = ([r, g, b]: Rgb): string => `rgb(${r} ${g} ${b})`;
 
 export function parseHex(value: string): Rgb | null {
   const m = /^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/.exec(value.trim());

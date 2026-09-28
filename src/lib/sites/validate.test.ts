@@ -60,13 +60,42 @@ describe('accent contrast', () => {
     expect(contrastRatio([0, 0, 0], [255, 255, 255])).toBeCloseTo(21, 0);
     expect(contrastRatio([255, 255, 255], [255, 255, 255])).toBeCloseTo(1, 5);
   });
-  it('refuses an accent that fails 4.5:1 on light or dark', () => {
-    // A mid blue reads on white but not on the dark surface.
-    const mid = accentProblem('#2f6feb');
-    expect(mid.light).toBeGreaterThan(4.5);
-    expect(accentProblem('#ffff00').problem).toMatch(/light/);
-    expect(accentProblem('#000080').problem).toMatch(/dark/);
+  it('accepts #2F6FEB and a mid-range palette', () => {
+    for (const hex of ['#2F6FEB', '#2256C4', '#0F766E', '#15803D', '#B45309', '#C2410C', '#BE185D', '#7C3AED', '#4F46E5', '#0369A1']) {
+      expect([hex, accentProblem(hex).problem]).toEqual([hex, null]);
+    }
+    // #2F6FEB carries white text, like the button on the sign-in page.
+    expect(accentProblem('#2F6FEB').labelColour).toEqual([255, 255, 255]);
+  });
+
+  it('refuses pale yellow, near-white and near-black, naming the part that fails with its ratio', () => {
+    expect(accentProblem('#FFF7AE').problem).toMatch(/light page 1\.\d:1 \(needs 3:1\)/);
+    expect(accentProblem('#F5F5F5').problem).toMatch(/light page/);
+    const black = accentProblem('#111111').problem;
+    expect(black).toMatch(/dark page 1\.\d:1 \(needs 2\.5:1\)/);
+    expect(black).not.toMatch(/light page/);
+    // A mid grey: readable on both pages, but neither label reaches 4.5:1 on it.
+    expect(accentProblem('#7A7A7A').problem).toMatch(/button text \d\.\d:1 \(needs 4\.5:1\)/);
     expect(accentProblem('nope').problem).toMatch(/#rrggbb/);
+  });
+
+  it('decides every colour exactly as kratos-login-ui accentPassesContrast does', () => {
+    // login-ui src/lib/branding.ts, transcribed: label white or ink (#0E1525) ≥ 4.5, ≥ 3 on white,
+    // ≥ 2.5 on #11151D. Any drift between the two makes kuma accept what the sign-in pages refuse.
+    const hex = (c: number[]) => '#' + c.map((x) => x.toString(16).padStart(2, '0')).join('');
+    const WHITE = [255, 255, 255], INK = [0x0e, 0x15, 0x25], DARK = [0x11, 0x15, 0x1d];
+    const cr = (a: number[], b: number[]) => contrastRatio(a as [number, number, number], b as [number, number, number]);
+    const loginUi = (c: number[]) => {
+      const label = cr(c, WHITE) >= cr(c, INK) ? WHITE : INK;
+      return cr(c, label) >= 4.5 && cr(c, WHITE) >= 3 && cr(c, DARK) >= 2.5;
+    };
+    let passing = 0;
+    for (let r = 0; r < 256; r += 15) for (let g = 0; g < 256; g += 15) for (let b = 0; b < 256; b += 15) {
+      const ok = accentProblem(hex([r, g, b])).problem === null;
+      expect(ok).toBe(loginUi([r, g, b]));
+      if (ok) passing++;
+    }
+    expect(passing).toBeGreaterThan(100);
   });
 });
 

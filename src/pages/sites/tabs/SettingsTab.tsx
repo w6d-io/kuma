@@ -7,9 +7,12 @@ import { labelProblem, namespaceProblem, portProblem, serviceProblem } from '../
 import type { Site } from '../../../lib/sites/types';
 import type { SiteEditor } from '../useSiteEditor';
 import { useSiteAction } from '../useAction';
+import { BrandFields } from './BrandFields';
+import { useBrand } from './brand';
+import { BrandPreview } from './LoginPreview';
 
 /**
- * Settings (site-ux.md §10.4–10.6): name, address and upstream (drafted like any change), then the
+ * Settings (site-ux.md §10.4–10.6): name, brand, address and upstream (drafted like any change), then the
  * actions that change what the gateway serves at once — pause/resume and delete with its blast
  * radius — which need a super admin and a recent second factor.
  */
@@ -18,6 +21,7 @@ export function SettingsTab({ ed, readOnly, canApply }: { ed: SiteEditor; readOn
   const site = ed.site;
   const invalidate = useInvalidateSite();
   const { run, busy } = useSiteAction();
+  const { branding, shown } = useBrand(ed);
   const [confirm, setConfirm] = useState<'pause' | 'resume' | 'delete' | null>(null);
   const [clone, setClone] = useState<{ name: string; host: string } | null>(null);
   const blast = useQuery({ queryKey: ['sites', 'blast', ed.name], queryFn: () => sitesApi.blastRadius(ed.name), enabled: confirm === 'delete', retry: false });
@@ -41,6 +45,14 @@ export function SettingsTab({ ed, readOnly, canApply }: { ed: SiteEditor; readOn
           </FieldRow>
           <Field label="Description"><Textarea rows={2} value={site.description ?? ''} disabled={readOnly} maxLength={500} onChange={(e) => set((s) => ({ ...s, description: e.target.value || undefined }))} /></Field>
         </FormGrid>
+      </Card>
+
+      <Card title="Brand" sub="What people see on the sign-in pages. Cosmetic only — never an access decision.">
+        <div className="site-login-grid">
+          <FormGrid><BrandFields ed={ed} readOnly={readOnly} /></FormGrid>
+          <BrandPreview name={shown.name} accent={shown.accent} accentText={shown.accentText} logo={branding.logo} site={site.name} />
+        </div>
+        <p className="small mt-16 mb-0">The welcome text, help link and every sign-in page in full are on <a href={sitesHref({ view: 'site', name: ed.name, tab: 'login' })}>Login</a>.</p>
       </Card>
 
       <Card title="Address" sub="Changing the host is high risk in Review.">
