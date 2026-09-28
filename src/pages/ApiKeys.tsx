@@ -9,14 +9,14 @@ import { Button, Card, ConfirmDialog, EmptyRow, EmptyState, I, LoadingRows, Page
 import { orgLabel } from '../lib/orgOptions';
 import { toastFor } from '../lib/apiError';
 import { CreateOrgKeyDrawer } from './apikeys/CreateOrgKeyDrawer';
-import { PersonalKeysPolicy } from './apikeys/PersonalKeysPolicy';
 import { CreatorCell, ExpiryCell, LastUsedCell } from './apikeys/parts';
 
 /**
  * An organization's API keys: machine credentials (OAuth2 client-credentials clients) that belong
  * to the organization, not to a person. Listed without secrets; a new key's secret is shown once,
  * in the create drawer, and cannot be read again. The organization is the address
- * (`#/apikeys/<org id>`). Below the keys, whether members may create personal keys here.
+ * (`#/apikeys/<org id>`). Personal keys are not here: they belong to a person, not to an
+ * organization (Connections & keys).
  */
 export function ApiKeysPage() {
   const { pageParam, setPage } = useApp();
@@ -109,7 +109,6 @@ function OrgApiKeys({ org, orgName }: { org: string; orgName: string }) {
           </Table>
         </Card>
       )}
-      <PersonalKeysPolicy org={org} orgName={orgName} />
       {creating && (
         <CreateOrgKeyDrawer
           org={org}

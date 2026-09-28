@@ -65,6 +65,43 @@ export function groupBySite(entries: readonly ScopeEntry[]): { site: string; sco
     .map(([site, scopes]) => ({ site, scopes: sortScopes([...scopes]) }));
 }
 
+/** One permission a personal key may be narrowed to, and the resource it belongs to (`users`, `audit`). */
+export interface PlatformScope {
+  scope: string;
+  group: string;
+}
+
+/** The resource a permission belongs to: what comes before its first `.` or `:`. */
+export function scopeGroupOf(scope: string): string {
+  return scope.split(/[.:]/)[0] ?? scope;
+}
+
+/** jinbe's `{scope, group}` list as entries; a missing group is read off the scope, anything else dropped. */
+export function normalizePlatformScopes(raw: unknown): PlatformScope[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PlatformScope[] = [];
+  for (const item of raw) {
+    const scope = typeof item === 'string' ? item : item && typeof item === 'object' ? (item as { scope?: unknown }).scope : undefined;
+    if (typeof scope !== 'string' || !scope) continue;
+    const group = item && typeof item === 'object' ? (item as { group?: unknown }).group : undefined;
+    out.push({ scope, group: typeof group === 'string' && group ? group : scopeGroupOf(scope) });
+  }
+  return out;
+}
+
+const GROUP_LABELS: Record<string, string> = {
+  admin: 'Administration',
+  audit: 'Audit trail',
+  users: 'Users',
+  sessions: 'Sessions',
+  org: 'Organizations',
+};
+
+/** A readable name for a permission's resource: known ones named, the rest capitalized. */
+export function scopeGroupLabel(group: string): string {
+  return GROUP_LABELS[group] ?? (group ? group[0].toUpperCase() + group.slice(1) : 'Other');
+}
+
 /** Expiry choices for an org key, in days; `null` = never expires. jinbe accepts at most 365. */
 export const KEY_EXPIRY_CHOICES: readonly (number | null)[] = [30, 90, 365, null];
 

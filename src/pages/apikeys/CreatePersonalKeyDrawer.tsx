@@ -1,18 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../contexts/AppContext';
 import { accountsApi, type PersonalKeySecretView } from '../../api/accounts';
 import { useMcpStatus } from '../../api/hooks';
-import { useOrgCatalog } from '../../api/orgCatalog';
-import { OrgPicker } from '../../components/OrgPicker';
-import { Button, Drawer, EmptyHint, Field, FormGrid, Input, Select } from '../../components/ui';
+import { Button, ChecklistGroups, Drawer, EmptyHint, Field, FormGrid, Input, RadioGroup, Select, type ChecklistGroup } from '../../components/ui';
 import { statusOf, toastFor } from '../../lib/apiError';
-import { orgLabel } from '../../lib/orgOptions';
-import {
-  allowedScopesFrom, initialScopes, normalizeCatalog, parseScopes, PERSONAL_EXPIRY_CHOICES, PERSONAL_EXPIRY_DEFAULT, type ScopeEntry,
-} from '../../lib/apiKeys';
+import { PERSONAL_EXPIRY_CHOICES, PERSONAL_EXPIRY_DEFAULT, scopeGroupLabel, scopeHint, sortScopes, type PlatformScope } from '../../lib/apiKeys';
 import { personalExpiryChoices } from '../../lib/mcpSettings';
-import { ScopeField } from './parts';
 import { SecretDrawer } from './SecretDrawer';
 import { McpHelp } from './McpHelp';
 
@@ -21,65 +15,60 @@ function reasonOf(err: unknown): unknown {
   return d?.details?.reason ?? d?.reason;
 }
 
-/** The refusal jinbe gives when the organization forbids personal keys. */
-function forbiddenByOrg(err: unknown): boolean {
-  return statusOf(err) === 403 && reasonOf(err) === 'personal_keys_forbidden';
+/** The refusal jinbe gives when an administrator limited AI assistants to other groups. */
+function outsideMcpGroups(err: unknown): boolean {
+  const reason = reasonOf(err);
+  return statusOf(err) === 403 && (reason === 'mcp_group_not_allowed' || reason === 'group_not_allowed');
 }
 
-/** The refusal jinbe gives when an administrator limited AI assistants to other organizations. */
-function outsideMcpScope(err: unknown): boolean {
-  return statusOf(err) === 403 && reasonOf(err) === 'mcp_org_not_allowed';
+/** The permissions as the checklist's groups: one per resource, each with what it lets a program do. */
+function permissionGroups(entries: readonly PlatformScope[]): ChecklistGroup[] {
+  const byGroup = new Map<string, string[]>();
+  for (const { scope, group } of entries) byGroup.set(group, [...(byGroup.get(group) ?? []), scope]);
+  return [...byGroup.entries()]
+    .sort(([a], [b]) => scopeGroupLabel(a).localeCompare(scopeGroupLabel(b)))
+    .map(([group, scopes]) => ({
+      id: group,
+      label: scopeGroupLabel(group),
+      options: sortScopes(scopes).map((s) => ({ value: s, label: <span className="mono">{s}</span>, hint: scopeHint(s), search: `${group} ${s}` })),
+    }));
 }
 
 /**
- * A personal key: one organization it acts in, scopes among what you hold there, 30 days at most —
- * then the key, once, with how to paste it into an MCP client. The scopes come from the org's
- * catalogue when you may read it; otherwise they are typed, and a refusal lists the allowed ones.
+ * A personal key: not tied to any organization — it acts as you, with all your permissions (the
+ * default: it follows what you hold at each call) or only the ones you choose among them. 30 days at
+ * most — then the key, once, with how to paste it into an MCP client.
  */
 export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const { pushToast } = useApp();
-  const { orgs } = useOrgCatalog();
-  const [org, setOrg] = useState(orgs.length === 1 ? orgs[0].id : '');
   const [label, setLabel] = useState('');
   // The administrator's maximum (Settings → AI assistants) when jinbe says it; 30 days otherwise.
   const maxDays = useMcpStatus().data?.personalKeys?.maxDays;
   const expiryChoices = maxDays ? personalExpiryChoices(maxDays, PERSONAL_EXPIRY_CHOICES) : PERSONAL_EXPIRY_CHOICES;
   const [chosenExpiry, setExpiresIn] = useState<number | null>(null);
   const expiresIn = chosenExpiry !== null && expiryChoices.includes(chosenExpiry) ? chosenExpiry : (maxDays ?? PERSONAL_EXPIRY_DEFAULT);
-  const catalogue = useQuery({ queryKey: ['me', 'api-keys', org, 'scopes'], queryFn: () => accountsApi.myApiKeyScopes(org), enabled: !!org, staleTime: 60_000, retry: false });
-  const [refused, setRefused] = useState<{ org: string; entries: ScopeEntry[] } | null>(null);
-  const entries = catalogue.data ?? (refused?.org === org ? refused.entries : null);
-  const [picked, setPicked] = useState<string[] | null>(null);
-  const [scopesText, setScopesText] = useState('');
-  const [orgError, setOrgError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'all' | 'chosen'>('all');
+  const catalogue = useQuery({ queryKey: ['my-api-keys', 'scopes'], queryFn: () => accountsApi.myApiKeyScopes(), enabled: mode === 'chosen', staleTime: 60_000, retry: false });
+  const [picked, setPicked] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<PersonalKeySecretView | null>(null);
-  useEffect(() => { setPicked(null); setOrgError(null); }, [org]);
-  useEffect(() => {
-    if (entries && picked === null) setPicked(initialScopes(entries.map((e) => e.scope)));
-  }, [entries, picked]);
-  const allowed = entries?.map((e) => e.scope);
-  const scopes = allowed ? (picked ?? []).filter((s) => allowed.includes(s)) : parseScopes(scopesText);
-  const ready = !!org && !!label.trim() && scopes.length > 0 && !orgError;
+  const allowed = catalogue.data?.map((e) => e.scope) ?? [];
+  const scopes = picked.filter((s) => allowed.includes(s));
+  const ready = !!label.trim() && (mode === 'all' || scopes.length > 0) && !error;
 
   const submit = async () => {
     if (!ready) return;
     setBusy(true);
     try {
-      const res = await accountsApi.createMyApiKey({ label: label.trim(), organization_id: org, scopes, expires_in_days: expiresIn });
+      const res = await accountsApi.createMyApiKey({ label: label.trim(), ...(mode === 'chosen' ? { scopes } : {}), expires_in_days: expiresIn });
       setCreated(res);
       onCreated();
     } catch (err) {
-      if (forbiddenByOrg(err)) {
-        setOrgError('This organization does not allow personal keys. Its administrators can allow them on its API keys page.');
+      if (outsideMcpGroups(err)) {
+        setError('AI assistants are not enabled for your groups. A platform administrator chooses which groups may use them.');
         return;
       }
-      if (outsideMcpScope(err)) {
-        setOrgError('AI assistants are not enabled for this organization. A platform administrator chooses which organizations may use them.');
-        return;
-      }
-      const list = allowedScopesFrom(err);
-      if (list) setRefused({ org, entries: normalizeCatalog(list) });
       pushToast(...toastFor(err));
     } finally {
       setBusy(false);
@@ -87,15 +76,25 @@ export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () =>
   };
 
   if (created) {
+    const until = created.expires_at ? new Date(created.expires_at).toLocaleDateString() : 'it is revoked';
     return (
-      <SecretDrawer eyebrow={orgLabel(created.organization_id, orgs)} title={`${created.label} created`} secretLabel="Key" secret={created.key} onClose={onClose}>
+      <SecretDrawer eyebrow="Connections & keys" title={`${created.label} created`} secretLabel="Key" secret={created.key} onClose={onClose}>
         <p className="small muted m-0">
-          It acts as you in {orgLabel(created.organization_id, orgs)} until {created.expires_at ? new Date(created.expires_at).toLocaleDateString() : 'it is revoked'}.
+          {created.all_permissions === false
+            ? `It acts as you, with the permissions you chose, until ${until}.`
+            : `It acts as you, with all your permissions, until ${until}.`}
         </p>
         <McpHelp secret={created.key} framed={false} />
       </SecretDrawer>
     );
   }
+
+  const chooser = () => {
+    if (catalogue.isLoading) return <EmptyHint>Loading your permissions…</EmptyHint>;
+    if (catalogue.error) return <EmptyHint>Your permissions could not be read. Try again, or keep all your permissions.</EmptyHint>;
+    if (!catalogue.data?.length) return <EmptyHint>You hold no permission a key could be narrowed to.</EmptyHint>;
+    return <ChecklistGroups label="Permissions" groups={permissionGroups(catalogue.data)} value={scopes} onChange={setPicked} searchAt={10} />;
+  };
 
   return (
     <Drawer
@@ -113,25 +112,22 @@ export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () =>
     >
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <FormGrid>
-          <Field label="Organization" required error={orgError ?? undefined} hint={orgError ? undefined : 'The key acts as you in this organization only.'}>
-            <OrgPicker value={org} onChange={setOrg} />
-          </Field>
-          <Field label="Label" required hint="Where the key is used, so you can tell your keys apart.">
+          <Field label="Label" required error={error ?? undefined} hint={error ? undefined : 'Where the key is used, so you can tell your keys apart.'}>
             <Input placeholder="e.g. Assistant on my laptop" value={label} maxLength={200} onChange={(e) => setLabel(e.target.value)} />
           </Field>
-          {!org && <Field label="Scopes" required><EmptyHint>Choose the organization first: the scopes are among what you hold there.</EmptyHint></Field>}
-          {org && (
-            <ScopeField
-              entries={entries}
-              loading={catalogue.isLoading}
-              error={catalogue.error}
-              value={scopes}
-              onChange={setPicked}
-              text={scopesText}
-              onText={setScopesText}
-              hint="What the key may do, among the permissions you hold in this organization. Pick at least one."
+          <Field label="Permissions" hint="Checked again on every call: when you lose a permission, the key loses it too.">
+            <RadioGroup
+              label="Permissions"
+              name="personal-key-permissions"
+              value={mode}
+              onChange={setMode}
+              options={[
+                { value: 'all', label: 'All my permissions', hint: 'The key can do whatever you can, now and as your access changes.' },
+                { value: 'chosen', label: 'Choose permissions', hint: 'Only the ones you tick, among those you hold.' },
+              ]}
             />
-          )}
+          </Field>
+          {mode === 'chosen' && <Field label="Chosen permissions" required>{chooser()}</Field>}
           <Field label="Expires" hint={`Personal keys always expire, ${maxDays ?? PERSONAL_EXPIRY_DEFAULT} days at most. Revoking one stops it at once.`}>
             <Select value={expiresIn} onChange={(e) => setExpiresIn(Number(e.target.value))}>
               {expiryChoices.map((d) => <option key={d} value={d}>{d === 1 ? 'In 1 day' : `In ${d} days`}</option>)}

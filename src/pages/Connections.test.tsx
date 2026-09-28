@@ -4,21 +4,19 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, click, render, type } from '../components/ui/testing';
 
 // Connections & keys: a person's own MCP keys. Off on the platform (404) is a calm state, not an
-// error; a key is created in one organization, 30 days at most, and shown once with how to paste it.
+// error; a key belongs to no organization, carries all the person's permissions unless narrowed,
+// lives 30 days at most, and is shown once with how to paste it.
 
-const ORG = '3cb95fec-bc9f-48b1-8fa7-f3da8ed9fff8';
 const api = vi.hoisted(() => ({
   listMyApiKeys: vi.fn(),
   createMyApiKey: vi.fn(),
   revokeMyApiKey: vi.fn(),
-  apiKeyScopes: vi.fn(),
   myApiKeyScopes: vi.fn(),
   toast: vi.fn(),
   status: { data: undefined as unknown },
 }));
 vi.mock('../api/accounts', () => ({ accountsApi: api }));
 vi.mock('../contexts/AppContext', () => ({ useApp: () => ({ pushToast: api.toast }) }));
-vi.mock('../api/orgCatalog', () => ({ useOrgCatalog: () => ({ orgs: [{ id: ORG, name: 'test-org' }], isLoading: false, error: null }) }));
 vi.mock('../api/hooks', () => ({
   useSession: () => ({ data: { identity_id: 'me', groups: [], permissions: [] } }),
   useUserIdentity: () => ({ data: undefined }),
@@ -37,12 +35,14 @@ const button = (label: RegExp) => [...document.querySelectorAll('button')].find(
 const text = () => document.body.textContent ?? '';
 
 beforeEach(() => {
-  [api.listMyApiKeys, api.createMyApiKey, api.revokeMyApiKey, api.apiKeyScopes, api.myApiKeyScopes, api.toast].forEach((f) => f.mockReset());
+  [api.listMyApiKeys, api.createMyApiKey, api.revokeMyApiKey, api.myApiKeyScopes, api.toast].forEach((f) => f.mockReset());
   api.status.data = undefined;
   api.listMyApiKeys.mockResolvedValue({ data: [], total: 0 });
-  // A member who does not manage the org's keys may not read its catalogue.
-  api.apiKeyScopes.mockRejectedValue(err(403));
-  api.myApiKeyScopes.mockRejectedValue(err(403));
+  api.myApiKeyScopes.mockResolvedValue([
+    { scope: 'users:read', group: 'users' },
+    { scope: 'admin:read', group: 'admin' },
+    { scope: 'audit:read', group: 'audit' },
+  ]);
 });
 afterEach(() => { cleanup(); delete (window as unknown as { __MCP_SERVER_URL__?: string }).__MCP_SERVER_URL__; });
 
@@ -85,46 +85,75 @@ describe('Connections & keys', () => {
     expect(select.value).toBe('7');
   });
 
-  it('lists your keys without the mcp scope, and shows how to connect a client', async () => {
+  it('lists your keys without the mcp scope or an organization, and shows how to connect a client', async () => {
     (window as unknown as { __MCP_SERVER_URL__: string }).__MCP_SERVER_URL__ = 'https://mcp.dev.example.com/mcp';
-    api.listMyApiKeys.mockResolvedValue({ data: [{ client_id: 'c1', organization_id: ORG, label: 'Laptop', scopes: ['fleet:read', 'mcp'], created_by: 'me', created_at: '2026-09-27T10:00:00Z', expires_at: '2026-10-27T10:00:00Z', kind: 'personal' }], total: 1 });
+    api.listMyApiKeys.mockResolvedValue({ data: [
+      { client_id: 'c1', organization_id: null, label: 'Laptop', scopes: ['users:read', 'mcp'], all_permissions: false, created_by: 'me', created_at: '2026-09-27T10:00:00Z', expires_at: '2026-10-27T10:00:00Z', kind: 'personal' },
+      { client_id: 'c2', organization_id: null, label: 'Desktop', scopes: ['mcp'], all_permissions: true, created_by: 'me', created_at: '2026-09-27T10:00:00Z', expires_at: '2026-10-27T10:00:00Z', kind: 'personal' },
+    ], total: 2 });
     mount();
     await settle();
     expect(text()).toContain('Laptop');
-    expect(text()).toContain('test-org');
-    expect([...document.querySelectorAll('.tag-list .badge')].map((b) => b.textContent)).toEqual(['fleet:read']);
+    expect([...document.querySelectorAll('th')].map((t) => t.textContent)).not.toContain('Organization');
+    expect([...document.querySelectorAll('.tag-list .badge')].map((b) => b.textContent)).toEqual(['users:read']);
+    expect(text()).toContain('All my permissions');
     expect((document.querySelector('.copy-field input') as HTMLInputElement).value).toBe('https://mcp.dev.example.com/mcp');
     expect(text()).toContain('"Authorization": "Bearer stk_mcp_…"');
   });
 
-  it('creates a key in one organization for 30 days and shows it once, with the client configuration', async () => {
-    api.createMyApiKey.mockResolvedValue({ client_id: 'c2', organization_id: ORG, label: 'Laptop', scopes: ['fleet:read', 'mcp'], created_by: 'me', created_at: 't', expires_at: '2026-10-28T10:00:00Z', kind: 'personal', client_secret: 's', key: 'stk_mcp_c2.s' });
+  it('creates a key with all your permissions by default, without asking for an organization, and shows it once', async () => {
+    api.createMyApiKey.mockResolvedValue({ client_id: 'c2', organization_id: null, label: 'Laptop', scopes: ['mcp'], all_permissions: true, created_by: 'me', created_at: 't', expires_at: '2026-10-28T10:00:00Z', kind: 'personal', client_secret: 's', key: 'stk_mcp_c2.s' });
     mount();
     await settle();
     click(button(/^Create key$/));
     await settle();
-    // The org's catalogue is for its key managers: scopes are typed, and the reason is said.
-    expect(text()).toContain('for its key managers');
+    expect(document.querySelector('.drawer')!.textContent).not.toContain('Organization');
+    expect(api.myApiKeyScopes).not.toHaveBeenCalled();
     type(document.querySelector('input[placeholder="e.g. Assistant on my laptop"]'), 'Laptop');
-    type(document.querySelector('input[placeholder="e.g. billing:read"]'), 'fleet:read');
     click(inDrawer(/^Create key$/));
     await settle();
-    expect(api.createMyApiKey).toHaveBeenCalledWith({ label: 'Laptop', organization_id: ORG, scopes: ['fleet:read'], expires_in_days: 30 });
+    expect(api.createMyApiKey).toHaveBeenCalledWith({ label: 'Laptop', expires_in_days: 30 });
     expect((document.querySelector('.drawer .copy-field input') as HTMLInputElement).value).toBe('stk_mcp_c2.s');
+    expect(document.querySelector('.drawer')!.textContent).toContain('with all your permissions');
     expect(document.querySelector('.drawer')!.textContent).toContain('"Authorization": "Bearer stk_mcp_c2.s"');
   });
 
-  it('says on the organization field when the organization forbids personal keys', async () => {
-    api.createMyApiKey.mockRejectedValue(err(403, { details: { error: 'Forbidden', details: { reason: 'personal_keys_forbidden' } } }));
+  it('narrows a key to permissions ticked from your own, grouped by resource', async () => {
+    api.createMyApiKey.mockResolvedValue({ client_id: 'c3', organization_id: null, label: 'Reader', scopes: ['users:read', 'mcp'], all_permissions: false, created_by: 'me', created_at: 't', expires_at: '2026-10-28T10:00:00Z', kind: 'personal', client_secret: 's', key: 'stk_mcp_c3.s' });
     mount();
     await settle();
     click(button(/^Create key$/));
     await settle();
-    type(document.querySelector('input[placeholder="e.g. Assistant on my laptop"]'), 'Laptop');
-    type(document.querySelector('input[placeholder="e.g. billing:read"]'), 'fleet:read');
+    type(document.querySelector('input[placeholder="e.g. Assistant on my laptop"]'), 'Reader');
+    const chosen = [...document.querySelectorAll<HTMLInputElement>('.drawer input[type=radio]')].find((r) => r.value === 'chosen')!;
+    click(chosen);
+    await settle();
+    const drawer = document.querySelector('.drawer')!.textContent!;
+    expect(drawer).toContain('Administration');
+    expect(drawer).toContain('Audit trail');
+    expect(drawer).toContain('Users');
+    // Nothing ticked yet: nothing to create.
+    expect(inDrawer(/^Create key$/).disabled).toBe(true);
+    const users = [...document.querySelectorAll<HTMLElement>('.drawer label')].find((l) => l.textContent?.startsWith('users:read'))!;
+    click(users);
     click(inDrawer(/^Create key$/));
     await settle();
-    expect(document.querySelector('.field-error')!.textContent).toContain('does not allow personal keys');
+    expect(api.createMyApiKey).toHaveBeenCalledWith({ label: 'Reader', scopes: ['users:read'], expires_in_days: 30 });
+    expect(document.querySelector('.drawer')!.textContent).toContain('with the permissions you chose');
+  });
+
+  it('says when your groups may not use AI assistants', async () => {
+    api.status.data = { enabled: true, serverUrl: null, off: null, personalKeys: { maxDays: 30 }, allowed: false };
+    api.createMyApiKey.mockRejectedValue(err(403, { details: { error: 'mcp_disabled', reason: 'group_not_allowed' } }));
+    mount();
+    await settle();
+    expect(text()).toContain('AI assistants are not enabled for your groups');
+    click(button(/^Create key$/));
+    await settle();
+    type(document.querySelector('input[placeholder="e.g. Assistant on my laptop"]'), 'Laptop');
+    click(inDrawer(/^Create key$/));
+    await settle();
+    expect(document.querySelector('.field-error')!.textContent).toContain('not enabled for your groups');
     expect(api.toast).not.toHaveBeenCalled();
     expect(inDrawer(/^Create key$/).disabled).toBe(true);
   });

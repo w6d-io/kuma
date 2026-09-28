@@ -638,8 +638,8 @@ export interface McpSettings {
   /** Shown on Connections & keys; null = the console's own MCP_SERVER_URL. */
   serverUrl: string | null;
   personalKeys: { maxDays: number };
-  /** 'all', or the organization ids whose members may use it. */
-  allowedOrgs: 'all' | string[];
+  /** 'all', or the names of the groups whose members may use it. */
+  allowedGroups: 'all' | string[];
 }
 export interface McpSettingsView {
   settings: McpSettings;
@@ -655,6 +655,8 @@ export interface McpStatus {
   serverUrl: string | null;
   off: 'deployment' | 'administrator' | null;
   personalKeys: { maxDays: number } | null;
+  /** Whether the caller's groups may use it; null when it is off (absent on an older jinbe). */
+  allowed?: boolean | null;
 }
 
 // Kratos self-service auth methods managed via /admin/auth/methods.
