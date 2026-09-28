@@ -6,6 +6,7 @@ import { api } from '../api/client';
 import type { BundleImportResult, AuthMethodName } from '../api/client';
 import { ExportBundleModal } from '../components/ExportBundleModal';
 import { OrgSitesSettings } from '../components/OrgSitesSettings';
+import { ZonesSettings } from '../components/ZonesSettings';
 import { SecondFactorSettings } from '../components/SecondFactorSettings';
 import { SignInProtectionSettings } from '../components/SignInProtectionSettings';
 
@@ -262,6 +263,8 @@ export function SettingsPage() {
       <SignInProtectionSettings />
 
       <OrgSitesSettings />
+
+      <ZonesSettings />
 
       {/* ─── RBAC bundle ─── */}
       <Card

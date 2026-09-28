@@ -7,7 +7,8 @@ import type { ApplyProgress, SiteK8sStatus, StageState } from './types';
  * operator and the gateway; otherwise the gateway stage says honestly that it cannot be observed.
  */
 
-// jinbe's stage ids, in order (S-3). A zone site reports ingress and certificate as skipped.
+// jinbe's stage ids, in order (S-3). A zone site reports ingress and certificate as skipped, and the
+// Gateway route as skipped unless its zone is attached to a Gateway.
 export const STAGES: Array<{ id: string; label: string }> = [
   { id: 'saved', label: 'Saved' },
   { id: 'permissions', label: 'Permissions published' },
@@ -15,6 +16,7 @@ export const STAGES: Array<{ id: string; label: string }> = [
   { id: 'rules-synced', label: 'Gateway rules written' },
   { id: 'rules-loaded', label: 'Gateway rules loaded' },
   { id: 'ingress', label: 'Address' },
+  { id: 'route', label: 'Gateway route' },
   { id: 'certificate', label: 'HTTPS' },
   { id: 'verified', label: 'Verified' },
 ];
@@ -99,6 +101,11 @@ export function derivedStages(o: { applying: boolean; applied: boolean; failure?
   });
   const ingress = cond(st, 'IngressReady');
   if (ingress) views.push({ id: 'address', label: 'Address', state: ingress.status === 'True' ? 'done' : 'running', detail: ingress.message ?? ingress.reason });
+  // The HTTPRoute on the zone's Gateway (behind the WAF); NoGateway = the zone is nginx-only.
+  const route = cond(st, 'RouteReady');
+  if (route && route.reason !== 'NoGateway') {
+    views.push({ id: 'route', label: 'Gateway route', state: route.status === 'True' ? 'done' : route.reason === 'HostTaken' || route.reason === 'GatewayNotUsable' ? 'failed' : 'running', detail: route.message ?? route.reason });
+  }
   const cert = cond(st, 'CertificateReady');
   if (cert) views.push({ id: 'https', label: 'HTTPS', state: cert.status === 'True' ? 'done' : 'running', detail: cert.reason === 'NotRequired' ? 'covered by the zone’s wildcard certificate' : cert.message ?? cert.reason });
   return views;

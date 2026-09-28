@@ -6,6 +6,7 @@ import type {
   ApplyProgress, ApplyRequest, ApplyResult, BlastRadius, Check, DriftItem, DualRun, HostCheck, LoginReadiness,
   MatchResult, MigrationStatus, ParityReport, Preview, RenderResult, Site, SiteDetail, SiteDiff, SiteDraft,
   SiteEvent, SiteK8sStatus, SiteSummary, SiteVersion, Zone, MigrationGroup, HttpMethod,
+  GatewayInfo, ZoneDetail, ZoneGatewayRef, ZoneIngress,
 } from '../lib/sites/types';
 import { SANDBOX_ENABLED, type HandlerCatalog } from '../lib/sites/presets';
 
@@ -55,6 +56,14 @@ export const sitesApi = {
   list: (opts: { system?: boolean } = {}) => request<SiteSummary[]>(`${BASE}${opts.system ? '?system=true' : ''}`),
   get: (name: string) => request<SiteDetail>(`${BASE}/${enc(name)}`),
   zones: () => request<Zone[]>(`${BASE}/zones`),
+  zone: (name: string) => request<ZoneDetail>(`${BASE}/zones/${enc(name)}`),
+  createZone: (body: { domain: string; ingress?: ZoneIngress; tls?: ZoneDetail['tls']; gateway?: ZoneGatewayRef }) =>
+    request<ZoneDetail>(`${BASE}/zones`, { method: 'POST', body: json(body) }),
+  /** The exposure only (never the domain); `confirm` drops the Ingress despite the DNS check. */
+  updateZone: (name: string, body: { ingress?: ZoneIngress; gateway?: ZoneGatewayRef | null; tls?: ZoneDetail['tls']; confirm?: boolean }) =>
+    request<ZoneDetail>(`${BASE}/zones/${enc(name)}`, { method: 'PATCH', body: json(body) }),
+  /** The Gateways a zone may be attached to, with their WAF / IP reputation state. */
+  gateways: () => request<{ gateways: GatewayInfo[] }>(`${BASE}/gateways`),
   checkHost: (body: { host: string; pathPrefix?: string; site?: string }) =>
     request<HostCheck>(`${BASE}/check-host`, { method: 'POST', body: json(body) }),
   probe: (url: string) => request<{ reachable: boolean; status?: number; latencyMs?: number; contentType?: string; kind?: string; openapi?: { url: string; operations: number; tags: number }; denied?: string }>(
@@ -125,6 +134,7 @@ export const siteKeys = {
   versions: (name: string) => ['sites', 'versions', name] as const,
   status: (name: string) => ['sites', 'status', name] as const,
   zones: () => ['sites', 'zones'] as const,
+  gateways: () => ['sites', 'gateways'] as const,
 };
 
 /** 404s are answers here (no draft, not built yet), not failures to retry. */
@@ -153,6 +163,10 @@ export function useSiteDraft(name: string | null) {
     enabled: !!name,
     retry: noRetry404,
   });
+}
+
+export function useGateways() {
+  return useQuery({ queryKey: siteKeys.gateways(), queryFn: () => sitesApi.gateways(), staleTime: 60_000, retry: noRetry404 });
 }
 
 export function useZones() {

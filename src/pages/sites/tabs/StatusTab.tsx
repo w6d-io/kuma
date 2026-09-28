@@ -45,7 +45,7 @@ export function StatusTab({ ed }: { ed: SiteEditor }) {
         </Card>
       )}
 
-      <Card title="Site object" sub="Reconciled by the Site operator: Validated · RulesSynced · RulesLoaded · IngressReady · CertificateReady">
+      <Card title="Site object" sub="Reconciled by the Site operator: Validated · RulesSynced · RulesLoaded · IngressReady · RouteReady (the Gateway route, behind the WAF) · CertificateReady">
         {status.isLoading ? <EmptyHint>Loading…</EmptyHint> : status.error ? <QueryError error={status.error} what="the Site object’s status" /> : status.data && (
           <div className="stack gap-12">
             <Conditions list={status.data.conditions} />

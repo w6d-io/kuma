@@ -49,4 +49,12 @@ describe('derivedStages', () => {
     const refused = derivedStages({ applying: false, applied: true, status: { ...st, conditions: [{ type: 'Validated', status: 'False', reason: 'RuleOverlap', message: 'with portal' }] } });
     expect(refused.find((s) => s.id === 'accepted')).toMatchObject({ state: 'failed' });
   });
+  it('shows the Gateway route of a zone on the Envoy Gateway, and nothing for an nginx-only zone', () => {
+    const base = { generation: 1, observedGeneration: 1, children: [] };
+    const route = (status: 'True' | 'False', reason: string, message = '') => derivedStages({ applying: false, applied: true, status: { ...base, conditions: [{ type: 'Validated', status: 'True' }, { type: 'RouteReady', status, reason, message }] } }).find((s) => s.id === 'route');
+    expect(route('True', 'NoGateway')).toBeUndefined();
+    expect(route('False', 'WaitingForGateway', 'HTTPRoute host-b1374612: not accepted by Gateway envoy-gateway-system/eg yet')).toMatchObject({ state: 'running', label: 'Gateway route' });
+    expect(route('True', 'Accepted', 'accepted by Gateway envoy-gateway-system/eg')).toMatchObject({ state: 'done', detail: 'accepted by Gateway envoy-gateway-system/eg' });
+    expect(route('False', 'HostTaken', 'already served: HTTPRoute monitoring/grafana serves grafana.dev.example.com')).toMatchObject({ state: 'failed' });
+  });
 });

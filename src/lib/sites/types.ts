@@ -164,6 +164,8 @@ export interface FieldChange { path: string; before: unknown; after: unknown }
 export interface ArtefactDiff { kind: string; id: string; before: unknown; after: unknown; fields: FieldChange[] }
 export interface SiteDiff { artefacts: ArtefactDiff[]; risk: Risk; words: string[] }
 
+export type ZoneIngress = 'wildcard' | 'per-site' | 'none';
+
 export interface Zone {
   name?: string;
   suffix: string;
@@ -172,7 +174,77 @@ export interface Zone {
   sso: boolean;
   tls: 'wildcard' | 'per-site';
   ingressClass?: string;
+  /** Zone CRs: the nginx Ingress mode (`none`: the Gateway alone serves the zone). */
+  ingress?: ZoneIngress;
+  /** Zone CRs: the Gateway API Gateway (namespace/name) the zone's hosts are attached to. */
+  gateway?: string;
+  /** The operator's Ready for the current spec; absent = unknown. */
+  ready?: boolean;
   source?: 'zone' | 'config';
+}
+
+export interface ZoneGatewayRef { namespace: string; name: string; sectionName?: string }
+
+/** What the Gateway-level policies enforce on every route (jinbe GET /sites/gateways). */
+export interface GatewayProtection {
+  waf: { policy: string | null; modules: string[]; accepted: boolean };
+  ipReputation: { policy: string | null; backend: string | null; failOpen: boolean | null; accepted: boolean };
+  denylist: { policy: string | null };
+  protected: boolean;
+  summary: string;
+}
+
+export interface GatewayListener {
+  name: string;
+  hostname: string | null;
+  port: number | null;
+  protocol: string | null;
+  tls: boolean;
+  routesFromAll: boolean;
+  programmed: boolean | null;
+  attachedRoutes: number | null;
+}
+
+export interface GatewayInfo {
+  key: string;
+  namespace: string;
+  name: string;
+  exists: boolean;
+  className: string | null;
+  addresses: string[];
+  programmed: boolean;
+  message: string;
+  listeners: GatewayListener[];
+  protection: GatewayProtection;
+}
+
+export interface ZoneCondition { status: string; reason: string; message: string; since?: string }
+
+/** GET/POST/PATCH /sites/zones/:name. */
+export interface ZoneDetail {
+  name: string;
+  domain: string;
+  wildcard: string;
+  ingress: ZoneIngress;
+  ingressClass: string | null;
+  gateway: ZoneGatewayRef | null;
+  exposure: { entry: 'ingress' | 'gateway' | 'both'; wafBypass: boolean; protected: boolean | null };
+  protection?: GatewayProtection;
+  tls: { mode: 'default' | 'issuer' | 'secret'; issuer?: string; secretName?: string };
+  cookieDomain: string | null;
+  sso: boolean;
+  status: {
+    observed: boolean;
+    ready: boolean;
+    ingress: ZoneCondition | null;
+    gateway: ZoneCondition | null;
+    certificate: ZoneCondition | null;
+    validated: ZoneCondition | null;
+    domainTaken: boolean;
+    message: string;
+  };
+  sites: Array<{ name: string; host: string; applied: boolean }>;
+  checks?: Array<Check & { host?: string; addresses?: string[] }>;
 }
 
 export interface HostCheck {
