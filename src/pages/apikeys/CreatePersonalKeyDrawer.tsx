@@ -46,7 +46,7 @@ export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () =>
   const expiryChoices = maxDays ? personalExpiryChoices(maxDays, PERSONAL_EXPIRY_CHOICES) : PERSONAL_EXPIRY_CHOICES;
   const [chosenExpiry, setExpiresIn] = useState<number | null>(null);
   const expiresIn = chosenExpiry !== null && expiryChoices.includes(chosenExpiry) ? chosenExpiry : (maxDays ?? PERSONAL_EXPIRY_DEFAULT);
-  const catalogue = useQuery({ queryKey: ['api-keys', org, 'scopes'], queryFn: () => accountsApi.apiKeyScopes(org), enabled: !!org, staleTime: 60_000, retry: false });
+  const catalogue = useQuery({ queryKey: ['me', 'api-keys', org, 'scopes'], queryFn: () => accountsApi.myApiKeyScopes(org), enabled: !!org, staleTime: 60_000, retry: false });
   const [refused, setRefused] = useState<{ org: string; entries: ScopeEntry[] } | null>(null);
   const entries = catalogue.data ?? (refused?.org === org ? refused.entries : null);
   const [picked, setPicked] = useState<string[] | null>(null);

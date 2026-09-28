@@ -74,6 +74,11 @@ export const accountsApi = {
   apiKeyScopes: (orgId: string): Promise<ScopeEntry[]> =>
     request<{ scopes: unknown }>(`/organizations/${encodeURIComponent(orgId)}/api-keys/scopes`).then(r => normalizeCatalog(r.scopes)),
 
+  // What a personal key may carry: the caller's own permissions in that org, site routes and jinbe's
+  // platform permissions ("platform" group). Distinct from the org machine-key catalog above.
+  myApiKeyScopes: (orgId: string): Promise<ScopeEntry[]> =>
+    request<{ scopes: unknown }>(`/me/api-keys/scopes?organization_id=${encodeURIComponent(orgId)}`).then(r => normalizeCatalog(r.scopes)),
+
   revokeApiKey: (orgId: string, clientId: string) =>
     request<void>(`/organizations/${encodeURIComponent(orgId)}/api-keys/${encodeURIComponent(clientId)}`, {
       method: 'DELETE',

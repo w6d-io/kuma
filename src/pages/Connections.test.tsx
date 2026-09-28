@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   createMyApiKey: vi.fn(),
   revokeMyApiKey: vi.fn(),
   apiKeyScopes: vi.fn(),
+  myApiKeyScopes: vi.fn(),
   toast: vi.fn(),
   status: { data: undefined as unknown },
 }));
@@ -36,11 +37,12 @@ const button = (label: RegExp) => [...document.querySelectorAll('button')].find(
 const text = () => document.body.textContent ?? '';
 
 beforeEach(() => {
-  [api.listMyApiKeys, api.createMyApiKey, api.revokeMyApiKey, api.apiKeyScopes, api.toast].forEach((f) => f.mockReset());
+  [api.listMyApiKeys, api.createMyApiKey, api.revokeMyApiKey, api.apiKeyScopes, api.myApiKeyScopes, api.toast].forEach((f) => f.mockReset());
   api.status.data = undefined;
   api.listMyApiKeys.mockResolvedValue({ data: [], total: 0 });
   // A member who does not manage the org's keys may not read its catalogue.
   api.apiKeyScopes.mockRejectedValue(err(403));
+  api.myApiKeyScopes.mockRejectedValue(err(403));
 });
 afterEach(() => { cleanup(); delete (window as unknown as { __MCP_SERVER_URL__?: string }).__MCP_SERVER_URL__; });
 
