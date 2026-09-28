@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../contexts/AppContext';
 import { accountsApi, type PersonalKeySecretView } from '../../api/accounts';
+import { useMcpStatus } from '../../api/hooks';
 import { useOrgCatalog } from '../../api/orgCatalog';
 import { OrgPicker } from '../../components/OrgPicker';
 import { Button, Drawer, EmptyHint, Field, FormGrid, Input, Select } from '../../components/ui';
@@ -10,14 +11,24 @@ import { orgLabel } from '../../lib/orgOptions';
 import {
   allowedScopesFrom, initialScopes, normalizeCatalog, parseScopes, PERSONAL_EXPIRY_CHOICES, PERSONAL_EXPIRY_DEFAULT, type ScopeEntry,
 } from '../../lib/apiKeys';
+import { personalExpiryChoices } from '../../lib/mcpSettings';
 import { ScopeField } from './parts';
 import { SecretDrawer } from './SecretDrawer';
 import { McpHelp } from './McpHelp';
 
+function reasonOf(err: unknown): unknown {
+  const d = (err as { details?: { details?: { reason?: unknown }; reason?: unknown } } | null)?.details;
+  return d?.details?.reason ?? d?.reason;
+}
+
 /** The refusal jinbe gives when the organization forbids personal keys. */
 function forbiddenByOrg(err: unknown): boolean {
-  const d = (err as { details?: { details?: { reason?: unknown }; reason?: unknown } } | null)?.details;
-  return statusOf(err) === 403 && (d?.details?.reason ?? d?.reason) === 'personal_keys_forbidden';
+  return statusOf(err) === 403 && reasonOf(err) === 'personal_keys_forbidden';
+}
+
+/** The refusal jinbe gives when an administrator limited AI assistants to other organizations. */
+function outsideMcpScope(err: unknown): boolean {
+  return statusOf(err) === 403 && reasonOf(err) === 'mcp_org_not_allowed';
 }
 
 /**
@@ -30,7 +41,11 @@ export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () =>
   const { orgs } = useOrgCatalog();
   const [org, setOrg] = useState(orgs.length === 1 ? orgs[0].id : '');
   const [label, setLabel] = useState('');
-  const [expiresIn, setExpiresIn] = useState(PERSONAL_EXPIRY_DEFAULT);
+  // The administrator's maximum (Settings → AI assistants) when jinbe says it; 30 days otherwise.
+  const maxDays = useMcpStatus().data?.personalKeys?.maxDays;
+  const expiryChoices = maxDays ? personalExpiryChoices(maxDays, PERSONAL_EXPIRY_CHOICES) : PERSONAL_EXPIRY_CHOICES;
+  const [chosenExpiry, setExpiresIn] = useState<number | null>(null);
+  const expiresIn = chosenExpiry !== null && expiryChoices.includes(chosenExpiry) ? chosenExpiry : (maxDays ?? PERSONAL_EXPIRY_DEFAULT);
   const catalogue = useQuery({ queryKey: ['api-keys', org, 'scopes'], queryFn: () => accountsApi.apiKeyScopes(org), enabled: !!org, staleTime: 60_000, retry: false });
   const [refused, setRefused] = useState<{ org: string; entries: ScopeEntry[] } | null>(null);
   const entries = catalogue.data ?? (refused?.org === org ? refused.entries : null);
@@ -57,6 +72,10 @@ export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () =>
     } catch (err) {
       if (forbiddenByOrg(err)) {
         setOrgError('This organization does not allow personal keys. Its administrators can allow them on its API keys page.');
+        return;
+      }
+      if (outsideMcpScope(err)) {
+        setOrgError('AI assistants are not enabled for this organization. A platform administrator chooses which organizations may use them.');
         return;
       }
       const list = allowedScopesFrom(err);
@@ -113,9 +132,9 @@ export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () =>
               hint="What the key may do, among the permissions you hold in this organization. Pick at least one."
             />
           )}
-          <Field label="Expires" hint="Personal keys always expire, 30 days at most. Revoking one stops it at once.">
+          <Field label="Expires" hint={`Personal keys always expire, ${maxDays ?? PERSONAL_EXPIRY_DEFAULT} days at most. Revoking one stops it at once.`}>
             <Select value={expiresIn} onChange={(e) => setExpiresIn(Number(e.target.value))}>
-              {PERSONAL_EXPIRY_CHOICES.map((d) => <option key={d} value={d}>{d === 1 ? 'In 1 day' : `In ${d} days`}</option>)}
+              {expiryChoices.map((d) => <option key={d} value={d}>{d === 1 ? 'In 1 day' : `In ${d} days`}</option>)}
             </Select>
           </Field>
         </FormGrid>

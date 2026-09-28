@@ -498,6 +498,20 @@ export const api = {
       body: JSON.stringify(settings),
     }),
 
+  // ─── AI assistants (MCP): the administrator's switch under the deployment's DELEGATED_TOKENS_ENABLED ───
+  getMcpSettings: () =>
+    request<McpSettingsView>('/admin/settings/mcp'),
+
+  setMcpSettings: (settings: McpSettings) =>
+    request<McpSettingsView>('/admin/settings/mcp', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    }),
+
+  /** Any signed-in person: is MCP on, where its server answers (Connections & keys). */
+  getMcpStatus: () =>
+    request<McpStatus>('/mcp/status'),
+
   setAuthMethods: (patch: AuthConfigPatch) =>
     request<AuthConfigState>('/admin/auth/methods', {
       method: 'PUT',
@@ -616,6 +630,31 @@ export interface SignInProtectionView {
   };
   /** Size of the built-in disposable-inbox list. */
   disposableDomains: number;
+}
+
+/** GET/PUT /admin/settings/mcp — jinbe src/mcp/settings.ts. */
+export interface McpSettings {
+  enabled: boolean;
+  /** Shown on Connections & keys; null = the console's own MCP_SERVER_URL. */
+  serverUrl: string | null;
+  personalKeys: { maxDays: number };
+  /** 'all', or the organization ids whose members may use it. */
+  allowedOrgs: 'all' | string[];
+}
+export interface McpSettingsView {
+  settings: McpSettings;
+  defaults: McpSettings;
+  /** DELEGATED_TOKENS_ENABLED: false and MCP stays off whatever is saved. */
+  ceiling: { enabled: boolean; note: string | null };
+  /** ceiling AND switch. */
+  effective: boolean;
+}
+/** GET /mcp/status. `off`: why not — the deployment (env ceiling) or an administrator (the switch). */
+export interface McpStatus {
+  enabled: boolean;
+  serverUrl: string | null;
+  off: 'deployment' | 'administrator' | null;
+  personalKeys: { maxDays: number } | null;
 }
 
 // Kratos self-service auth methods managed via /admin/auth/methods.

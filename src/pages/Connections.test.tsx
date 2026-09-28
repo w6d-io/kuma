@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({
   revokeMyApiKey: vi.fn(),
   apiKeyScopes: vi.fn(),
   toast: vi.fn(),
+  status: { data: undefined as unknown },
 }));
 vi.mock('../api/accounts', () => ({ accountsApi: api }));
 vi.mock('../contexts/AppContext', () => ({ useApp: () => ({ pushToast: api.toast }) }));
@@ -20,6 +21,7 @@ vi.mock('../api/orgCatalog', () => ({ useOrgCatalog: () => ({ orgs: [{ id: ORG, 
 vi.mock('../api/hooks', () => ({
   useSession: () => ({ data: { identity_id: 'me', groups: [], permissions: [] } }),
   useUserIdentity: () => ({ data: undefined }),
+  useMcpStatus: () => api.status,
 }));
 
 import { ConnectionsPage } from './Connections';
@@ -34,7 +36,8 @@ const button = (label: RegExp) => [...document.querySelectorAll('button')].find(
 const text = () => document.body.textContent ?? '';
 
 beforeEach(() => {
-  Object.values(api).forEach((f) => f.mockReset());
+  [api.listMyApiKeys, api.createMyApiKey, api.revokeMyApiKey, api.apiKeyScopes, api.toast].forEach((f) => f.mockReset());
+  api.status.data = undefined;
   api.listMyApiKeys.mockResolvedValue({ data: [], total: 0 });
   // A member who does not manage the org's keys may not read its catalogue.
   api.apiKeyScopes.mockRejectedValue(err(403));
@@ -49,6 +52,35 @@ describe('Connections & keys', () => {
     expect(text()).toContain('Personal keys aren’t enabled on this platform');
     expect(document.querySelector('[role=alert]')).toBeNull();
     expect(button(/^Create key$/)).toBeUndefined();
+  });
+
+  it('says an administrator turned AI assistants off when the deployment allows them', async () => {
+    api.status.data = { enabled: false, serverUrl: null, off: 'administrator', personalKeys: { maxDays: 30 } };
+    api.listMyApiKeys.mockRejectedValue(err(404));
+    mount();
+    await settle();
+    expect(text()).toContain('AI assistants are turned off by an administrator');
+    expect(text()).not.toContain('aren’t enabled on this platform');
+    expect(button(/^Create key$/)).toBeUndefined();
+  });
+
+  it('shows the server address an administrator set, before the console setting', async () => {
+    (window as unknown as { __MCP_SERVER_URL__: string }).__MCP_SERVER_URL__ = 'https://mcp.env.example.com/mcp';
+    api.status.data = { enabled: true, serverUrl: 'https://mcp.admin.example.com/mcp/', off: null, personalKeys: { maxDays: 7 } };
+    mount();
+    await settle();
+    expect((document.querySelector('.copy-field input') as HTMLInputElement).value).toBe('https://mcp.admin.example.com/mcp');
+  });
+
+  it('offers expiries up to the administrator maximum only, defaulting to it', async () => {
+    api.status.data = { enabled: true, serverUrl: null, off: null, personalKeys: { maxDays: 7 } };
+    mount();
+    await settle();
+    click(button(/^Create key$/));
+    await settle();
+    const select = [...document.querySelectorAll<HTMLSelectElement>('.drawer select')].pop()!;
+    expect([...select.options].map((o) => o.value)).toEqual(['1', '7']);
+    expect(select.value).toBe('7');
   });
 
   it('lists your keys without the mcp scope, and shows how to connect a client', async () => {

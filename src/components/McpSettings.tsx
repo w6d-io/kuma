@@ -1,0 +1,154 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useApp } from '../contexts/AppContext';
+import { useMcpSettings, useSetMcpSettings } from '../api/hooks';
+import { useOrgCatalog } from '../api/orgCatalog';
+import type { McpSettings as McpSettingsDoc } from '../api/client';
+import { I, Badge, Button, Callout, Card, ChecklistGroups, Field, Input, Segmented, Select, Switch } from './ui';
+import { toastFor } from '../lib/apiError';
+import { stepUpAndResume, useResume } from '../lib/resume';
+import { MCP_MAX_DAYS, fromMcpDraft, mcpDraftProblems, sameMcp, toMcpDraft, type McpDraft } from '../lib/mcpSettings';
+
+const DAY_CHOICES = [1, 3, 7, 14, 30].filter((d) => d <= MCP_MAX_DAYS);
+
+/**
+ * Settings · AI assistants (MCP): whether people may connect an AI assistant or another MCP client
+ * that acts as them — personal keys, delegated tokens and the MCP server's calls into the platform.
+ * Under the deployment's own switch (DELEGATED_TOKENS_ENABLED): when that is off, nothing here turns
+ * it on, and the card says so. Turning it off applies within seconds; keys stay, unusable, until it
+ * is turned back on. Hidden when jinbe predates it.
+ */
+export function McpSettings() {
+  const { pushToast } = useApp();
+  const { data, isError } = useMcpSettings();
+  const save = useSetMcpSettings();
+  const { orgs } = useOrgCatalog();
+  const [draft, setDraft] = useState<McpDraft | null>(null);
+
+  useEffect(() => { if (data) setDraft(toMcpDraft(data.settings)); }, [data]);
+
+  // Back from the step-up the save needed: saved again, once, if nobody changed them meanwhile.
+  useResume<{ next: McpSettingsDoc; was: McpSettingsDoc }>('mcp-settings', !!data, ({ next, was }) => {
+    setDraft(toMcpDraft(next));
+    if (data && sameMcp(data.settings, was)) submit(next);
+    else pushToast('AI assistant settings changed meanwhile', { sub: 'Nothing was saved. Your choice is back in the form — check it and save.', ttl: 8000 });
+  });
+
+  const candidate = useMemo(() => (draft ? fromMcpDraft(draft) : null), [draft]);
+  const orgOptions = useMemo(() => {
+    const known = new Map(orgs.map((o) => [o.id, o.name] as const));
+    // A stored org the catalogue does not list (deleted, or not readable) stays visible, by id.
+    for (const id of draft?.orgs ?? []) if (!known.has(id)) known.set(id, undefined);
+    return [...known].map(([id, name]) => ({ value: id, label: name ?? <span className="mono">{id}</span>, search: `${name ?? ''} ${id}` }));
+  }, [orgs, draft?.orgs]);
+
+  if (isError || !data || !draft || !candidate) return null;
+
+  const problems = mcpDraftProblems(draft);
+  const dirty = !sameMcp(candidate, data.settings);
+  const ceiling = data.ceiling.enabled;
+  const patch = (p: Partial<McpDraft>) => setDraft((d) => (d ? { ...d, ...p } : d));
+
+  function submit(next = candidate) {
+    if (!next || !data) return;
+    const was = data.settings;
+    save.mutate(next, {
+      onSuccess: (view) => pushToast('AI assistant settings saved', {
+        sub: !view.ceiling.enabled
+          ? 'Saved, but this deployment keeps MCP off until its operator turns it on.'
+          : view.effective ? 'People can connect AI assistants within a few seconds.' : 'Personal keys and assistant connections are refused within a few seconds. Keys are kept.',
+      }),
+      onError: (e: Error & { code?: string }) => {
+        if (e.code === 'reauth_required') {
+          const going = stepUpAndResume('mcp-settings', { next, was });
+          pushToast('Two-factor re-verification required', { err: true, sub: going
+            ? 'Nothing was saved yet. You will be sent to re-verify your second factor; back here it is saved by itself. This is not a sign-out.'
+            : 'Nothing was saved. Re-verify your second factor, then save again.' });
+          return;
+        }
+        pushToast(...toastFor(e));
+      },
+    });
+  }
+
+  return (
+    <Card
+      title="AI assistants (MCP)"
+      sub="Let people connect an AI assistant or another MCP client that acts as them — never with more than they hold. Applies to personal keys and to the MCP server's calls."
+    >
+      {!ceiling && (
+        <Callout tone="info" icon={I.info} title="Switched off by this deployment" className="mb-12">
+          <div className="small">The platform operator has not enabled delegated access (<span className="mono">DELEGATED_TOKENS_ENABLED</span>). Nothing saved here turns MCP on; it applies once the deployment allows it.</div>
+        </Callout>
+      )}
+
+      <div className="settings-row master">
+        <div className="flex-1 min-w-0">
+          <div className="fw-medium text-base">
+            Allow AI assistants
+            {!ceiling
+              ? <Badge tone="neutral" mono={false}>off by the deployment</Badge>
+              : data.effective ? <Badge tone="success" mono={false}>on</Badge> : <Badge tone="neutral" mono={false}>off</Badge>}
+          </div>
+          <div className="small muted">
+            {draft.enabled
+              ? 'People can create personal keys on Connections & keys and use them, or sign in an assistant, to act as themselves.'
+              : 'Personal keys cannot be created or used, and assistants are refused. Existing keys are kept and work again when this is turned back on.'}
+          </div>
+        </div>
+        <Switch on={draft.enabled} onChange={(v) => patch({ enabled: v })} label="Allow AI assistants" disabled={save.isPending} />
+      </div>
+
+      <Field
+        label="MCP server address"
+        hint="Shown to people on Connections & keys, with the client configuration to paste. Empty: the console's own setting, if it has one."
+        error={problems.serverUrl}
+      >
+        <Input mono value={draft.serverUrl} onChange={(e) => patch({ serverUrl: e.target.value })} placeholder="https://mcp.example.com/mcp" />
+      </Field>
+
+      <Field label="Longest a personal key may live" hint={`New keys only; keys already created keep their expiry. ${MCP_MAX_DAYS} days is the platform's maximum.`}>
+        <Select value={draft.maxDays} onChange={(e) => patch({ maxDays: Number(e.target.value) })}>
+          {[...new Set([...DAY_CHOICES, draft.maxDays])].sort((a, b) => a - b).map((d) => <option key={d} value={d}>{d === 1 ? '1 day' : `${d} days`}</option>)}
+        </Select>
+      </Field>
+
+      <div className="settings-row">
+        <div className="flex-1 min-w-0">
+          <div className="fw-medium text-base">Organizations</div>
+          <div className="small muted">
+            {draft.scope === 'all'
+              ? 'Members of every organization may use it.'
+              : 'Only members acting in the organizations below. Keys and tokens for any other organization are refused.'}
+          </div>
+        </div>
+        <Segmented
+          label="Organizations"
+          value={draft.scope}
+          onChange={(v) => patch({ scope: v })}
+          options={[{ value: 'all', label: 'All' }, { value: 'selected', label: 'Only some' }]}
+        />
+      </div>
+
+      {draft.scope === 'selected' && (
+        <Field label="Allowed organizations" error={problems.orgs} required>
+          <ChecklistGroups
+            label="Allowed organizations"
+            groups={[{ id: 'orgs', label: 'Organizations', options: orgOptions }]}
+            value={draft.orgs}
+            onChange={(next) => patch({ orgs: next })}
+          />
+        </Field>
+      )}
+
+      <div className="row wrap gap-8 mt-12">
+        <Button variant="primary" onClick={() => submit()} disabled={!dirty || !!problems.serverUrl || !!problems.orgs} loading={save.isPending}>
+          Save
+        </Button>
+        <Button variant="ghost" onClick={() => setDraft(toMcpDraft(data.settings))} disabled={!dirty || save.isPending}>
+          Discard changes
+        </Button>
+        <span className="small muted">Saving needs a super admin who confirmed a second factor in the last 15 minutes. Every change is audited.</span>
+      </div>
+    </Card>
+  );
+}

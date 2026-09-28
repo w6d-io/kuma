@@ -9,6 +9,7 @@ import { OrgSitesSettings } from '../components/OrgSitesSettings';
 import { ZonesSettings } from '../components/ZonesSettings';
 import { SecondFactorSettings } from '../components/SecondFactorSettings';
 import { SignInProtectionSettings } from '../components/SignInProtectionSettings';
+import { McpSettings } from '../components/McpSettings';
 
 // Shape of a bundle we can preview before importing. Counts drive the confirm
 // dialog; the raw parsed object is POSTed on confirm.
@@ -261,6 +262,8 @@ export function SettingsPage() {
       <SecondFactorSettings />
 
       <SignInProtectionSettings />
+
+      <McpSettings />
 
       <OrgSitesSettings />
 
