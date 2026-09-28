@@ -606,6 +606,36 @@ export function useAllOrganizations() {
   });
 }
 
+/** Every screen that lists organisations reads one of these; a change refreshes them all. */
+function refreshOrganizations(qc: ReturnType<typeof useQueryClient>) {
+  for (const key of [['all-orgs'], ['my-orgs'], ['org-service-map']]) qc.invalidateQueries({ queryKey: key });
+}
+
+export function useCreateOrganization() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; tenant?: string }) => api.createOrganization(body),
+    onSettled: () => refreshOrganizations(qc),
+  });
+}
+
+export function useUpdateOrganization() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name?: string; tenant?: string; applications?: string[] }) =>
+      api.updateOrganization(id, body),
+    onSettled: () => refreshOrganizations(qc),
+  });
+}
+
+export function useDeleteOrganization() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteOrganization(id),
+    onSettled: () => refreshOrganizations(qc),
+  });
+}
+
 /** What to call each organisation, for the screens that show one to a person. */
 export function useMyOrganizationNames() {
   return useQuery({
