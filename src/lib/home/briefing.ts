@@ -39,6 +39,8 @@ export interface HealthRow {
   link?: HealthComponent['link'];
   /** What breaks while this is down. */
   consequence: string;
+  /** Parts of a merged row that are not deployed here, said beside it rather than as its state. */
+  notes?: string[];
 }
 
 /** The path a request and a change travel, in that order (home-design §4.2). */
@@ -57,15 +59,50 @@ const STRIP: Array<{ key: string; ids: HealthId[]; label: string; tip: string; c
 
 const RANK: Record<HealthState, number> = { ok: 0, not_deployed: 1, unknown: 2, degraded: 3, down: 4 };
 
-/** The strip's rows, one per item in request order; the two audit components merge, worst wins. */
+const plural2 = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
+/**
+ * The WAF row's words from its counts: how many live sites are NOT behind the WAF, and on how many
+ * distinct hosts when that differs (several sites can share one host) — "4 sites (3 hosts) not behind
+ * the WAF". Without counts (an older jinbe) the server's own summary stands.
+ */
+export function wafSummary(c: HealthComponent): string {
+  const m = c.metrics;
+  if (!m || typeof m.total !== 'number') return c.summary;
+  if (m.total === 0) return 'no live sites';
+  const unprotected = m.unprotected ?? m.total - (m.waf ?? 0) - (m.unknown ?? 0);
+  const unknown = m.unknown ? ` · ${plural2(m.unknown, 'site', 'sites')} unknown` : '';
+  if (unprotected <= 0) return m.unknown ? `${m.waf ?? 0}/${m.total} sites behind the WAF${unknown}` : `all ${plural2(m.total, 'site', 'sites')} behind the WAF`;
+  const hosts = m.unprotectedHosts;
+  const where = hosts && hosts !== unprotected ? ` (${plural2(hosts, 'host', 'hosts')})` : '';
+  return `${plural2(unprotected, 'site', 'sites')}${where} not behind the WAF${unknown}`;
+}
+
+/** Labels for the parts of a merged row, when one of them is only noted. */
+const PART_LABEL: Partial<Record<HealthId, string>> = { audit_store: 'Audit log', audit_archive: 'Archive' };
+
+/**
+ * The strip's rows, one per item in request order; the two audit components merge, worst wins. A part
+ * that is not deployed here (no archiver configured) does not win over one that is: it is a choice of
+ * this deployment, said as a note, never drawn as the row's state.
+ */
 export function healthRows(components: HealthComponent[]): HealthRow[] {
   const byId = new Map(components.map((c) => [c.id, c]));
   const rows: HealthRow[] = [];
   for (const s of STRIP) {
     const parts = s.ids.map((id) => byId.get(id)).filter((c): c is HealthComponent => !!c);
     if (parts.length === 0) continue;
-    const worst = parts.reduce((a, b) => (RANK[b.state] > RANK[a.state] ? b : a));
-    rows.push({ key: s.key, label: s.label, tip: s.tip, consequence: s.consequence, state: worst.state, summary: worst.summary, since: worst.since, link: worst.link });
+    const deployed = parts.filter((p) => p.state !== 'not_deployed');
+    const pool = deployed.length > 0 ? deployed : parts;
+    const worst = pool.reduce((a, b) => (RANK[b.state] > RANK[a.state] ? b : a));
+    const notes = deployed.length > 0 && deployed.length < parts.length
+      ? parts.filter((p) => p.state === 'not_deployed').map((p) => `${PART_LABEL[p.id] ?? p.id}: ${p.summary}`)
+      : undefined;
+    rows.push({
+      key: s.key, label: s.label, tip: s.tip, consequence: s.consequence, state: worst.state,
+      summary: worst.id === 'waf' ? wafSummary(worst) : worst.summary, since: worst.since, link: worst.link,
+      ...(notes?.length ? { notes } : {}),
+    });
   }
   return rows;
 }

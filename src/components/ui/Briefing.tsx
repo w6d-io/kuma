@@ -129,8 +129,10 @@ const SEVERITY: Record<QueueSeverity, { icon: ReactNode; word: string }> = {
  * the 3px accent bar; the severity is also in words for a reader. `actionable: false` keeps the row
  * (the viewer should know it is waiting) and says who it waits for.
  */
-export function QueueItem({ severity, title, detail, age, ageTitle, href, actionable = true, waitingFor = 'Waiting for a super admin' }: {
+export function QueueItem({ severity, icon, title, detail, age, ageTitle, href, actionable = true, waitingFor = 'Waiting for a super admin' }: {
   severity: QueueSeverity;
+  /** The kind's own icon, for an info row that is better recognised by what it is about. Critical and warning keep the alert. */
+  icon?: ReactNode;
   title: ReactNode;
   detail?: ReactNode;
   age?: ReactNode;
@@ -142,7 +144,7 @@ export function QueueItem({ severity, title, detail, age, ageTitle, href, action
   const s = SEVERITY[severity];
   return (
     <a className={cx('queue-item', `is-${severity}`)} href={href}>
-      <span className="queue-ico" aria-hidden="true">{s.icon}</span>
+      <span className="queue-ico" aria-hidden="true">{severity === 'info' && icon ? icon : s.icon}</span>
       <span className="sr-only">{s.word}: </span>
       <span className="queue-text">
         <span className="queue-title">{title}</span>

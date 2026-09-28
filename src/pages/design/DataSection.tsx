@@ -36,11 +36,12 @@ export function DataSection() {
             Allow and deny by site come from the gateway's decision log.
           </SourceState>
         </Specimen>
-        <Specimen name="QueueItem" note="A real link. Critical and warning carry the 3px bar; the severity is read out in words.">
+        <Specimen name="QueueItem" note="A real link. Critical and warning carry the 3px bar; the severity is read out in words. An info row may carry its kind's own icon.">
           <div className="panel">
             <QueueItem severity="critical" title="Apply request for Payroll v8" detail="Sam Ortiz · high risk" age="12 min" href="#/design" />
             <QueueItem severity="warning" title="Expenses drifted from what was applied" age="2 h" href="#/design" actionable={false} />
             <QueueItem severity="info" title="5 people are in no group" age="9 d" href="#/design" />
+            <QueueItem severity="info" icon={I.box} title="Audit outbox nearly full: 9,200 of 10,000 events" detail="No archiver is configured, so the oldest events are dropped once it is full." age="2 h" href="#/design" />
           </div>
         </Specimen>
         <Specimen name="ActionTile" note="A verb that opens its flow, with its key.">

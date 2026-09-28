@@ -1,6 +1,6 @@
 import { useCallback, type ReactNode } from 'react';
 import type { UseQueryResult } from '@tanstack/react-query';
-import type { Module, QuickAction, QuickActionId } from '../../api/home';
+import type { AttentionItem, Module, QuickAction, QuickActionId } from '../../api/home';
 import { useApp } from '../../contexts/AppContext';
 import { I } from '../../components/ui';
 import type { Persona } from '../../lib/home/briefing';
@@ -51,4 +51,24 @@ export function useRunAction(persona: Persona) {
     else if (id === 'grant_access') setGrant({});
     else openFinder();
   }, [persona, setGrant, setUserDrawer]);
+}
+
+/**
+ * Kinds the console words itself, from their counts, with an icon that says what they are about.
+ * Every other kind is drawn from the server's title and detail (the list is open).
+ */
+const KINDS: Record<string, { label: string; icon: ReactNode; title?: (m: Record<string, number>) => string | null; detail?: string }> = {
+  audit_outbox_near_cap: {
+    label: 'Audit outbox',
+    icon: I.box,
+    title: (m) => (typeof m.count === 'number' && typeof m.cap === 'number' ? `Audit outbox nearly full: ${m.count.toLocaleString()} of ${m.cap.toLocaleString()} events` : null),
+    detail: 'No archiver is configured, so the oldest events are dropped once it is full. The audit log itself is unaffected.',
+  },
+};
+
+/** An item's title, detail and icon: the console's words for a kind it knows, the server's otherwise. */
+export function presentItem(it: AttentionItem): { title: string; detail?: string; icon?: ReactNode; label?: string } {
+  const k = KINDS[it.kind];
+  if (!k) return { title: it.title, detail: it.detail };
+  return { title: (it.metrics && k.title?.(it.metrics)) || it.title, detail: k.detail ?? it.detail, icon: k.icon, label: k.label };
 }

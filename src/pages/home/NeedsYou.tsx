@@ -5,7 +5,7 @@ import { Button, ButtonBase, I, QueueItem, RelativeTime, cx } from '../../compon
 import { ageOf } from '../../lib/home/briefing';
 import { homeHref } from '../../lib/home/href';
 import { ModuleFrame, RowsSkeleton } from './ModuleFrame';
-import { fromQuery, sourceWords } from './moduleKit';
+import { fromQuery, presentItem, sourceWords } from './moduleKit';
 
 const DESKTOP = 5;
 const PHONE = 3;
@@ -63,19 +63,20 @@ export function NeedsYou({ q, personal }: { q: UseQueryResult<Module<Attention>,
                   <QueueItem severity="warning" title={personal.title} detail={personal.detail} href={personal.href} />
                 </li>
               )}
-              {data.items.map((it, i) => (
+              {data.items.map((it, i) => { const v = presentItem(it); return (
                 <li key={it.id} className={cx(i >= PHONE && 'beyond-phone', i >= DESKTOP && 'beyond-desktop')}>
                   <QueueItem
                     severity={it.severity}
-                    title={it.title}
-                    detail={it.detail}
+                    icon={v.icon}
+                    title={v.title}
+                    detail={v.detail}
                     age={ageOf(it.since)}
                     ageTitle={`Since ${new Date(it.since).toLocaleString()}`}
                     href={homeHref(it.target)}
                     actionable={it.actionable}
                   />
                 </li>
-              ))}
+              ); })}
             </ul>
             {more && !all && (
               <div className={cx('queue-more', data.items.length <= DESKTOP && 'phone-only')}>

@@ -16,7 +16,10 @@ export function HealthStrip({ q }: { q: UseQueryResult<Module<Health>, Error> })
   const [open, setOpen] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const rows = q.data?.data ? healthRows(q.data.data.components) : [];
-  const notOk = rows.filter((r) => r.state !== 'ok');
+  // Not deployed is a choice of this deployment, not a fault: it neither counts against the platform
+  // nor sets the mark's colour.
+  const notOk = rows.filter((r) => r.state !== 'ok' && r.state !== 'not_deployed');
+  const counted = rows.filter((r) => r.state !== 'not_deployed').length;
 
   return (
     <ModuleFrame<Health>
@@ -33,12 +36,12 @@ export function HealthStrip({ q }: { q: UseQueryResult<Module<Health>, Error> })
         <>
           <ButtonBase className="health-fold" aria-expanded={expanded} aria-controls="home-health-strip" onClick={() => setExpanded((v) => !v)}>
             <span className={cx('health-mark', notOk.some((r) => r.state === 'down') ? 'is-down' : notOk.some((r) => r.state === 'degraded') ? 'is-degraded' : 'is-ok')} aria-hidden="true" />
-            <span className="flex-1">{notOk.length === 0 ? `All ${rows.length} systems ok` : `${rows.length - notOk.length} of ${rows.length} systems ok`}</span>
+            <span className="flex-1">{notOk.length === 0 ? `All ${counted} systems ok` : `${counted - notOk.length} of ${counted} systems ok`}</span>
             <span className="health-fold-chev" aria-hidden="true">{expanded ? I.caret : I.caretRight}</span>
           </ButtonBase>
           <ul id="home-health-strip" className={cx('health-strip', expanded && 'is-expanded')} aria-label="Platform components, in request order">
             {rows.map((r) => (
-              <li key={r.key} className={cx('health-cell', r.state !== 'ok' && 'not-ok')}>
+              <li key={r.key} className={cx('health-cell', r.state !== 'ok' && r.state !== 'not_deployed' && 'not-ok')}>
                 <HealthItem label={r.label} state={r.state} summary={r.summary} tip={`${r.tip} Checked every 15 s.`} onClick={() => setOpen(r.key)} />
               </li>
             ))}
@@ -72,6 +75,7 @@ function StatusDrawer({ rows, focus, onClose }: { rows: HealthRow[]; focus: stri
                 <Badge tone={TONE[r.state]} mono={false} variant="status">{HEALTH_WORD[r.state]}</Badge>
               </div>
               <div className="small">{r.summary}{r.since && <> · since <RelativeTime at={r.since} suffix="" /></>}</div>
+              {r.notes?.map((n) => <div key={n} className="small muted">{n} — not part of this deployment.</div>)}
               <div className="small muted">{r.tip}</div>
               {r.state === 'down' && <div className="small text-danger">While it is down: {r.consequence}</div>}
               {href && <a className="small" href={href} onClick={onClose} {...(href.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}>Open <span aria-hidden="true">→</span></a>}
