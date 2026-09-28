@@ -107,6 +107,12 @@ export const api = {
     return request<{ data: SearchedUser[] }>(`/admin/users/search?${qs.toString()}`).then(r => r.data);
   },
 
+  // ─── Quick find: a pasted Kratos id, a whole email, or the start of one (one bounded Kratos query) ───
+  lookupUsers: (q: string, limit = 8) => {
+    const qs = new URLSearchParams({ q, limit: String(limit) });
+    return request<LookupAnswer>(`/admin/users/lookup?${qs.toString()}`);
+  },
+
   // ─── Users (Kratos identities) ───
   // Kratos paginates with keyset tokens (no total count) and defaults to a
   // single 250-row page. page_size=1000 (Kratos/jinbe max) keeps directories
@@ -625,6 +631,22 @@ export interface SearchedUser {
   organizationId: string | null;
   active: boolean;
   mfa?: boolean; // real second-factor status (jinbe enriches search hits via hasMFA)
+}
+
+/** One person found by GET /admin/users/lookup. `null` = that part could not be read, not "none". */
+export interface LookupHit {
+  id: string;
+  email: string;
+  name: string | null;
+  active: boolean;
+  groups: string[] | null;
+  organizations: string[] | null;
+  mfa: boolean | null;
+}
+
+export interface LookupAnswer {
+  match: 'id' | 'email' | 'prefix' | 'contains' | 'none';
+  data: LookupHit[];
 }
 
 export interface WhoamiResponse {

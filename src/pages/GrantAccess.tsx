@@ -8,6 +8,7 @@ import { groupOutcome } from '../lib/rbacEdit';
 import { Avatar, Badge, Button, ButtonBase, Callout, Card, Checkbox, Drawer, Field, I, Input, Stepper, cx } from '../components/ui';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
+import { useDebounced } from '../hooks/useDebounced';
 import { searchedToUser } from '../api/transforms';
 import type { GroupsMap, RolesMap, User } from '../api/types';
 import { PRIVILEGED_MUTATION, permits } from '../policy/model';
@@ -27,16 +28,6 @@ import { PRIVILEGED_MUTATION, permits } from '../policy/model';
 //   3. Review — before/after diff + the live resulting-access PermTree, then
 //               apply via the same setUserGroups (PUT-replace) path.
 
-// Small debounce so typing doesn't re-query the server on every keystroke
-// (mirrors Users.tsx).
-function useDebounced<T>(value: T, ms = 250): T {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setV(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return v;
-}
 
 type Step = 'who' | 'what' | 'review';
 

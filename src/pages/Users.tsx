@@ -11,19 +11,11 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { takePendingChange, type PendingChange } from '../lib/pendingChange';
 import { ApiErrorState } from '../components/ApiErrorState';
+import { useDebounced } from '../hooks/useDebounced';
+import { isKratosId } from '../lib/personFind';
+import { formatHash } from '../lib/route';
 // The drawer lives beside its tabs; re-exported so the shell keeps one import for the people screens.
 export { UserDrawer } from './users/UserDrawer';
-
-// Small debounce so typing a name doesn't re-filter (and, for emails, re-query
-// the server) on every keystroke.
-function useDebounced<T>(value: T, ms = 250): T {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setV(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return v;
-}
 
 export function UsersPage() {
   const { setUserDrawer, setGrant, pageParam, userDrawer } = useApp();
@@ -38,7 +30,15 @@ export function UsersPage() {
   // no directory walk). Browse (no query) = page 1 + manual load-more. Both
   // hooks always run; we render whichever mode is active. The total count comes
   // from the cached stats endpoint, not a full directory walk.
-  const searching = dq.length >= 2;
+  // A pasted Kratos identity id is not a search: it names one person, so go straight to them. The
+  // address `#/people/<id>` opens their drawer below, whether or not they are on page one.
+  const pastedId = isKratosId(q) ? q.trim().toLowerCase() : null;
+  useEffect(() => {
+    if (!pastedId) return;
+    setQ('');
+    window.location.hash = formatHash('users', pastedId);
+  }, [pastedId]);
+  const searching = dq.length >= 2 && !isKratosId(dq);
   const searchQ = useUserSearch(dq);
   const browseQ = useUsers();
   const { data: stats } = useStats();
@@ -107,7 +107,7 @@ export function UsersPage() {
       />
       <Card>
         <Toolbar inset label="Filter users">
-            <Input size="sm" leading={I.search} type="search" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="Search name or email…" value={q} onChange={e => setQ(e.target.value)} aria-label="Search users" />
+            <Input size="sm" leading={I.search} type="search" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="Search name or email, or paste a Kratos id…" value={q} onChange={e => setQ(e.target.value)} aria-label="Search users" />
           <Select size="sm" aria-label="Group" value={groupFilter} onChange={e => setGroupFilter(e.target.value)}>
             <option value="all">All groups</option>
             {Object.keys(groupsMap).map(g => <option key={g} value={g}>{g}</option>)}

@@ -13,6 +13,7 @@ import {
   useSession,
 } from '../api/hooks';
 import { InviteDrawer } from './orgadmin/InviteDrawer';
+import { ApiErrorState } from '../components/ApiErrorState';
 import { PRIVILEGED_MUTATION, permits } from '../policy/model';
 import { bounceToStepUp } from '../lib/stepUp';
 
@@ -67,6 +68,12 @@ export function OrganizationsPage() {
       sub={<>Every organization, the sites it runs and its members — in one place{orgs ? ` · ${orgs.length} org${orgs.length === 1 ? '' : 's'}` : ''}</>}
     />
   );
+
+  // Refused or unreachable is not "none": the list is empty only when the directory says so. With no
+  // organisation database at all, this says what to set rather than offering a retry.
+  if (orgsQ.isError) {
+    return <>{header}<ApiErrorState error={orgsQ.error} what="organizations" onRetry={() => orgsQ.refetch()} /></>;
+  }
 
   if (orgs === null) {
     return <>{header}<Card className="p-32 text-center"><div className="muted small">Loading organizations…</div></Card></>;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeApiError, toastFor } from './apiError';
+import { describeApiError, orgDirectoryNotConfigured, toastFor } from './apiError';
 
 const err = (status: number, message = 'x') => Object.assign(new Error(message), { status });
 // What the API client throws for a 503 body `{error, message?}` (src/api/client.ts errorFrom).
@@ -80,5 +80,33 @@ describe('toastFor', () => {
   it('puts a plain failure message first, and an access problem as title + detail', () => {
     expect(toastFor(err(500, 'boom'))).toEqual(['boom', { err: true }]);
     expect(toastFor(outage('kubernetes_unavailable', 'down'))[0]).toBe('Kubernetes unreachable');
+  });
+});
+
+describe('no organisation database', () => {
+  const unconfigured = Object.assign(new Error('No organisation database is configured: set ORGANISATION_DATABASE_URL.'), {
+    status: 503,
+    code: 'organisation_directory_unavailable',
+    details: { error: 'organisation_directory_unavailable', reason: 'not_configured', message: 'No organisation database is configured: set ORGANISATION_DATABASE_URL.' },
+  });
+
+  it('says organisations are not configured and what to set, with no retry', () => {
+    const v = describeApiError(unconfigured);
+    expect(v.kind).toBe('unconfigured');
+    expect(v.title).toBe("Organisations aren't configured on this deployment");
+    expect(v.detail).toContain('ORGANISATION_DATABASE_URL');
+    expect(v.retryable).toBe(false);
+  });
+
+  it('recognises an older jinbe that says so only in the message', () => {
+    expect(orgDirectoryNotConfigured({ status: 503, code: 'Service Unavailable', message: 'No organisation directory is configured.' })).toBe(true);
+  });
+
+  it('keeps a database that is down an outage, worth retrying', () => {
+    const down = { status: 503, code: 'organisation_directory_unavailable', message: 'The organisation store did not answer: ECONNREFUSED' };
+    expect(orgDirectoryNotConfigured(down)).toBe(false);
+    const v = describeApiError(down);
+    expect(v.kind).toBe('unreachable');
+    expect(v.retryable).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useOrgCatalog } from '../api/orgCatalog';
 import { orgOptions } from '../lib/orgOptions';
+import { ORGS_NOT_CONFIGURED, orgDirectoryNotConfigured } from '../lib/apiError';
 import { Select } from './ui';
 
 /**
@@ -31,6 +32,7 @@ export function OrgPicker({
   ariaLabel?: string;
 }) {
   const { orgs, isLoading, error } = useOrgCatalog();
+  const unconfigured = orgDirectoryNotConfigured(error);
   const options = useMemo(
     () => orgOptions(orgs, [value]).filter((o) => o.id === value || !exclude.includes(o.id)),
     [orgs, value, exclude],
@@ -43,11 +45,11 @@ export function OrgPicker({
       value={value}
       disabled={disabled || isLoading}
       onChange={(e) => onChange(e.target.value)}
-      title={error ? `Organizations could not be listed — ${error.message}` : undefined}
+      title={unconfigured ? ORGS_NOT_CONFIGURED.detail : error ? `Organizations could not be listed — ${error.message}` : undefined}
     >
       {noneLabel !== undefined
         ? <option value="">{noneLabel}</option>
-        : <option value="" disabled>{isLoading ? 'Loading organizations…' : error ? 'Organizations unavailable' : placeholder}</option>}
+        : <option value="" disabled>{isLoading ? 'Loading organizations…' : unconfigured ? 'Organizations not configured' : error ? 'Organizations unavailable' : placeholder}</option>}
       {options.map((o) => (
         <option key={o.id} value={o.id}>
           {o.known ? o.label : `${o.label} (unknown organization)`}

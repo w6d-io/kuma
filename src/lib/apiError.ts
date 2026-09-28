@@ -6,7 +6,7 @@
  * as a permission problem somebody would go and ask about. jinbe keeps the two apart on purpose
  * (see its require-admin middleware): 403 is a decision, 503 is an outage.
  */
-export type ApiErrorKind = 'forbidden' | 'unreachable' | 'expired' | 'not-found' | 'failed';
+export type ApiErrorKind = 'forbidden' | 'unreachable' | 'unconfigured' | 'expired' | 'not-found' | 'failed';
 
 export interface ApiErrorView {
   kind: ApiErrorKind;
@@ -54,7 +54,31 @@ const OUTAGES: Record<string, { title: string; detail?: string }> = {
 const ENGINE_MESSAGE = /verify authorization|\bOPA\b/;
 const BARE = /^(Service Unavailable|HTTP 503)$/;
 
+/**
+ * jinbe has no organisation database at all (`organisation_directory_unavailable`, reason
+ * `not_configured`; older builds say so only in the message). Set-up, not an outage: retrying never
+ * helps, and the reader needs to know what to set.
+ */
+export function orgDirectoryNotConfigured(err: unknown): boolean {
+  if (statusOf(err) !== 503) return false;
+  const e = (err ?? {}) as { code?: unknown; message?: unknown; details?: { reason?: unknown; message?: unknown } };
+  if (e.details?.reason === 'not_configured') return true;
+  const said = [e.message, e.details?.message].filter((m): m is string => typeof m === 'string').join(' ');
+  return /No organisation (database|directory) is configured/i.test(said);
+}
+
+export const ORGS_NOT_CONFIGURED: ApiErrorView = {
+  kind: 'unconfigured',
+  title: "Organisations aren't configured on this deployment",
+  detail:
+    'jinbe keeps organisations in a Postgres database and has none. Set ORGANISATION_DATABASE_URL on jinbe ' +
+    '(a postgres:// connection string, with ORGANISATION_DATABASE_CA for a private certificate authority), or ' +
+    'ORGANISATION_SOURCE=claim to take organisations from the sign-in token. Everything else works without it.',
+  retryable: false,
+};
+
 function unavailable(err: unknown): ApiErrorView {
+  if (orgDirectoryNotConfigured(err)) return ORGS_NOT_CONFIGURED;
   const e = (err ?? {}) as { code?: unknown; message?: unknown; details?: { error?: unknown } };
   const code = typeof e.code === 'string' ? e.code : typeof e.details?.error === 'string' ? e.details.error : undefined;
   // What the server said in words: its message, or a sentence sent as the `error` itself (the
