@@ -72,6 +72,16 @@ function unavailable(err: unknown): ApiErrorView {
 
 export function describeApiError(err: unknown, ctx: { groups?: string[] } = {}): ApiErrorView {
   const status = statusOf(err);
+  // An account that must use two-step sign-in, below aal2 (jinbe second-factor/gate.ts). The client
+  // is already sending the person to the sign-in site's two-step gate (api/client.ts).
+  if ((err as { code?: unknown } | null | undefined)?.code === 'second_factor_required') {
+    return {
+      kind: 'expired',
+      title: 'Two-step sign-in required',
+      detail: 'Your account has to use two-step sign-in. You are being taken to set it up or confirm it, then back here.',
+      retryable: false,
+    };
+  }
   if (status === 503) return unavailable(err);
   if (status === 401) {
     return { kind: 'expired', title: 'Session expired', detail: 'Sign in again to continue.', retryable: false };

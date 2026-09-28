@@ -3,6 +3,7 @@
 // Detect un-substituted envsubst placeholder (e.g. "${API_BASE}") and treat as empty.
 import type { AuditSummary, AccessReview } from './types';
 import { bearerToken } from '../auth/session';
+import { bounceToTwoStep } from '../lib/stepUp';
 
 const _rawBase: string = (window as any).__API_BASE__ ?? '';
 const BASE = (_rawBase.startsWith('${') ? '' : _rawBase).replace(/\/$/, '') || '/api';
@@ -47,9 +48,47 @@ export async function request<T>(path: string, opts?: RequestInit): Promise<T> {
     },
     ...opts,
   });
-  if (!res.ok) throw await errorFrom(res);
+  if (!res.ok) {
+    const err = await errorFrom(res);
+    noticeSecondFactor(res.status, (err as { code?: unknown }).code);
+    throw err;
+  }
   if (res.status === 204) return undefined as T;
   return res.json();
+}
+
+/** What GET /public/second-factor answers about the signed-in person. */
+export interface SecondFactorStatus {
+  secondFactorRequired: boolean;
+  hasSecondFactor: boolean;
+  methods: string[];
+  aal: string;
+}
+
+let secondFactorProbe: Promise<void> | null = null;
+
+/**
+ * An account that must use two-step sign-in, below aal2, is refused by every administrative call.
+ * jinbe says so (`second_factor_required`, 422 so the ingress keeps the body) and the console goes
+ * to the sign-in site's two-step gate. The gateway can refuse first, with a 403 whose reason the
+ * ingress error page swallows: then the console asks jinbe once per page, on a route that answers
+ * at aal1, and goes only if that is the reason — a plain "no permission" stays a 403 on screen.
+ */
+export function noticeSecondFactor(status: number, code: unknown): void {
+  if (code === 'second_factor_required') {
+    bounceToTwoStep();
+    return;
+  }
+  if (status !== 403 || typeof code === 'string' || secondFactorProbe) return;
+  secondFactorProbe = fetch(`${BASE}/public/second-factor`, { credentials: 'include' })
+    .then(r => (r.ok ? (r.json() as Promise<SecondFactorStatus>) : null))
+    .then(s => { if (s?.secondFactorRequired && s.aal !== 'aal2') bounceToTwoStep(); })
+    .catch(() => {});
+}
+
+/** Test seam. */
+export function resetSecondFactorProbe(): void {
+  secondFactorProbe = null;
 }
 
 // ─── Auth / Session ───
@@ -395,6 +434,20 @@ export const api = {
   getAuthMethods: () =>
     request<AuthConfigState>('/admin/auth/methods'),
 
+  // ─── The signed-in person's own two-step status (answers at aal1; 401 without a session) ───
+  secondFactorStatus: () =>
+    request<SecondFactorStatus>('/public/second-factor'),
+
+  // ─── Groups whose members must use two-step sign-in (default: super_admins) ───
+  getSecondFactorGroups: () =>
+    request<SecondFactorGroups>('/admin/settings/second-factor'),
+
+  setSecondFactorGroups: (groups: string[]) =>
+    request<SecondFactorGroups>('/admin/settings/second-factor', {
+      method: 'PUT',
+      body: JSON.stringify({ groups }),
+    }),
+
   setAuthMethods: (patch: AuthConfigPatch) =>
     request<AuthConfigState>('/admin/auth/methods', {
       method: 'PUT',
@@ -478,6 +531,13 @@ export interface ImportHistoryEntry {
 // introspection; [] = public. Maps to the service rule's Oathkeeper
 // authenticator chain in jinbe.
 export type SignInMethod = 'cookie' | 'bearer' | 'introspection';
+
+/** GET/PUT /admin/settings/second-factor. */
+export interface SecondFactorGroups {
+  groups: string[];
+  /** What an unset setting means (super_admins), to offer a reset. */
+  defaultGroups: string[];
+}
 
 // Kratos self-service auth methods managed via /admin/auth/methods.
 export type AuthMethodName =

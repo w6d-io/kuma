@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { HOME_WINDOWS, type HomeWindow, type QuickActionId } from '../../api/home';
-import { useMyOrganizationNames } from '../../api/hooks';
+import { useMyOrganizationNames, useSecondFactorStatus } from '../../api/hooks';
+import { ENROL_DETAIL, ENROL_TITLE, secondFactorPrompt } from '../../lib/secondFactor';
+import { twoStepHere } from '../../lib/stepUp';
 import { ApiErrorState } from '../../components/ApiErrorState';
 import { Badge, Button, I, RelativeTime, Select, SkeletonPanel, cx } from '../../components/ui';
 import { parseHash } from '../../lib/route';
@@ -58,6 +60,10 @@ export function HomePage() {
   const a = { data: agg.data, dataUpdatedAt: agg.dataUpdatedAt };
   const health = useHomeModule('health', params, a);
   const attention = useHomeModule('attention', params, a);
+  // The viewer's own account first: a role that requires two-step sign-in and no second factor yet.
+  const { data: ownSecondFactor } = useSecondFactorStatus();
+  const twoStepHref = secondFactorPrompt(ownSecondFactor) === 'enrol' ? twoStepHere() : null;
+  const personal = twoStepHref ? { title: ENROL_TITLE, detail: ENROL_DETAIL, href: twoStepHref } : null;
   const people = useHomeModule('people', params, a);
   const activity = useHomeModule('activity', params, a);
   const access = useHomeModule('access', params, a);
@@ -157,7 +163,7 @@ export function HomePage() {
 
       {persona === 'none' ? (
         <div className="home-grid">
-          {(attention.data?.data?.items.length ?? 0) > 0 && <div className="area-attention"><NeedsYou q={attention} /></div>}
+          {((attention.data?.data?.items.length ?? 0) > 0 || personal) && <div className="area-attention"><NeedsYou q={attention} personal={personal} /></div>}
           <div className="area-main"><NoRights me={me.data?.data} /></div>
         </div>
       ) : (
@@ -165,7 +171,7 @@ export function HomePage() {
           {/* A forbidden module gets no cell at all: an empty grid item would still take a track. */}
           {shown(health) && <div className="area-health"><HealthStrip q={health} /></div>}
           {persona === 'support' && <div className="area-find"><FindPerson /></div>}
-          {shown(attention) && <div className="area-attention"><NeedsYou q={attention} /></div>}
+          {shown(attention) && <div className="area-attention"><NeedsYou q={attention} personal={personal} /></div>}
           {shown(actions) && <div className="area-actions"><QuickActions q={actions} persona={persona} /></div>}
           {shown(activity) && <div className="area-activity"><SignIns q={activity} window={win} onWindow={(w) => change({ window: w })} persona={persona} /></div>}
           {shown(access) && <div className="area-access"><GatewayTraffic q={access} /></div>}

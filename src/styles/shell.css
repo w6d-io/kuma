@@ -490,3 +490,10 @@
 }
 
 .blocked-page { max-width: 560px; margin: var(--space-7) auto; }
+
+/* Two-step sign-in (components/SecondFactorBanner.tsx): prose, not the mono persona strip. */
+.two-step-banner { font-family: var(--font-sans); }
+.two-step-banner.is-soft { background: var(--color-info-soft); color: var(--color-info); border-bottom-color: color-mix(in srgb, var(--color-info) 30%, var(--color-border)); }
+.two-step-banner-link { color: inherit; font-weight: var(--weight-medium); text-decoration: underline; white-space: nowrap; }
+.userbtn-alert { width: 8px; height: 8px; border-radius: 50%; background: var(--color-warning); flex: none; }
+.usermenu-item.is-alert { color: var(--color-warning); font-weight: var(--weight-medium); }

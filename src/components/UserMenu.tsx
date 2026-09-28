@@ -21,9 +21,12 @@ export function UserMenu({
   role,
   onOpenSettings,
   onOpenTweaks,
+  twoStepHref,
 }: {
   email: string;
   role: string;
+  /** Set when this account's role requires two-step sign-in and it has none: marks the menu and links to setting it up. */
+  twoStepHref?: string;
   onOpenSettings: () => void;
   onOpenTweaks: () => void;
 }) {
@@ -32,8 +35,9 @@ export function UserMenu({
 
   return (
     <Menu.Root>
-      <Menu.Trigger className="userbtn" aria-label="Account">
+      <Menu.Trigger className="userbtn" aria-label={twoStepHref ? 'Account — two-step sign-in required' : 'Account'}>
         <Avatar name={local} />
+        {twoStepHref && <span className="userbtn-alert" title="Two-step sign-in is required for your role" />}
         <span className="userbtn-text">
           <span className="userbtn-name">
             <span className="user-local">{local}</span>
@@ -51,6 +55,12 @@ export function UserMenu({
           </Menu.Label>
 
           <Menu.Separator className="usermenu-sep" />
+
+          {twoStepHref && (
+            <Menu.Item className="usermenu-item is-alert" onSelect={() => { window.location.href = twoStepHref; }}>
+              Set up two-step sign-in (required)
+            </Menu.Item>
+          )}
 
           {/* No organisations here on purpose: this console administers every one the token carries
               at once, so a list would inform nobody and a choice would change nothing. The switcher

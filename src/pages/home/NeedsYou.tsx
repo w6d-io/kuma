@@ -15,15 +15,23 @@ const PHONE = 3;
  * handled (home-design §4.3). Not dismissable: an item leaves when its condition clears. Five rows
  * (three on a phone), then the rest in place.
  */
-export function NeedsYou({ q }: { q: UseQueryResult<Module<Attention>, Error> }) {
+/** Something about the viewer's own account, ranked first (the two-step sign-in requirement). */
+export interface PersonalItem {
+  title: string;
+  detail: string;
+  href: string;
+}
+
+export function NeedsYou({ q, personal }: { q: UseQueryResult<Module<Attention>, Error>; personal?: PersonalItem | null }) {
   const [all, setAll] = useState(false);
   const items = q.data?.data?.items ?? [];
+  const mine = personal ? 1 : 0;
   return (
     <ModuleFrame<Attention>
       id="home-attention"
       title="Needs you"
-      count={items.length || undefined}
-      className={cx('home-attention', items.length === 0 && 'is-empty')}
+      count={items.length + mine || undefined}
+      className={cx('home-attention', items.length + mine === 0 && 'is-empty')}
       {...fromQuery(q)}
       thing="what needs you"
       skeleton={<RowsSkeleton rows={3} />}
@@ -31,7 +39,7 @@ export function NeedsYou({ q }: { q: UseQueryResult<Module<Attention>, Error> })
     >
       {(data, m) => {
         const unchecked = Object.entries(m.sources ?? {}).filter(([, v]) => v.state !== 'ok').map(([k]) => sourceWords(k));
-        if (data.items.length === 0) {
+        if (data.items.length === 0 && !personal) {
           return (
             <div className="queue-empty">
               <span className="queue-empty-ico" aria-hidden="true">{I.check}</span>
@@ -50,6 +58,11 @@ export function NeedsYou({ q }: { q: UseQueryResult<Module<Attention>, Error> })
         return (
           <>
             <ul className={cx('queue', all && 'is-all')} aria-label="Things that need you, most urgent first">
+              {personal && (
+                <li key="two-step">
+                  <QueueItem severity="warning" title={personal.title} detail={personal.detail} href={personal.href} />
+                </li>
+              )}
               {data.items.map((it, i) => (
                 <li key={it.id} className={cx(i >= PHONE && 'beyond-phone', i >= DESKTOP && 'beyond-desktop')}>
                   <QueueItem

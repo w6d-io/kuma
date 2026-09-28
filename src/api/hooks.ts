@@ -192,6 +192,37 @@ export function useDeleteOrgServiceMapping() {
 // Kratos auth-method toggles (hot-reload via jinbe patching kratos.yml).
 // 501 = deployment has no KRATOS_CONFIG_PATH — surfaced as `unavailable`, not
 // an error, so the Settings panel can hide itself instead of red-toasting.
+/**
+ * The signed-in person's own two-step status. Refetched on focus, so the banner goes the moment
+ * they come back from setting a factor up.
+ */
+export function useSecondFactorStatus() {
+  return useQuery({
+    queryKey: ['second-factor-status'],
+    queryFn: () => api.secondFactorStatus(),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+}
+
+export function useSecondFactorGroups() {
+  return useQuery({
+    queryKey: ['second-factor-groups'],
+    queryFn: () => api.getSecondFactorGroups(),
+    staleTime: CONFIG_STALE_TIME,
+    retry: (count, err: any) => err?.status !== 404 && count < 2,
+  });
+}
+
+export function useSetSecondFactorGroups() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (groups: string[]) => api.setSecondFactorGroups(groups),
+    onSuccess: (data) => qc.setQueryData(['second-factor-groups'], data),
+  });
+}
+
 export function useAuthMethods() {
   return useQuery({
     queryKey: ['auth-methods'],

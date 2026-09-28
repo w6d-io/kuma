@@ -1,8 +1,11 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
+import { SecondFactorBanner } from './components/SecondFactorBanner';
+import { secondFactorPrompt } from './lib/secondFactor';
+import { twoStepHere } from './lib/stepUp';
 import { redirectToLogin } from './auth/loginRedirect';
 import { NAV, COLLAPSIBLE, hasAnyPerm, navBlocks, navItemFor, type NavSection } from './nav';
 import { AppProvider, useApp } from './contexts/AppContext';
-import { useSession, useStats, useRealtime, useUserSearch } from './api/hooks';
+import { useSession, useStats, useRealtime, useUserSearch, useSecondFactorStatus } from './api/hooks';
 import { searchedToUser } from './api/transforms';
 import { THEMES, nextTheme, themeLabel } from './theme';
 import { Button, ButtonBase, EmptyHint, Segmented, Switch, Toasts, I, cx } from './components/ui';
@@ -97,6 +100,7 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
   const visibleNav = NAV.filter((n) => hasAnyPerm(session?.permissions, n.perms) && (n.id !== "orgadmin" || myOrg.show))
   const blocks = navBlocks(visibleNav)
   const activeId = navItemFor(page)?.id
+  const { data: ownSecondFactor } = useSecondFactorStatus()
   const [openSections, setOpenSections] = useState<ReadonlySet<NavSection>>(new Set())
   const toggleSection = (s: NavSection) =>
     setOpenSections(prev => new Set(prev.has(s) ? [...prev].filter(x => x !== s) : [...prev, s]))
@@ -159,6 +163,7 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
       <div className="sidebar-foot">
         <UserMenu
           email={session?.email || "you@console"}
+          twoStepHref={secondFactorPrompt(ownSecondFactor) === 'enrol' ? twoStepHere() ?? undefined : undefined}
           /* Every role, not the first one alphabetically: holding two, the rail named the weaker. */
           role={(session?.roles ?? []).join(" · ")}
           onOpenTweaks={onOpenTweaks}
@@ -257,6 +262,7 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
           read-only persona · destructive actions and writes are disabled
         </div>
       )}
+      <SecondFactorBanner />
     </>
   );
 }

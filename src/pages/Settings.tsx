@@ -6,6 +6,7 @@ import { api } from '../api/client';
 import type { BundleImportResult, AuthMethodName } from '../api/client';
 import { ExportBundleModal } from '../components/ExportBundleModal';
 import { OrgSitesSettings } from '../components/OrgSitesSettings';
+import { SecondFactorSettings } from '../components/SecondFactorSettings';
 
 // Shape of a bundle we can preview before importing. Counts drive the confirm
 // dialog; the raw parsed object is POSTed on confirm.
@@ -254,6 +255,8 @@ export function SettingsPage() {
           })}
         </Card>
       )}
+
+      <SecondFactorSettings />
 
       <OrgSitesSettings />
 

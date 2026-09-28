@@ -100,10 +100,11 @@ describe('ModuleFrame', () => {
 
 // ── The page, per persona, from fixture responses ───────────────────────────
 
-function serve(res: HomeResponse | { status: number; body: unknown }) {
+function serve(res: HomeResponse | { status: number; body: unknown }, twoStep?: Record<string, unknown>) {
   const fetchMock = vi.fn(async (url: string) => {
     const u = String(url);
     const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+    if (u.includes('/public/second-factor')) return twoStep ? json(200, twoStep) : json(401, { error: 'unauthenticated' });
     if ('status' in res && typeof res.status === 'number') return json(res.status, res.body);
     const home = res as HomeResponse;
     if (u.includes('/home/')) {
@@ -141,6 +142,26 @@ describe('HomePage', () => {
     expect(container.textContent).toContain("Gateway traffic isn't connected yet");
     expect(container.querySelectorAll('.queue-item')).toHaveLength(6);
     expect(container.querySelector('.queue-item')!.getAttribute('href')).toBe('#/sites?view=requests&id=r1');
+  });
+
+  it('puts "set up two-step sign-in" first in Needs you when the role requires it and none is set up', async () => {
+    (window as unknown as { __AUTH_DOMAIN__?: string }).__AUTH_DOMAIN__ = 'auth.example.net';
+    serve(platformHome(), { secondFactorRequired: true, hasSecondFactor: false, methods: [], aal: 'aal1' });
+    const { container } = await page();
+    const first = container.querySelector('.queue-item')!;
+    expect(first.textContent).toContain('Two-step sign-in is required for your role — set it up now');
+    expect(first.getAttribute('href')).toMatch(/^https:\/\/auth\.example\.net\/two-step\?return_to=/);
+    expect(container.querySelectorAll('.queue-item')).toHaveLength(7);
+    delete (window as unknown as { __AUTH_DOMAIN__?: string }).__AUTH_DOMAIN__;
+  });
+
+  it('no two-step item once a second factor exists, or when the role does not require one', async () => {
+    (window as unknown as { __AUTH_DOMAIN__?: string }).__AUTH_DOMAIN__ = 'auth.example.net';
+    serve(platformHome(), { secondFactorRequired: true, hasSecondFactor: true, methods: ['totp'], aal: 'aal1' });
+    const { container } = await page();
+    expect(container.textContent).not.toContain('Two-step sign-in is required');
+    expect(container.querySelectorAll('.queue-item')).toHaveLength(6);
+    delete (window as unknown as { __AUTH_DOMAIN__?: string }).__AUTH_DOMAIN__;
   });
 
   it('never draws a forbidden module for support, and puts the finder first', async () => {
