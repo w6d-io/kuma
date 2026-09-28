@@ -156,4 +156,20 @@ describe('Settings · Zones', () => {
     expect(text()).toContain('No WAF-protected Gateway was found in the cluster');
     expect(button('Create')!.disabled).toBe(false);
   });
+
+  it('reads the zone\'s own TLS mode: an issued certificate needs no Gateway listener for the zone', async () => {
+    zone = { ...zone, name: 'authdev', suffix: 'authdev.dev.example.com', wildcard: '*.authdev.dev.example.com', ingress: 'none', tlsMode: 'issuer' };
+    mount();
+    await settle();
+    await click(button('Edit exposure'));
+    expect(text()).not.toContain('has no HTTPS listener');
+    expect(button('Save')?.hasAttribute('disabled')).toBe(false);
+    // The same zone on the Gateway's default certificate does need a covering listener.
+    cleanup();
+    zone = { ...zone, tlsMode: 'default' };
+    mount();
+    await settle();
+    await click(button('Edit exposure'));
+    expect(text()).toContain('has no HTTPS listener for *.authdev.dev.example.com');
+  });
 });

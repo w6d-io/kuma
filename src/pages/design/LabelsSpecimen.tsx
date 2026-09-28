@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Badge, I } from '../../components/ui';
+import { Badge, I, TagList } from '../../components/ui';
 import { Method } from '../../components/ui/Primitives';
 import { Specimen } from './Specimen';
 
@@ -31,6 +31,12 @@ const ROLES: { role: string; pattern: string; use: string; example: ReactNode }[
     pattern: 'Monospace in a square-cornered subtle box; tone="plain" is outline only.',
     use: 'Identifiers you might copy or search: groups, roles, permissions, scopes, rule ids, versions.',
     example: <><Badge>billing.read</Badge><Badge>admins</Badge><Badge>rule-7f3c</Badge><Badge tone="plain">v12</Badge></>,
+  },
+  {
+    role: 'Tag list',
+    pattern: 'Tags that wrap as a set; past max, the rest fold into a +N count (TagList). The count takes focus; its tooltip names them.',
+    use: 'Scopes on a key, groups on a person — many identifiers in one table cell.',
+    example: <TagList label="Scopes" items={['billing:read', 'billing:write', 'wiki:read', 'crm:read', 'crm:write']} />,
   },
   {
     role: 'Meta',

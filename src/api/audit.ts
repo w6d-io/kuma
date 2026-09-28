@@ -1,6 +1,8 @@
 import { API_BASE, errorFrom, request } from './client';
 import { bearerToken } from '../auth/session';
 import { isNotAvailable } from './orgAccess';
+import { EDGE_BLOCKED, edgeBlocked } from '../lib/apiError';
+import { rememberActors, type ActorName } from '../lib/audit/actorNames';
 
 /**
  * The audit API (`/api/audit/*`), typed from the contract in docs/research/audit-tab.md §4.4.
@@ -85,6 +87,8 @@ export interface AuditEventsPage {
   truncated: boolean;
   source?: string;
   queryMs?: number;
+  /** Who each user actor is (jinbe resolves it for a caller holding users:read); absent otherwise. */
+  actors?: Record<string, ActorName>;
 }
 
 /** The facets the query accepts. Values are exact matches; `event` may end in `.*`. */
@@ -149,7 +153,11 @@ export interface GatewayAccess {
 export interface AuditEventDetail {
   event: AuditEventV1;
   chain: ChainStatus;
+  actors?: Record<string, ActorName>;
 }
+
+/** Keeps the names a page came with (lib/audit/actorNames.ts), and hands the page on. */
+const named = <T extends { actors?: Record<string, ActorName> }>(r: T): T => { rememberActors(r.actors); return r; };
 
 export type ExportFormat = 'csv' | 'ndjson';
 export type ExportStatus = 'queued' | 'running' | 'done' | 'failed';
@@ -195,11 +203,12 @@ const withQs = (path: string, qs: string) => (qs ? `${path}?${qs}` : path);
 
 export const auditApi = {
   events: (q: AuditQuery, cursor?: string | null, limit = PAGE_LIMIT) =>
-    request<AuditEventsPage>(withQs('/audit/events', auditQueryString({ ...q, limit, cursor }))),
+    request<AuditEventsPage>(withQs('/audit/events', auditQueryString({ ...q, limit, cursor }))).then(named),
 
   // Counts sit under `facets`, beside the page-level total/truncated/series.
   facets: (q: AuditQuery) =>
-    request<{ facets?: AuditFacets; total?: number; truncated?: boolean; series?: AuditFacets['series'] } & Partial<AuditFacets>>(withQs('/audit/facets', auditQueryString(q)))
+    request<{ facets?: AuditFacets; total?: number; truncated?: boolean; series?: AuditFacets['series']; actors?: Record<string, ActorName> } & Partial<AuditFacets>>(withQs('/audit/facets', auditQueryString(q)))
+      .then(named)
       .then((r): AuditFacets => ({ ...(r.facets ?? (r as AuditFacets)), total: r.total, truncated: r.truncated, series: r.series })),
 
   gatewayAccess: (range: { from: string; to: string }) =>
@@ -210,10 +219,10 @@ export const auditApi = {
     request<AuditWindowSummary>(withQs('/audit/summary', auditQueryString({ window, org }))),
 
   event: (id: string, ts?: string) =>
-    request<AuditEventDetail>(withQs(`/audit/events/${encodeURIComponent(id)}`, auditQueryString({ ts }))),
+    request<AuditEventDetail>(withQs(`/audit/events/${encodeURIComponent(id)}`, auditQueryString({ ts }))).then(named),
 
   userTimeline: (userId: string, range: { from: string; to: string }, cursor?: string | null) =>
-    request<AuditEventsPage>(withQs(`/audit/users/${encodeURIComponent(userId)}/timeline`, auditQueryString({ ...range, cursor, limit: PAGE_LIMIT }))),
+    request<AuditEventsPage>(withQs(`/audit/users/${encodeURIComponent(userId)}/timeline`, auditQueryString({ ...range, cursor, limit: PAGE_LIMIT }))).then(named),
 
   startExport: (body: { from: string; to: string; filters: Omit<AuditQuery, 'from' | 'to'>; format: ExportFormat }) =>
     request<{ id: string }>('/audit/exports', { method: 'POST', body: JSON.stringify(body) }),
@@ -250,7 +259,7 @@ export const auditApi = {
   tailUrl: (q: Omit<AuditQuery, 'from' | 'to'>) => withQs(`${API_BASE}/audit/tail`, auditQueryString(q)),
 };
 
-export type AuditErrorKind = 'not-available' | 'store-down' | 'out-of-scope' | 'range' | 'busy' | 'failed';
+export type AuditErrorKind = 'not-available' | 'blocked' | 'store-down' | 'out-of-scope' | 'range' | 'busy' | 'failed';
 
 /**
  * What a failed audit request means, in the words of audit-tab.md §5.2. A 503 is an outage and must
@@ -260,6 +269,7 @@ export function auditErrorKind(err: unknown): AuditErrorKind {
   if (isNotAvailable(err)) return 'not-available';
   const status = (err as { status?: unknown } | null)?.status;
   if (status === 503) return 'store-down';
+  if (edgeBlocked(err)) return 'blocked';
   if (status === 403) return 'out-of-scope';
   if (status === 429) return 'busy';
   const code = (err as { code?: unknown } | null)?.code;
@@ -278,6 +288,7 @@ export const AUDIT_ERROR_COPY: Record<AuditErrorKind, { title: string; detail: s
     detail: 'This is an outage, not an empty log. Events are still being recorded and will appear once it recovers.',
     retry: true,
   },
+  blocked: { title: EDGE_BLOCKED.title, detail: EDGE_BLOCKED.detail, retry: false },
   'out-of-scope': {
     title: 'Out of scope',
     detail: 'You can only see audit events for organisations you administer.',

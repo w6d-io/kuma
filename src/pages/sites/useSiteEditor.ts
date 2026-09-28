@@ -45,18 +45,29 @@ export function useSiteEditor(name: string) {
   const hasDraft = local !== null || !!serverDraft;
   const changes = useMemo(() => (hasDraft ? intentChanges(saved, current) : []), [hasDraft, saved, current]);
 
+  // The autosave in flight, and a counter reset() bumps so an answer arriving after a save is ignored.
+  const inflight = useRef<Promise<void> | null>(null);
+  const generation = useRef(0);
+
   const flush = useCallback(async (next: Partial<Site>) => {
+    const gen = generation.current;
     setSaving('saving');
-    try {
-      const d = await sitesApi.putDraft(name, next, detail.data?.version ?? draftQ.data?.baseVersion);
-      qc.setQueryData(siteKeys.draft(name), d);
-      void qc.invalidateQueries({ queryKey: siteKeys.list() });
-      setSaving('saved');
-      setSaveError(null);
-    } catch (err) {
-      setSaving('failed');
-      setSaveError((err as Error).message);
-    }
+    const p = (async () => {
+      try {
+        const d = await sitesApi.putDraft(name, next, detail.data?.version ?? draftQ.data?.baseVersion);
+        if (gen !== generation.current) return;
+        qc.setQueryData(siteKeys.draft(name), d);
+        void qc.invalidateQueries({ queryKey: siteKeys.list() });
+        setSaving('saved');
+        setSaveError(null);
+      } catch (err) {
+        if (gen !== generation.current) return;
+        setSaving('failed');
+        setSaveError((err as Error).message);
+      }
+    })();
+    inflight.current = p;
+    await p;
   }, [name, detail.data?.version, draftQ.data?.baseVersion, qc]);
 
   const update = useCallback((fn: (s: Site) => Site) => {
@@ -87,8 +98,19 @@ export function useSiteEditor(name: string) {
     void qc.invalidateQueries({ queryKey: siteKeys.list() });
   }, [name, qc]);
 
-  /** After an apply: the saved version is the new truth; forget local edits. */
+  /**
+   * Before saving a version: no autosave may land after it. Saving deletes the server draft; an
+   * autosave timer firing (or a PUT still in flight) a moment later wrote it back, and the site
+   * showed "Draft · unapplied changes" right after being published.
+   */
+  const settle = useCallback(async () => {
+    clearTimeout(timer.current);
+    await inflight.current?.catch(() => {});
+  }, []);
+
+  /** After a save: the saved version is the new truth; forget local edits. */
   const reset = useCallback(() => {
+    generation.current += 1;
     clearTimeout(timer.current);
     setLocal(null);
     setSaving('idle');
@@ -123,7 +145,7 @@ export function useSiteEditor(name: string) {
   const missing = !loading && !current && ((detail.error as SiteError | null)?.status === 404);
 
   return {
-    name, detail, draftQuery: draftQ, saved, current, site, hasDraft, changes, update, saveNow, discard, reset,
+    name, detail, draftQuery: draftQ, saved, current, site, hasDraft, changes, update, saveNow, discard, reset, settle,
     saving, saveError, preview, system, loading, missing,
     neverSaved: !saved && !!current,
   };

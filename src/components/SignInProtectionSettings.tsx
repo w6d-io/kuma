@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useSetSignInProtection, useSignInProtection } from '../api/hooks';
-import type { BotCheckFlow, RegistrationMode } from '../api/client';
+import type { BotCheckFlow, RegistrationMode, SignInProtection } from '../api/client';
 import { I, Badge, Button, Callout, Card, Field, Segmented, Switch, Textarea } from './ui';
 import { toastFor } from '../lib/apiError';
-import { bounceToStepUp } from '../lib/stepUp';
+import { stepUpAndResume, useResume } from '../lib/resume';
 import {
   BOT_CHECK_FLOWS,
   PROVIDER_LABEL,
@@ -41,6 +41,14 @@ export function SignInProtectionSettings() {
 
   useEffect(() => { if (data) setDraft(toDraft(data.settings)); }, [data]);
 
+  // Back from the step-up the save needed: the same settings saved again, once, if nobody changed
+  // them meanwhile; otherwise they are put back in the form to be checked and saved by hand.
+  useResume<{ next: SignInProtection; was: SignInProtection }>('sign-in-protection', !!data, ({ next, was }) => {
+    setDraft(toDraft(next));
+    if (data && sameProtection(data.settings, was)) submit(next);
+    else pushToast('Sign-in protection changed meanwhile', { sub: 'Nothing was saved. Your choice is back in the form — check it and save.', ttl: 8000 });
+  });
+
   const candidate = useMemo(() => (draft ? fromDraft(draft) : null), [draft]);
   if (isError || !data || !draft || !candidate) return null;
 
@@ -51,14 +59,17 @@ export function SignInProtectionSettings() {
   const patch = (p: Partial<ProtectionDraft>) => setDraft((d) => (d ? { ...d, ...p } : d));
   const setFlow = (f: BotCheckFlow, on: boolean) => setDraft((d) => (d ? { ...d, flows: { ...d.flows, [f]: on } } : d));
 
-  function submit() {
-    if (!candidate) return;
-    save.mutate(candidate, {
+  function submit(next = candidate) {
+    if (!next || !data) return;
+    const was = data.settings;
+    save.mutate(next, {
       onSuccess: () => pushToast('Sign-in protection saved', { sub: 'The sign-in pages and the identity service use it within a few seconds.' }),
       onError: (e: Error & { code?: string }) => {
         if (e.code === 'reauth_required') {
-          pushToast('Two-factor re-verification required', { err: true, sub: 'You will be sent to re-verify your second factor, then back here to save again. This is not a sign-out.' });
-          bounceToStepUp();
+          const going = stepUpAndResume('sign-in-protection', { next, was });
+          pushToast('Two-factor re-verification required', { err: true, sub: going
+            ? 'Nothing was saved yet. You will be sent to re-verify your second factor; back here it is saved by itself. This is not a sign-out.'
+            : 'Nothing was saved. Re-verify your second factor, then save again.' });
           return;
         }
         pushToast(...toastFor(e));
@@ -186,8 +197,8 @@ export function SignInProtectionSettings() {
       )}
 
       <div className="row wrap gap-8 mt-12">
-        <Button variant="primary" onClick={submit} disabled={!dirty || !!problems.allow || !!problems.deny || save.isPending}>
-          {save.isPending ? 'Saving…' : 'Save'}
+        <Button variant="primary" onClick={() => submit()} disabled={!dirty || !!problems.allow || !!problems.deny} loading={save.isPending}>
+          Save
         </Button>
         <Button variant="ghost" onClick={() => setDraft(toDraft(data.settings))} disabled={!dirty || save.isPending}>
           Discard changes

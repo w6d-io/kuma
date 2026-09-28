@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Callout, Field, I, Textarea, Timeline } from '../../components/ui';
 import { gatewayApi, gatewayKeys, useRollout } from '../../api/gateway';
@@ -35,12 +35,18 @@ function RolloutView({ rollout, onRollback, busy, canRollback }: { rollout: Roll
   );
 }
 
-export function ChangeReview({ changes, state, onDone, canApply }: { changes: HandlerChange[]; state: AdaptedState | undefined; onDone: () => void; canApply: boolean }) {
+/** An apply refused for want of a recent second factor, remembered across the step-up. */
+export const GATEWAY_APPLY = 'gateway-apply';
+export type GatewayResume = { changes: HandlerChange[]; note: string; etag: string };
+
+/** `resumeNote`: back from the step-up — apply by itself, once, as soon as the checks pass. */
+export function ChangeReview({ changes, state, onDone, canApply, resumeNote = null }: { changes: HandlerChange[]; state: AdaptedState | undefined; onDone: () => void; canApply: boolean; resumeNote?: string | null }) {
   const qc = useQueryClient();
   const { run, busy } = useSiteAction();
   const [preview, setPreview] = useState<GatewayPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(resumeNote ?? '');
+  const resumed = useRef(false);
   const [started, setStarted] = useState(false);
   const rollout = useRollout(started);
   const key = JSON.stringify(changes);
@@ -61,7 +67,8 @@ export function ChangeReview({ changes, state, onDone, canApply }: { changes: Ha
 
   async function apply() {
     if (!state) return;
-    const out = await run('Apply', () => gatewayApi.apply(state, changes, note || undefined), state.managed === false ? 'Gateway config adopted and applied — rolling out' : 'Gateway change applied — rolling out');
+    const out = await run('Apply', () => gatewayApi.apply(state, changes, note || undefined), state.managed === false ? 'Gateway config adopted and applied — rolling out' : 'Gateway change applied — rolling out',
+      { resume: GATEWAY_APPLY, data: { changes, note, etag: state.etag } satisfies GatewayResume });
     if (out) {
       setStarted(true);
       void qc.invalidateQueries({ queryKey: gatewayKeys.rollout });
@@ -72,6 +79,12 @@ export function ChangeReview({ changes, state, onDone, canApply }: { changes: Ha
     const out = await run('Rollback', () => gatewayApi.rollback(note || undefined), 'Rolling back to the previous config');
     if (out) void qc.invalidateQueries({ queryKey: gatewayKeys.rollout });
   }
+
+  useEffect(() => {
+    if (resumeNote === null || resumed.current || !preview || blocked || !canApply) return;
+    resumed.current = true;
+    void apply();
+  });
 
   if (started) {
     return (

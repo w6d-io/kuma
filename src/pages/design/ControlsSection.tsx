@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Checkbox, Field, I, Input, RadioGroup, Segmented, Select, Switch, Tabs, Textarea } from '../../components/ui';
+import { Button, Checkbox, ChecklistGroups, CopyField, Field, I, Input, RadioGroup, Segmented, Select, Switch, Tabs, Textarea } from '../../components/ui';
 import { MultiSelectPills } from '../../components/ui/Primitives';
 import { SectionTitle, Specimen, State } from './Specimen';
 
@@ -12,6 +12,7 @@ export function ControlsSection() {
   const [win, setWin] = useState('24h');
   const [pills, setPills] = useState(['billing']);
   const [expiry, setExpiry] = useState('flag');
+  const [scopes, setScopes] = useState(['billing:read']);
   return (
     <>
       <SectionTitle id="controls" title="Controls" sub="Everything you click or type in. Two heights: sm 28px for toolbars and rows, md 36px for headers, forms and footers." />
@@ -65,6 +66,22 @@ export function ControlsSection() {
         <Specimen name="Tabs" note="Switch views. Arrow keys move, Home/End jump.">
           <Tabs label="User" value={tab} onChange={setTab} items={[{ value: 'access', label: 'Access', icon: I.shield }, { value: 'orgs', label: 'Organizations', count: 3 }, { value: 'sessions', label: 'Sessions' }, { value: 'danger', label: 'Danger', disabled: true }]} />
           <Tabs label="Drawer" full value={tab} onChange={setTab} items={[{ value: 'access', label: 'Site access' }, { value: 'orgs', label: 'Org access' }]} />
+        </Specimen>
+        <Specimen name="ChecklistGroups" note="Many choices in named groups: an “all” box per group (partly ticked when some are), a filter once the list is long, the count above. An option under two groups is one choice.">
+          <ChecklistGroups
+            label="Scopes"
+            searchAt={4}
+            value={scopes}
+            onChange={setScopes}
+            groups={[
+              { id: 'billing', label: 'billing', options: [{ value: 'billing:read', label: <span className="mono">billing:read</span>, hint: 'Read only' }, { value: 'billing:write', label: <span className="mono">billing:write</span>, hint: 'Can change data' }] },
+              { id: 'wiki', label: 'wiki', options: [{ value: 'wiki:read', label: <span className="mono">wiki:read</span>, hint: 'Read only' }] },
+            ]}
+          />
+        </Specimen>
+        <Specimen name="CopyField" note="A value copied exactly — a secret, an id, a server address. Says “Copied”; where the clipboard is refused, selects the text and says to copy it by hand.">
+          <State label="in a Field"><Field label="Client secret"><CopyField value="hk_7Rw3…Qe9" /></Field></State>
+          <State label="sm, own label"><CopyField size="sm" label="Server URL" value="https://mcp.example.com/mcp" /></State>
         </Specimen>
         <Specimen name="Segmented · MultiSelectPills" note="A setting with a few values; a set of toggles.">
           <State label="Segmented sm"><Segmented label="Window" value={win} onChange={setWin} options={[{ value: '1h', label: '1h' }, { value: '24h', label: '24h' }, { value: '7d', label: '7 days', count: 12 }]} /></State>

@@ -26,7 +26,7 @@ function subline(s: SiteSummary): string {
   if (s.system) return 'Managed by the platform chart · read-only';
   if (s.attention?.length) return s.attention[0];
   if (s.draft) return `Draft · unapplied changes by ${s.draft.by}${s.draft.at ? ` · ${timeAgo(s.draft.at)}` : ''}`;
-  if (s.status === 'attention') return `v${s.version} saved, v${s.appliedVersion ?? '—'} live — review and apply`;
+  if (s.status === 'attention') return `v${s.version} saved, not live yet — ${s.appliedVersion ? `v${s.appliedVersion} is live` : 'nothing is live'}. Review and publish.`;
   if (s.appliedAt) return `v${s.appliedVersion ?? s.version} · applied ${timeAgo(s.appliedAt)}${s.appliedBy ? ` by ${s.appliedBy}` : ''}`;
   return 'Never applied';
 }
@@ -50,7 +50,7 @@ export function SitesList({ query }: { query: Record<string, string> }) {
     .filter(FILTERS[filter])
     .filter((s) => !needle || s.name.includes(needle) || s.displayName.toLowerCase().includes(needle) || s.host.includes(needle));
   const count = (f: Filter) => all.filter(FILTERS[f]).length;
-  const open = (s: SiteSummary) => goSites(sitesHref({ view: 'site', name: s.name, tab: s.draft && !s.system ? 'review' : undefined }));
+  const open = (s: SiteSummary) => goSites(sitesHref({ view: 'site', name: s.name, tab: (s.draft || s.status === 'attention') && !s.system ? 'review' : undefined }));
   const migrating = migration.data && !['done', 'cut-over'].includes(migration.data.state);
 
   const plug = perms.canDraft && (
@@ -126,9 +126,14 @@ export function SitesList({ query }: { query: Record<string, string> }) {
                     </ButtonBase>
                     <div className="small muted">{subline(s)}</div>
                   </td>
-                  <td className="mono small">{s.host}</td>
+                  {/* The WAF state is about how the address is reached, so it sits under the address: one
+                      status per cell, and never run together with the site's own ("Live✓DRAFT■WAF…"). */}
+                  <td>
+                    <div className="mono small nowrap">{s.host}</div>
+                    <WafBadge p={s.protection} />
+                  </td>
                   <td className="small">{s.system ? 'System site' : s.kind ?? '—'}</td>
-                  <td><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}<WafBadge p={s.protection} /></td>
+                  <td><span className="row gap-8 wrap"><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}</span></td>
                   <td className="small tabular">{s.status === 'draft' && !s.appliedVersion ? 'draft' : `v${s.appliedVersion ?? s.version}`}</td>
                 </tr>
               ))}
@@ -138,8 +143,8 @@ export function SitesList({ query }: { query: Record<string, string> }) {
             {shown.map((s) => (
               <li key={s.name}>
                 <ButtonBase className="site-card" onClick={() => open(s)}>
-                  <span className="row gap-8 items-baseline"><span className="fw-medium">{s.displayName}</span><StatusBadge status={s.status} /><WafBadge p={s.protection} /></span>
-                  <span className="mono small">{s.host}</span>
+                  <span className="row gap-8 items-baseline wrap"><span className="fw-medium">{s.displayName}</span><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}</span>
+                  <span className="row gap-8 items-baseline wrap"><span className="mono small break-all">{s.host}</span><WafBadge p={s.protection} /></span>
                   <span className="small muted">{subline(s)}</span>
                 </ButtonBase>
               </li>

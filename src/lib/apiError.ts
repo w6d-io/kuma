@@ -6,7 +6,7 @@
  * as a permission problem somebody would go and ask about. jinbe keeps the two apart on purpose
  * (see its require-admin middleware): 403 is a decision, 503 is an outage.
  */
-export type ApiErrorKind = 'forbidden' | 'unreachable' | 'unconfigured' | 'expired' | 'not-found' | 'failed';
+export type ApiErrorKind = 'forbidden' | 'blocked' | 'unreachable' | 'unconfigured' | 'expired' | 'not-found' | 'failed';
 
 export interface ApiErrorView {
   kind: ApiErrorKind;
@@ -94,6 +94,24 @@ function unavailable(err: unknown): ApiErrorView {
   };
 }
 
+/**
+ * A 403 from the edge WAF (Coraza on Envoy), which answers with no body at all — jinbe and
+ * Oathkeeper always explain theirs (api/client.ts errorFrom). Not a role problem, and not worth a retry:
+ * CrowdSec bans an address that keeps getting blocked.
+ */
+export function edgeBlocked(err: unknown): boolean {
+  return statusOf(err) === 403 && (err as { edgeBlocked?: unknown }).edgeBlocked === true;
+}
+
+export const EDGE_BLOCKED: ApiErrorView = {
+  kind: 'blocked',
+  title: 'Blocked by the web firewall',
+  detail:
+    'The web application firewall stopped this request before it reached the service — something in it looked like an attack. ' +
+    'Do not retry: repeated blocks get your IP address banned for 4 hours. Change what you sent, or ask an administrator to look at the firewall log.',
+  retryable: false,
+};
+
 export function describeApiError(err: unknown, ctx: { groups?: string[] } = {}): ApiErrorView {
   const status = statusOf(err);
   // An account that must use two-step sign-in, below aal2 (jinbe second-factor/gate.ts). The client
@@ -110,6 +128,7 @@ export function describeApiError(err: unknown, ctx: { groups?: string[] } = {}):
   if (status === 401) {
     return { kind: 'expired', title: 'Session expired', detail: 'Sign in again to continue.', retryable: false };
   }
+  if (edgeBlocked(err)) return EDGE_BLOCKED;
   if (status === 403) {
     // Only claim "no groups" when the session says so. Anybody else holds something — just not
     // what this screen needs.

@@ -12,6 +12,7 @@ import { AccessBadge, CheckList } from '../parts';
 import { checkLines } from '../../../lib/sites/format';
 import { RouteEditor } from './RouteEditor';
 import { UrlTester } from './UrlTester';
+import { ImportFlow } from '../import/ImportFlow';
 
 /**
  * Routes & protection (site-ux.md §6): the tester on top, then every route with its methods, path,
@@ -33,6 +34,7 @@ export function RoutesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnl
   const [expert, setExpert] = useState(query.level === 'expert');
   const problems = useMemo(() => routeProblems(site?.routes.items ?? []), [site]);
   if (!site) return <Callout tone="warning" icon={I.alert}>This draft is incomplete; finish it in the wizard or discard it.</Callout>;
+  if (query.import && !readOnly) return <ImportFlow ed={ed} go={go} />;
 
   const items = site.routes.items;
   const gates = site.gates;
@@ -67,6 +69,7 @@ export function RoutesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnl
         title={`Routes · ${items.length} route${items.length === 1 ? '' : 's'} · ${gates.length} gate${gates.length === 1 ? '' : 's'}`}
         actions={<>
           <Field2 label="Expert"><Switch on={expert} onChange={setExpert} label="Expert: show gateway patterns" /></Field2>
+          {!readOnly && <Button size="sm" icon={I.upload} onClick={() => go('routes', { import: '1' })}>Import from OpenAPI</Button>}
           {!readOnly && <Button size="sm" variant="primary" icon={I.plus} kbd="a" onClick={add}>Add route</Button>}
         </>}
       >

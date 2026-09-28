@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { recoveryApi, type SecondFactorMethod, type SecondFactorReset } from '../../api/recovery';
 import { Badge, Button, Callout, Checkbox, Dialog, Field, Textarea } from '../../components/ui';
 import { I } from '../../components/ui/Icons';
-import { bounceToStepUp } from '../../lib/stepUp';
+import { stepUpAndAskToRedo } from '../../lib/resume';
 import { FACTOR_LABELS, factorList, resetFailure } from '../../lib/recovery';
 
 type Phase =
@@ -66,7 +66,8 @@ export function RemoveSecondFactorDialog({ open, user, methods, required, onClos
         </>
       : <>
           <Button onClick={onClose}>Close</Button>
-          {phase.stepUp && <Button variant="primary" onClick={() => bounceToStepUp()}>Confirm my second factor</Button>}
+          {/* Removing somebody's factor is never re-run unasked: back from the step-up, the page says to redo it. */}
+          {phase.stepUp && <Button variant="primary" onClick={() => stepUpAndAskToRedo(`Remove two-step sign-in for ${user.email} again (their Sign-in tab); nothing was removed.`)}>Confirm my second factor</Button>}
         </>;
 
   return (

@@ -119,7 +119,7 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
         {tab === 'status' && <StatusTab ed={ed} />}
         {tab === 'history' && <HistoryTab ed={ed} readOnly={readOnly || !perms.canApply} query={query} go={go} />}
         {tab === 'settings' && !ed.system && <SettingsTab ed={ed} readOnly={readOnly} canApply={perms.canApply} onEditAddress={() => setEditAddress(true)} />}
-        {tab === 'review' && !readOnly && <ReviewTab ed={ed} canApply={perms.canApply} go={go} />}
+        {tab === 'review' && !readOnly && <ReviewTab ed={ed} canApply={perms.canApply} go={go} query={query} />}
       </div>
       {!readOnly && <EditAddressDialog ed={ed} open={editAddress} onClose={() => setEditAddress(false)} canApply={perms.canApply} onApplied={() => go('status')} />}
     </div>

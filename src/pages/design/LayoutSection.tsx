@@ -58,6 +58,7 @@ export function LayoutSection() {
               <span className="toolbar-note">12 / 40</span>
             </Toolbar>
             <div className="p-12"><ActionBar start={<Button variant="danger" size="sm" icon={I.trash}>Delete</Button>}><Button size="sm">Cancel</Button><Button size="sm" variant="primary">Save</Button></ActionBar></div>
+            <div className="p-12"><ActionBar divider start={<span className="small muted">divider: ruled off from the form above</span>}><Button size="sm">Cancel</Button><Button size="sm" variant="primary">Preview</Button></ActionBar></div>
           </Card>
         </Specimen>
       </div>

@@ -8,6 +8,7 @@ import { NotAvailable, QueryError } from '../parts';
 import { timeAgo } from '../../../lib/sites/format';
 import { useSitePerms } from '../usePerms';
 import { useSiteAction } from '../useAction';
+import { useResume } from '../../../lib/resume';
 
 /**
  * Status (site-ux.md §9.2 "Show conditions", §10.2 drift): the Site object's conditions, its child
@@ -48,6 +49,23 @@ export function StatusTab({ ed }: { ed: SiteEditor }) {
   const invalidate = useInvalidateSite();
   const { run, busy } = useSiteAction();
   const applied = ed.detail.data?.applied;
+  const drifted = !!drift.data?.items.length;
+
+  const restore = async (version: number) => {
+    await run('Restore', () => sitesApi.rollback(ed.name, version, 'restore what kuma applied (drift)'), 'Restored', { resume: `site-drift:${ed.name}`, data: { restore: version } });
+    invalidate(ed.name);
+  };
+  const accept = async () => {
+    await run('Accept', () => sitesApi.acceptDrift(ed.name), 'Folded into a draft', { resume: `site-drift:${ed.name}`, data: { restore: null } });
+    invalidate(ed.name);
+  };
+  // Back from the step-up: the same restore or accept, once, while the drift is still there (and,
+  // for a restore, the applied version it restores is still the applied one).
+  useResume<{ restore: number | null }>(perms.canApply ? `site-drift:${ed.name}` : null, !!drift.data && !!ed.detail.data, ({ restore: v }) => {
+    if (!drifted) return;
+    if (v == null) void accept();
+    else if (applied?.version === v) void restore(v);
+  });
 
   return (
     <div className="stack gap-16">
@@ -89,8 +107,8 @@ export function StatusTab({ ed }: { ed: SiteEditor }) {
             : drift.data.items.length === 0 ? <p className="small m-0">{I.check} Live matches what kuma applied.</p>
             : (
               <Callout tone="warning" icon={I.alert} title={`${ed.current?.displayName} differs from what kuma applied`} actions={perms.canApply && <>
-                <Button size="sm" loading={busy === 'Restore'} onClick={async () => { if (applied) { await run('Restore', () => sitesApi.rollback(ed.name, applied.version, 'restore what kuma applied (drift)'), 'Restored'); invalidate(ed.name); } }}>Restore what kuma applied</Button>
-                <Button size="sm" loading={busy === 'Accept'} onClick={async () => { await run('Accept', () => sitesApi.acceptDrift(ed.name), 'Folded into a draft'); invalidate(ed.name); }}>Accept into the site</Button>
+                <Button size="sm" loading={busy === 'Restore'} onClick={() => { if (applied) void restore(applied.version); }}>Restore what kuma applied</Button>
+                <Button size="sm" loading={busy === 'Accept'} onClick={() => void accept()}>Accept into the site</Button>
               </>}>
                 <ul className="site-list small">
                   {drift.data.items.map((d, i) => (

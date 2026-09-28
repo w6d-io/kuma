@@ -5,6 +5,7 @@ import { Button, Callout, Card, Checkbox, EmptyRow, I, SkeletonText, Stat, Table
 import { ActorCell } from './Actor';
 import { AuditHistogram } from './AuditHistogram';
 import { AuditError } from './AuditTimeline';
+import { edgeBlocked } from '../../lib/apiError';
 
 const n = (x: number) => x.toLocaleString();
 
@@ -25,7 +26,7 @@ export function AuditAccess({ range, onOpenUser }: { range: { from: string; to: 
   });
 
   if (q.isError) {
-    if ((q.error as { status?: number } | null)?.status === 403) {
+    if ((q.error as { status?: number } | null)?.status === 403 && !edgeBlocked(q.error)) {
       return <Callout tone="info" icon={I.info} title="For platform readers">Gateway decisions name no organisation, so they cannot be cut to yours. Your organisation&rsquo;s events are under Events.</Callout>;
     }
     return <AuditError error={q.error} onRetry={() => q.refetch()} />;

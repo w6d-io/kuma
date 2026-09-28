@@ -116,3 +116,31 @@ export function describeCheckError(err: unknown): { title: string; detail: strin
   }
   return describeApiError(err);
 }
+
+/** A route a site declares (its route map), offered to the checker as method + path. */
+export interface RouteChoice { key: string; site: string; method: string; path: string; permission?: string }
+
+/**
+ * Every route the chosen site declares — or every site's when none is chosen — sorted by site, then
+ * path, then method. `*`/ANY methods are offered as GET: the checker asks about one method.
+ */
+export function routeChoices(map: Record<string, Array<{ method: string; path: string; permission?: string }>>, app: string): RouteChoice[] {
+  const sites = app ? (map[app] ? [app] : []) : Object.keys(map);
+  const out: RouteChoice[] = [];
+  for (const site of sites) {
+    for (const r of map[site] ?? []) {
+      const m = r.method.toUpperCase();
+      const method = (METHODS as readonly string[]).includes(m) ? m : 'GET';
+      out.push({ key: `${site} ${method} ${r.path}`, site, method, path: r.path, permission: r.permission });
+    }
+  }
+  const seen = new Set<string>();
+  return out
+    .filter((c) => (seen.has(c.key) ? false : (seen.add(c.key), true)))
+    .sort((a, b) => a.site.localeCompare(b.site) || a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
+}
+
+/** The form with a picked route: its method, its path and its site. */
+export function withRoute(f: CheckForm, c: RouteChoice): CheckForm {
+  return { ...f, method: c.method, path: c.path, app: c.site };
+}

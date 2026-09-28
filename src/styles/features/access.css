@@ -189,6 +189,9 @@
 
 /* ── Person finder (checker, people) ─────────────────────────── */
 .pf { position: relative; width: 100%; }
+/* A panel holding a finder: panels clip their content, and the list hangs below the field — clipped,
+   it showed as an empty sliver under the box. */
+.panel.pf-host { overflow: visible; }
 .pf-list {
   position: absolute; z-index: var(--z-popover); top: calc(100% + var(--space-1)); left: 0; right: 0;
   margin: 0; padding: var(--space-1); list-style: none; max-height: 22rem; overflow-y: auto;

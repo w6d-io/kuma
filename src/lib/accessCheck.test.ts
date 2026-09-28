@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { explain, formFromQuery, validateCheck, describeCheckError, requiredPermissions } from './accessCheck';
+import { explain, formFromQuery, validateCheck, describeCheckError, requiredPermissions, routeChoices, withRoute } from './accessCheck';
 import type { AccessCheckResult } from '../api/orgAccess';
 
 const base: AccessCheckResult = {
@@ -109,5 +109,18 @@ describe('describeCheckError', () => {
 
   it('reads a 502 as the engine not answering', () => {
     expect(describeCheckError({ status: 502 }).title).toMatch(/did not answer/i);
+  });
+});
+
+describe('routeChoices', () => {
+  const map = { fleet: [{ method: 'get', path: '/b' }, { method: 'POST', path: '/a' }, { method: 'GET', path: '/b' }], billing: [{ method: 'ANY', path: '/x' }] };
+  it('lists a site\'s routes, or every site\'s, sorted and without duplicates', () => {
+    expect(routeChoices(map, 'fleet').map((c) => c.key)).toEqual(['fleet POST /a', 'fleet GET /b']);
+    expect(routeChoices(map, '').map((c) => c.key)).toEqual(['billing GET /x', 'fleet POST /a', 'fleet GET /b']);
+    expect(routeChoices(map, 'nope')).toEqual([]);
+  });
+  it('fills method, path and site', () => {
+    const [c] = routeChoices(map, 'fleet');
+    expect(withRoute({ email: 'a@x', method: 'GET', path: '', app: '' }, c)).toEqual({ email: 'a@x', method: 'POST', path: '/a', app: 'fleet' });
   });
 });

@@ -8,12 +8,16 @@ import type { Go } from '../SiteDetail';
 import { QueryError } from '../parts';
 import { timeAgo } from '../../../lib/sites/format';
 import { useSiteAction } from '../useAction';
+import { useResume } from '../../../lib/resume';
 
 /**
  * History (site-ux.md §10.1): every saved version, who and why, which one is live; compare any two
  * (`?v=8&compare=6`) and roll back to any — a rollback is a new version with the old content,
- * applied through the same path as any change.
+ * applied through the same path as any change. A version newer than the live one is not a roll
+ * back: the latest saved one is published as it is, an older unpublished one the rollback way.
  */
+
+type Pick = { to: number; note: string; live: number | null };
 
 const LABELS: Record<string, string> = {
   displayName: 'Display name', address: 'Address', upstream: 'Runs at', exposure: 'Exposure', gates: 'Gates', routes: 'Routes',
@@ -36,10 +40,29 @@ export function HistoryTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOn
   const [note, setNote] = useState('');
   const list = [...(versions.data ?? [])].reverse();
   const live = ed.detail.data?.applied?.version;
+  const latest = ed.detail.data?.version;
+  // Newer than what is live (or nothing is live yet): publishing it, not rolling back.
+  const ahead = (x: number) => live == null || x > live;
+  const direct = target !== null && target === latest && ahead(target);
   const v = Number(query.v) || undefined;
   const compare = Number(query.compare) || (v && v > 1 ? v - 1 : undefined);
   const a = useQuery({ queryKey: ['sites', 'version', ed.name, v], queryFn: () => sitesApi.version(ed.name, v!), enabled: !!v });
   const b = useQuery({ queryKey: ['sites', 'version', ed.name, compare], queryFn: () => sitesApi.version(ed.name, compare!), enabled: !!compare && compare !== v });
+
+  async function restore({ to, note: why }: Pick) {
+    const publishing = to === latest && ahead(to);
+    const after = { resume: `site-history:${ed.name}`, data: { to, note: why, live: live ?? null } satisfies Pick };
+    const out = publishing
+      ? await run('Publish', () => sitesApi.apply(ed.name, to), `v${to} is being published`, after)
+      : await run(ahead(to) ? 'Publish' : 'Rollback', () => sitesApi.rollback(ed.name, to, why || undefined), ahead(to) ? `v${to}’s content is being published as a new version` : `Rolled back: v${to}’s content is live as a new version`, after);
+    setTarget(null);
+    if (out) { ed.reset(); invalidate(ed.name); go('status'); }
+  }
+
+  // Back from the step-up: the same publish or rollback, once, if what is live has not moved since.
+  useResume<Pick>(readOnly ? null : `site-history:${ed.name}`, !!ed.detail.data, (p) => {
+    if ((live ?? null) === p.live) void restore(p);
+  });
 
   if (versions.error) return <QueryError error={versions.error} what="version history" />;
   if (!versions.isLoading && list.length === 0) {
@@ -74,7 +97,9 @@ export function HistoryTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOn
                 <td className="small">{x.note ?? ''}</td>
                 <td className="row gap-4 justify-end">
                   <Button size="sm" variant="ghost" onClick={() => go('history', { v: String(x.v), compare: x.v > 1 ? String(x.v - 1) : undefined })}>Diff</Button>
-                  {!readOnly && x.v !== live && <Button size="sm" onClick={() => { setTarget(x.v); setNote(`rollback to version ${x.v}`); }}>Roll back to this</Button>}
+                  {!readOnly && x.v !== live && (ahead(x.v)
+                    ? <Button size="sm" onClick={() => { setTarget(x.v); setNote(x.v === latest ? '' : `publish the content of version ${x.v}`); }}>Publish this version</Button>
+                    : <Button size="sm" onClick={() => { setTarget(x.v); setNote(`rollback to version ${x.v}`); }}>Roll back to this</Button>)}
                 </td>
               </tr>
             ))}
@@ -98,21 +123,22 @@ export function HistoryTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOn
 
       <ConfirmDialog
         open={target !== null}
-        title={`Roll back to v${target}?`}
+        title={target !== null && ahead(target) ? `Publish v${target}?` : `Roll back to v${target}?`}
         body={<>
-          <p className="mt-0">This saves the content of v{target} as a new version and applies it, through the same checks and timeline as any change. Needs a recent second factor.</p>
-          <Field label="Note for history"><Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={280} /></Field>
+          <p className="mt-0">
+            {direct
+              ? <>This makes v{target} live{live != null ? <> in place of v{live}</> : null}, through the same checks and timeline as any change. Needs a recent second factor.</>
+              : target !== null && ahead(target)
+                ? <>v{target} was saved but never published. This saves its content as a new version and publishes it, through the same checks and timeline as any change. Needs a recent second factor.</>
+                : <>This saves the content of v{target} as a new version and applies it, through the same checks and timeline as any change. Needs a recent second factor.</>}
+          </p>
+          {!direct && <Field label="Note for history"><Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={280} /></Field>}
         </>}
-        confirmLabel="Roll back"
-        danger
-        busy={busy === 'Rollback'}
+        confirmLabel={target !== null && ahead(target) ? 'Publish' : 'Roll back'}
+        danger={!(target !== null && ahead(target))}
+        busy={busy === 'Rollback' || busy === 'Publish'}
         onCancel={() => setTarget(null)}
-        onConfirm={async () => {
-          const t = target!;
-          const out = await run('Rollback', () => sitesApi.rollback(ed.name, t, note || undefined), `Rolled back: v${t}’s content is live as a new version`);
-          setTarget(null);
-          if (out) { ed.reset(); invalidate(ed.name); go('status'); }
-        }}
+        onConfirm={() => restore({ to: target!, note, live: live ?? null })}
       />
     </div>
   );

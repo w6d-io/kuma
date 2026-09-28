@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
 import { MultiSelectPills } from '../components/ui/Primitives';
@@ -19,7 +19,7 @@ import { orgAccessApi } from '../api/orgAccess';
 import { toastFor } from '../lib/apiError';
 import { ApiErrorState } from '../components/ApiErrorState';
 import { PRIVILEGED_MUTATION, permits } from '../policy/model';
-import { bounceToStepUp } from '../lib/stepUp';
+import { stepUpAndResume, useResume } from '../lib/resume';
 
 // The Organizations hub — the platform-level view of EVERY tenant, as opposed to the delegated
 // "Org Admin" tab (a member's self-service view of only the orgs they administer). jinbe owns the
@@ -192,10 +192,19 @@ function OrgDetail({ org, name, tenant, services, mayWrite, onDeleted }: {
   const usersQ = useOrgUsers(org);
   const assignableQ = useAssignableGroups(org);
   const assignable = useMemo(() => assignableQ.data ?? [], [assignableQ.data]);
-  const { data: orgAdminMap = {} } = useOrgAdminMap();
+  const adminMapQ = useOrgAdminMap();
+  const orgAdminMap = useMemo(() => adminMapQ.data ?? {}, [adminMapQ.data]);
   const roster = orgAdminMap[org] ?? [];
   const [invite, setInvite] = useState(false);
   const [editAdmins, setEditAdmins] = useState(false);
+  const [resumeAdmins, setResumeAdmins] = useState<{ admins: string[]; auto: boolean } | undefined>();
+  // Back from the step-up a roster save needed: the same roster saved again, once, if nobody changed
+  // it meanwhile. Otherwise the drawer opens on what was chosen, to be checked and saved by hand.
+  useResume<AdminsResume>(mayAdminister ? `${ORG_ADMINS}:${org}` : null, adminMapQ.isSuccess, (p) => {
+    setResumeAdmins({ admins: p.admins, auto: sameSet(roster, p.was) });
+    setEditAdmins(true);
+    if (!sameSet(roster, p.was)) pushToast('The administrators changed meanwhile', { sub: 'Nothing was saved. Your choice is back in the drawer — check it and save.', ttl: 8000 });
+  });
 
   const users = usersQ.data?.data ?? [];
   const total = usersQ.data?.total ?? users.length;
@@ -263,7 +272,7 @@ function OrgDetail({ org, name, tenant, services, mayWrite, onDeleted }: {
       </Card>
 
       {/* Members */}
-      <Card title="People" sub="Click a person to see their site and org access" pad="none">
+      <Card title="People" sub="Click a person to see their site and org access" pad="none" className="pf-host">
         <div className="p-12 border-b">
           <AddMember org={org} orgName={name ?? org} pushToast={pushToast} />
         </div>
@@ -364,7 +373,8 @@ function OrgDetail({ org, name, tenant, services, mayWrite, onDeleted }: {
           name={name}
           current={roster}
           members={memberEmails}
-          onClose={() => setEditAdmins(false)}
+          resume={resumeAdmins}
+          onClose={() => { setEditAdmins(false); setResumeAdmins(undefined); }}
         />
       )}
 
@@ -379,13 +389,24 @@ function OrgDetail({ org, name, tenant, services, mayWrite, onDeleted }: {
 // The picker offers the org's members (you can't administer an org you don't
 // belong to — jinbe's manageable_orgs also enforces this), unioned with any
 // already-rostered email so a stale entry can still be removed.
-function AdminsDrawer({ org, name, current, members, onClose }: {
-  org: string; name?: string; current: string[]; members: string[]; onClose: () => void;
+const ORG_ADMINS = 'org-admins';
+type AdminsResume = { admins: string[]; was: string[] };
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(x => b.includes(x));
+
+/** `resume`: back from the step-up — the roster chosen, saved once by itself on open when `auto`. */
+function AdminsDrawer({ org, name, current, members, onClose, resume }: {
+  org: string; name?: string; current: string[]; members: string[]; onClose: () => void; resume?: { admins: string[]; auto: boolean };
 }) {
   const { pushToast } = useApp();
   const setAdmins = useSetOrgAdmins();
   const options = useMemo(() => [...new Set([...members, ...current])], [members, current]);
-  const [selected, setSelected] = useState<string[]>(current);
+  const [selected, setSelected] = useState<string[]>(resume?.admins ?? current);
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (!resume?.auto || resumed.current) return;
+    resumed.current = true;
+    save();
+  });
   const busy = setAdmins.isPending;
   const dirty = selected.length !== current.length || selected.some(a => !current.includes(a));
 
@@ -400,8 +421,10 @@ function AdminsDrawer({ org, name, current, members, onClose }: {
         const err = e as Error & { code?: string; details?: { hint?: string } };
         // Step-up (R2): re-verify a recent second factor, then return to retry.
         if (err.code === 'reauth_required') {
-          pushToast('Two-factor re-verification required', { err: true, sub: 'You will be sent to re-verify your second factor, then back here to retry. This is not a sign-out.' });
-          bounceToStepUp();
+          const going = stepUpAndResume(`${ORG_ADMINS}:${org}`, { admins: selected, was: current } satisfies AdminsResume);
+          pushToast('Two-factor re-verification required', { err: true, sub: going
+            ? 'Nothing was saved yet. You will be sent to re-verify your second factor; back here the administrators are saved by themselves. This is not a sign-out.'
+            : 'Nothing was saved. Re-verify your second factor, then save again.' });
           return;
         }
         if (err.code === 'privilege_escalation_blocked' || err.code === 'mfa_required') {

@@ -32,10 +32,12 @@ interface PersonFinderProps {
   onChange: (value: string) => void;
   onPick: (hit: LookupHit) => void;
   placeholder?: string;
+  size?: 'sm' | 'md';
+  className?: string;
   'aria-label'?: string;
 }
 
-export function PersonFinder({ id, value, onChange, onPick, placeholder, ...rest }: PersonFinderProps) {
+export function PersonFinder({ id, value, onChange, onPick, placeholder, size, className, ...rest }: PersonFinderProps) {
   const listId = useId();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -60,16 +62,25 @@ export function PersonFinder({ id, value, onChange, onPick, placeholder, ...rest
   };
 
   return (
-    <div className="pf">
+    <div className={className ? `pf ${className}` : 'pf'}>
+      {/* Only our own suggestions. autocomplete="off" alone does not stop Safari's contact AutoFill
+          (the "Emails" list) on a field it takes for an email — a name holding "search" and no email
+          input mode do; the data-* attributes keep 1Password, LastPass, Bitwarden and Dashlane out. */}
       <Input
         id={id}
+        name="person-search"
         mono
+        size={size}
         leading={I.search}
         type="text"
-        inputMode="email"
         autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="none"
+        spellCheck={false}
         data-1p-ignore
         data-lpignore="true"
+        data-bwignore="true"
+        data-form-type="other"
         role="combobox"
         aria-expanded={showing}
         aria-controls={listId}

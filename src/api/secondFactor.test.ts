@@ -57,3 +57,19 @@ describe('second_factor_required', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('edge firewall block', () => {
+  it('an empty-bodied 403 is marked as the WAF and does not probe two-step sign-in', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 403 }));
+    await expect(request('/admin/users')).rejects.toMatchObject({ status: 403, edgeBlocked: true, message: 'Blocked by the web firewall' });
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 403 that explains itself in JSON is not the WAF', async () => {
+    fetchMock.mockResolvedValueOnce(json(403, { error: { code: 403, status: 'Forbidden', message: 'Access credentials are not sufficient' } }));
+    // The gateway's own 403 still asks jinbe whether two-step sign-in is the reason.
+    fetchMock.mockResolvedValueOnce(json(200, { secondFactorRequired: false, hasSecondFactor: false, methods: [], aal: 'aal1' }));
+    await expect(request('/admin/users')).rejects.toMatchObject({ status: 403, edgeBlocked: false, message: 'Access credentials are not sufficient' });
+  });
+});

@@ -193,6 +193,8 @@ export interface Zone {
   ingress?: ZoneIngress;
   /** Zone CRs: the Gateway API Gateway (namespace/name) the zone's hosts are attached to. */
   gateway?: string;
+  /** Zone CRs: where the certificate comes from. Not `default`: the zone brings its own Gateway listener. Absent on an older jinbe. */
+  tlsMode?: 'default' | 'issuer' | 'secret';
   /** The operator's Ready for the current spec; absent = unknown. */
   ready?: boolean;
   /** Zone CRs: behind the WAF or not, as jinbe reads it from the cluster. */

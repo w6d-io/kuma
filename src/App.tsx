@@ -3,6 +3,8 @@ import { SecondFactorBanner } from './components/SecondFactorBanner';
 import { secondFactorPrompt } from './lib/secondFactor';
 import { twoStepHere } from './lib/stepUp';
 import { redirectToLogin } from './auth/loginRedirect';
+import { edgeBlocked } from './lib/apiError';
+import { takeRedo } from './lib/resume';
 import { NAV, COLLAPSIBLE, hasAnyPerm, navBlocks, navItemFor, type NavSection } from './nav';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { useSession, useStats, useRealtime, useUserSearch, useSecondFactorStatus } from './api/hooks';
@@ -20,6 +22,8 @@ import { SitesPage } from './pages/sites/SitesPage';
 import { GatewayPage } from './pages/gateway/GatewayPage';
 import { OrganizationsPage } from './pages/Organizations';
 import { ApiKeysPage } from './pages/ApiKeys';
+import { ConnectionsPage } from './pages/Connections';
+import { usePersonalKeysEnabled } from './hooks/usePersonalKeys';
 import { GrantAccess } from './pages/GrantAccess';
 import { AuditPage } from './pages/Audit';
 import { AccessReviewPage } from './pages/AccessReview';
@@ -89,7 +93,7 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
   const { page, setPage, state, tweaks, apiError } = useApp();
   const showCounts = tweaks?.showCounts !== false;
   // Home is scoped to whoever is looking; the admin API refusing them is not news there.
-  const isForbidden = page !== "dashboard" && (simulatingForbidden(tweaks) || (apiError as any)?.status === 403);
+  const isForbidden = page !== "dashboard" && (simulatingForbidden(tweaks) || ((apiError as any)?.status === 403 && !edgeBlocked(apiError)));
 
   const { data: session } = useSession();
   const { data: stats } = useStats();
@@ -97,7 +101,8 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
 
   // Filter nav by user permissions — non-admins only see Overview + Settings.
   const myOrg = useMyOrg();
-  const visibleNav = NAV.filter((n) => hasAnyPerm(session?.permissions, n.perms) && (n.id !== "orgadmin" || myOrg.show))
+  const personalKeys = usePersonalKeysEnabled()
+  const visibleNav = NAV.filter((n) => hasAnyPerm(session?.permissions, n.perms) && (n.id !== "orgadmin" || myOrg.show) && (n.id !== "connections" || personalKeys))
   const blocks = navBlocks(visibleNav)
   const activeId = navItemFor(page)?.id
   const { data: ownSecondFactor } = useSecondFactorStatus()
@@ -185,10 +190,16 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
 }
 
 function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
-  const { page, pipeline, theme, cycleTheme, persona, tweaks, isLive, isLoading, apiError, state } = useApp();
+  const { page, pipeline, theme, cycleTheme, persona, tweaks, isLive, isLoading, apiError, state, pushToast } = useApp();
   const title = navItemFor(page)?.name || "Console";
+
+  // Back from a step-up for an action the screen cannot run again by itself: say what to redo.
+  useEffect(() => {
+    const redo = takeRedo();
+    if (redo) pushToast("Second factor confirmed · nothing was done yet", { sub: redo, ttl: 15000 });
+  }, [pushToast]);
   const showPipe = tweaks?.showPipeline !== false;
-  const isForbidden = page !== "dashboard" && (simulatingForbidden(tweaks) || (apiError as any)?.status === 403);
+  const isForbidden = page !== "dashboard" && (simulatingForbidden(tweaks) || ((apiError as any)?.status === 403 && !edgeBlocked(apiError)));
 
   useEffect(() => {
     if ((apiError as any)?.status === 401) {
@@ -224,7 +235,8 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
         {!isLoading && (apiError || simulatingForbidden(tweaks)) && !(page === "dashboard" && (apiError as { status?: number } | null)?.status === 403) && (
           <span className="sync-pill err" title={apiError?.message || "simulated 403"}>
             <span className="d" />
-            {simulatingForbidden(tweaks) || (apiError as any)?.status === 403 ? "forbidden" :
+            {edgeBlocked(apiError) ? "firewall" :
+             simulatingForbidden(tweaks) || (apiError as any)?.status === 403 ? "forbidden" :
              (apiError as any)?.status === 401 ? "session expired" :
              (apiError as any)?.status === 503 ? "engine unreachable" : "offline"}
           </span>
@@ -477,6 +489,7 @@ function AppShell() {
             {page === "gateway" && <GatewayPage />}
             {page === "organizations" && <OrganizationsPage />}
             {page === "apikeys" && <ApiKeysPage />}
+            {page === "connections" && <ConnectionsPage />}
             {page === "audit" && <AuditPage />}
             {page === "accessreview" && <AccessReviewPage />}
             {page === "recertification" && <RecertificationPage />}
