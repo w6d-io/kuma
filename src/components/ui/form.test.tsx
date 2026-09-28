@@ -52,6 +52,12 @@ describe('FormGrid · Toolbar · ActionBar', () => {
     expect(container.querySelector('[role="toolbar"].toolbar.sm.inset')?.getAttribute('aria-label')).toBe('Filter');
     expect(container.querySelector('.action-bar.start > .action-bar-start')?.textContent).toBe('Delete');
   });
+  it('rules an ActionBar off without borrowing the .divider utility (a 1px line that squashed it)', () => {
+    const { container } = render(<ActionBar divider><Button>Save</Button></ActionBar>);
+    const bar = container.querySelector('.action-bar')!;
+    expect(bar.classList.contains('is-divided')).toBe(true);
+    expect(bar.classList.contains('divider')).toBe(false);
+  });
 });
 
 // ── Guard: fields side by side go through FieldRow ─────────────────────────────────────────────

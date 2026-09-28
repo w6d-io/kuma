@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Badge, Button, Callout, Card, Checkbox, Dialog, EmptyHint, Field, FieldRow, I, Input, Select, Table, Th } from './ui';
+import { Badge, Button, Callout, Card, Checkbox, Dialog, EmptyHint, Field, FormGrid, I, Input, Select, Table, Th } from './ui';
 import { sitesApi, siteKeys, useGateways, useZones, type SiteError } from '../api/sites';
 import { useSiteAction } from '../pages/sites/useAction';
 import { useSitePerms } from '../pages/sites/usePerms';
+import { useResume } from '../lib/resume';
 import type { Check, GatewayInfo, Zone, ZoneIngress } from '../lib/sites/types';
 import { ENTRY_LABEL, INGRESS_LABEL, anyProtected, defaultGateway, entryOf, gatewayProblem, nextStep, protectionOf } from '../lib/sites/zones';
 
@@ -30,7 +31,7 @@ function ProtectionBadge({ zone, gateways }: { zone: Zone; gateways?: GatewayInf
 
 /** A Gateway as an option: its name and whether its WAF and IP bans are in force. */
 function gatewayOption(g: GatewayInfo) {
-  return `${g.key} — ${g.protection.protected ? 'protected by WAF' : 'NOT protected'}`;
+  return `${g.key} — ${g.protection.protected ? 'protected by WAF' : 'not protected (no WAF)'}`;
 }
 
 function GatewayPicker({
@@ -85,22 +86,35 @@ function ChecksList({ checks }: { checks: Array<Check & { host?: string }> }) {
   );
 }
 
-function EditExposure({ zone, gateways, onClose }: { zone: Zone; gateways: GatewayInfo[]; onClose: () => void }) {
+/** A zone change refused for want of a recent second factor, remembered across the step-up. */
+const ZONE_EDIT = 'zone-edit';
+const ZONE_CREATE = 'zone-create';
+type ExposureChoice = { name: string; gateway: string; ingress: ZoneIngress; confirm: boolean; ack: boolean; was: { gateway: string; ingress: ZoneIngress } };
+type CreateChoice = { domain: string; gateway: string; ingress: ZoneIngress; tls: 'default' | 'issuer'; ack: boolean };
+
+/** Saves once by itself on open when `resume` is given: back from the step-up the save needed. */
+function EditExposure({ zone, gateways, onClose, resume }: { zone: Zone; gateways: GatewayInfo[]; onClose: () => void; resume?: ExposureChoice }) {
   const qc = useQueryClient();
   const { run, busy } = useSiteAction();
-  const [gateway, setGateway] = useState(zone.gateway ?? '');
-  const [ingress, setIngress] = useState<ZoneIngress>(zone.ingress ?? 'wildcard');
+  const [gateway, setGateway] = useState(resume?.gateway ?? zone.gateway ?? '');
+  const [ingress, setIngress] = useState<ZoneIngress>(resume?.ingress ?? zone.ingress ?? 'wildcard');
   const [dnsChecks, setDnsChecks] = useState<Array<Check & { host?: string }> | null>(null);
-  const [ack, setAck] = useState(false);
+  const [ack, setAck] = useState(resume?.ack ?? false);
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (!resume || resumed.current) return;
+    resumed.current = true;
+    void save(resume.confirm);
+  });
   const noEntry = ingress === 'none' && !gateway;
   // Detaching the Gateway while a WAF-protected one exists: explicit and audited.
   const available = anyProtected(gateways);
   const optOut = !gateway && !!zone.gateway && !!available;
-  const problem = gatewayProblem(
-    gateways.find((g) => g.key === gateway),
-    zone.suffix,
-    'default',
-  );
+  // The zone's own TLS mode: an issued or secret certificate brings its own listener, so only a
+  // `default` zone needs the Gateway to cover *.<domain> already. Unknown (older jinbe): not claimed
+  // here — jinbe checks it on save.
+  const tls = zone.tlsMode ?? 'issuer';
+  const problem = gatewayProblem(gateways.find((g) => g.key === gateway), zone.suffix, tls);
 
   async function save(confirm = false) {
     const name = zone.name;
@@ -120,7 +134,7 @@ function EditExposure({ zone, gateways, onClose }: { zone: Zone; gateways: Gatew
         setDnsChecks(((err as SiteError).details?.checks ?? []) as Array<Check & { host?: string }>);
         return null;
       }
-    });
+    }, undefined, { resume: ZONE_EDIT, data: { name, gateway, ingress, confirm, ack, was: { gateway: zone.gateway ?? '', ingress: zone.ingress ?? 'wildcard' } } satisfies ExposureChoice });
     if (!out) return;
     qc.invalidateQueries({ queryKey: siteKeys.zones() });
     if (out.checks?.length) setDnsChecks(out.checks);
@@ -143,7 +157,7 @@ function EditExposure({ zone, gateways, onClose }: { zone: Zone; gateways: Gatew
             </Button>
           ) : (
             !dnsChecks && (
-              <Button variant="primary" disabled={noEntry || !!problem || (optOut && !ack)} onClick={() => save()}>
+              <Button variant="primary" loading={busy === 'Save'} disabled={noEntry || !!problem || (optOut && !ack)} onClick={() => save()}>
                 Save
               </Button>
             )
@@ -151,23 +165,23 @@ function EditExposure({ zone, gateways, onClose }: { zone: Zone; gateways: Gatew
         </>
       }
     >
-      <div className="stack gap-12">
-        <FieldRow>
-          <GatewayPicker value={gateway} onChange={setGateway} gateways={gateways} allowNone domain={zone.suffix} tls="default" />
-          <Field
-            label="nginx Ingress"
-            error={noEntry ? 'Without an Ingress the zone needs a Gateway.' : undefined}
-            hint={ingress === 'none' ? 'Only the Gateway answers: nothing reaches the sites around the WAF.' : 'Still answers on the nginx load balancer (no WAF).'}
-          >
-            <Select value={ingress} onChange={(e) => setIngress(e.target.value as ZoneIngress)}>
-              {(['wildcard', 'per-site', 'none'] as ZoneIngress[]).map((m) => (
-                <option key={m} value={m}>
-                  {INGRESS_LABEL[m]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </FieldRow>
+      {/* One field under the other: side by side, the Gateway's long option and hints pushed the
+          Ingress field off the dialog. */}
+      <FormGrid>
+        <GatewayPicker value={gateway} onChange={setGateway} gateways={gateways} allowNone domain={zone.suffix} tls={tls} />
+        <Field
+          label="nginx Ingress"
+          error={noEntry ? 'Without an Ingress the zone needs a Gateway.' : undefined}
+          hint={ingress === 'none' ? 'Only the Gateway answers: nothing reaches the sites around the WAF.' : 'Still answers on the nginx load balancer (no WAF).'}
+        >
+          <Select value={ingress} onChange={(e) => setIngress(e.target.value as ZoneIngress)}>
+            {(['wildcard', 'per-site', 'none'] as ZoneIngress[]).map((m) => (
+              <option key={m} value={m}>
+                {INGRESS_LABEL[m]}
+              </option>
+            ))}
+          </Select>
+        </Field>
         {nextStep({ ingress, gateway: gateway || undefined }) && <p className="small m-0 muted">{nextStep({ ingress, gateway: gateway || undefined })}</p>}
         {optOut && !dnsChecks && <NoWafNotice available={available} ack={ack} onAck={setAck} />}
         {dnsChecks && (
@@ -184,7 +198,7 @@ function EditExposure({ zone, gateways, onClose }: { zone: Zone; gateways: Gatew
             )}
           </Callout>
         )}
-      </div>
+      </FormGrid>
     </Dialog>
   );
 }
@@ -211,15 +225,22 @@ function NoWafNotice({ available, ack, onAck, hint }: { available: GatewayInfo |
   );
 }
 
-function CreateZone({ gateways, onClose }: { gateways: GatewayInfo[]; onClose: () => void }) {
+/** Creates once by itself on open when `resume` is given: back from the step-up the create needed. */
+function CreateZone({ gateways, onClose, resume }: { gateways: GatewayInfo[]; onClose: () => void; resume?: CreateChoice }) {
   const qc = useQueryClient();
   const { run, busy } = useSiteAction();
-  const [domain, setDomain] = useState('');
+  const [domain, setDomain] = useState(resume?.domain ?? '');
   // null = not chosen: the WAF-protected Gateway that can serve the domain, else nginx
-  const [gatewayChoice, setGatewayChoice] = useState<string | null>(null);
-  const [ingressChoice, setIngressChoice] = useState<ZoneIngress | null>(null);
-  const [tls, setTls] = useState<'default' | 'issuer'>('default');
-  const [ack, setAck] = useState(false);
+  const [gatewayChoice, setGatewayChoice] = useState<string | null>(resume?.gateway ?? null);
+  const [ingressChoice, setIngressChoice] = useState<ZoneIngress | null>(resume?.ingress ?? null);
+  const [tls, setTls] = useState<'default' | 'issuer'>(resume?.tls ?? 'default');
+  const [ack, setAck] = useState(resume?.ack ?? false);
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (!resume || resumed.current) return;
+    resumed.current = true;
+    void create();
+  });
   const d = domain.trim().toLowerCase().replace(/^\*\./, '');
   const auto = defaultGateway(gateways, d, tls);
   const gateway = gatewayChoice ?? auto?.key ?? '';
@@ -249,6 +270,7 @@ function CreateZone({ gateways, onClose }: { gateways: GatewayInfo[]; onClose: (
           ...(noWaf && available ? { acknowledgeNoWaf: true } : {}),
         }),
       'Zone created',
+      { resume: ZONE_CREATE, data: { domain: d, gateway, ingress, tls, ack } satisfies CreateChoice },
     );
     if (out) {
       qc.invalidateQueries({ queryKey: siteKeys.zones() });
@@ -270,40 +292,38 @@ function CreateZone({ gateways, onClose }: { gateways: GatewayInfo[]; onClose: (
         </>
       }
     >
-      <div className="stack gap-12">
+      <FormGrid>
         <Field label="Domain" hint={d ? `Sites live one label under it: <name>.${d}` : 'e.g. apps.dev.example.com'}>
           <Input mono value={domain} placeholder="apps.dev.example.com" onChange={(e) => setDomain(e.target.value)} />
         </Field>
-        <FieldRow>
-          <GatewayPicker
-            value={gateway}
-            onChange={(v) => {
-              setGatewayChoice(v);
-              if (!v && ingress === 'none') setIngressChoice('wildcard');
-            }}
-            gateways={gateways}
-            allowNone
-            domain={d}
-            tls={tls}
-          />
-          <Field label="nginx Ingress" error={noEntry ? 'Without an Ingress the zone needs a Gateway.' : undefined}>
-            <Select value={ingress} onChange={(e) => setIngressChoice(e.target.value as ZoneIngress)}>
-              {(['none', 'wildcard', 'per-site'] as ZoneIngress[]).map((m) => (
-                <option key={m} value={m}>
-                  {INGRESS_LABEL[m]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Certificate">
-            <Select value={tls} onChange={(e) => setTls(e.target.value as 'default' | 'issuer')}>
-              <option value="default">{gateway ? 'The Gateway listener’s' : 'The ingress default'}</option>
-              <option value="issuer">Issued for the zone</option>
-            </Select>
-          </Field>
-        </FieldRow>
+        <Field label="Certificate">
+          <Select value={tls} onChange={(e) => setTls(e.target.value as 'default' | 'issuer')}>
+            <option value="default">{gateway ? 'The Gateway listener’s' : 'The ingress default'}</option>
+            <option value="issuer">Issued for the zone</option>
+          </Select>
+        </Field>
+        <GatewayPicker
+          value={gateway}
+          onChange={(v) => {
+            setGatewayChoice(v);
+            if (!v && ingress === 'none') setIngressChoice('wildcard');
+          }}
+          gateways={gateways}
+          allowNone
+          domain={d}
+          tls={tls}
+        />
+        <Field label="nginx Ingress" error={noEntry ? 'Without an Ingress the zone needs a Gateway.' : undefined}>
+          <Select value={ingress} onChange={(e) => setIngressChoice(e.target.value as ZoneIngress)}>
+            {(['none', 'wildcard', 'per-site'] as ZoneIngress[]).map((m) => (
+              <option key={m} value={m}>
+                {INGRESS_LABEL[m]}
+              </option>
+            ))}
+          </Select>
+        </Field>
         {noWaf && d && <NoWafNotice available={available} ack={ack} onAck={setAck} hint={issuerHint} />}
-      </div>
+      </FormGrid>
     </Dialog>
   );
 }
@@ -314,8 +334,23 @@ export function ZonesSettings() {
   const { canApply } = useSitePerms();
   const [editing, setEditing] = useState<Zone | null>(null);
   const [creating, setCreating] = useState(false);
+  const [resumeEdit, setResumeEdit] = useState<ExposureChoice | undefined>();
+  const [resumeCreate, setResumeCreate] = useState<CreateChoice | undefined>();
   const list = (zones.data ?? []).filter((z) => z.source !== 'config');
   const gws = gateways.data?.gateways ?? [];
+  // Back from the step-up a zone change needed: the same change again, once — an edit only while
+  // the zone is still as it was when it was asked.
+  useResume<ExposureChoice>(canApply ? ZONE_EDIT : null, !!zones.data && !!gateways.data, (c) => {
+    const z = list.find((x) => x.name === c.name);
+    if (!z || (z.gateway ?? '') !== c.was.gateway || (z.ingress ?? 'wildcard') !== c.was.ingress) return;
+    setResumeEdit(c);
+    setEditing(z);
+  });
+  useResume<CreateChoice>(canApply ? ZONE_CREATE : null, !!zones.data && !!gateways.data, (c) => {
+    if (list.some((x) => x.suffix === c.domain)) return;
+    setResumeCreate(c);
+    setCreating(true);
+  });
 
   return (
     <Card
@@ -385,8 +420,8 @@ export function ZonesSettings() {
           </tbody>
         </Table>
       )}
-      {editing && <EditExposure zone={editing} gateways={gws} onClose={() => setEditing(null)} />}
-      {creating && <CreateZone gateways={gws} onClose={() => setCreating(false)} />}
+      {editing && <EditExposure zone={editing} gateways={gws} resume={resumeEdit} onClose={() => { setEditing(null); setResumeEdit(undefined); }} />}
+      {creating && <CreateZone gateways={gws} resume={resumeCreate} onClose={() => { setCreating(false); setResumeCreate(undefined); }} />}
     </Card>
   );
 }

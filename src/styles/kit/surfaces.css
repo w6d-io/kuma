@@ -280,3 +280,8 @@ html[data-motion="off"] .skeleton { animation: none; background: var(--color-bor
 .pagination-pages { display: flex; align-items: center; gap: var(--space-half); }
 .pagination-gap { padding: 0 var(--space-1); color: var(--color-text-disabled); }
 .pagination .btn.on { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+
+/* ── TagList ──────────────────────────────────────────────────── */
+/* Tags on one line that wrap as a set; the "+N" count sits on their centre line. */
+.tag-list { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; }
+.tag-list > [role=listitem] { display: inline-flex; }

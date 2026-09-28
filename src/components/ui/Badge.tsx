@@ -1,5 +1,6 @@
 import { Children, type ReactNode } from 'react';
 import { cx } from './cx';
+import { Tooltip } from './Tooltip';
 
 /**
  * A short label on a thing: a state, a count, a name.
@@ -59,4 +60,31 @@ export function Badge({ tone = 'neutral', mono = true, variant, icon, title, cla
 /** A key on the keyboard, written the way the screen expects it to be pressed. */
 export function Kbd({ children }: { children: ReactNode }) {
   return <kbd>{children}</kbd>;
+}
+
+/**
+ * A set of identifiers — scopes, groups, permissions — as tags, the first `max` shown and the rest
+ * folded into a "+N" count. The count takes focus and its tooltip names the folded ones, read out
+ * through the tooltip's description, so none is hidden from a keyboard or a screen reader.
+ */
+export function TagList({ items, max = 3, label, empty = '—', className }: {
+  items: readonly string[];
+  max?: number;
+  label?: string;
+  empty?: ReactNode;
+  className?: string;
+}) {
+  if (items.length === 0) return <span className="small muted">{empty}</span>;
+  const shown = items.length > max ? items.slice(0, Math.max(1, max - 1)) : items;
+  const rest = items.slice(shown.length);
+  return (
+    <span className={cx('tag-list', className)} role="list" aria-label={label}>
+      {shown.map((s) => <span key={s} role="listitem"><Badge>{s}</Badge></span>)}
+      {rest.length > 0 && (
+        <span role="listitem">
+          <Tooltip content={rest.join(', ')}><Badge variant="count">{`+${rest.length}`}</Badge></Tooltip>
+        </span>
+      )}
+    </span>
+  );
 }

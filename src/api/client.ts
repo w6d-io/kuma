@@ -18,11 +18,18 @@ export const API_BASE = BASE;
  * tell one outage from another (a 503 is OPA, Kubernetes, gatekit or Loki by its `error`).
  */
 export async function errorFrom(res: Response, message?: string): Promise<Error> {
-  const body = await res.json().catch(() => ({}));
-  const msg = message ?? (body.message || body.error || `HTTP ${res.status}`);
+  // Read as text first: an empty body is itself an answer (see edgeBlocked below).
+  const text = typeof res.text === 'function' ? await res.text().catch(() => '') : undefined;
+  const body: ErrorBody = text === undefined ? await res.json().catch(() => ({})) : parseBody(text);
+  // The edge WAF (Coraza on Envoy) refuses with a bare 403 and no body at all, while jinbe and
+  // Oathkeeper always explain theirs in JSON and the ingress error page sends HTML. Told apart
+  // here, so the screen does not send somebody off to ask for a role they already hold.
+  const edgeBlocked = res.status === 403 && text !== undefined && text.trim() === '';
+  const msg = message ?? (body.message || (typeof body.error === 'string' ? body.error : body.error?.message) || (edgeBlocked ? 'Blocked by the web firewall' : `HTTP ${res.status}`));
   return Object.assign(new Error(msg), {
     status: res.status,
     code: body.error,
+    edgeBlocked,
     // Carried onto the error so a refusal can say it changed nothing. The service sets it on every
     // gate refusal, and without it here the console can only show the previous state and leave the
     // reader to guess whether part of the change went through.
@@ -31,6 +38,18 @@ export async function errorFrom(res: Response, message?: string): Promise<Error>
     retryAfter: Number(res.headers?.get?.('retry-after')) || undefined,
     details: body,
   });
+}
+
+/** What jinbe (and Oathkeeper, whose `error` is an object) put in a refusal. */
+type ErrorBody = { message?: string; error?: string | { message?: string }; applied?: boolean; [k: string]: unknown };
+
+function parseBody(text: string): ErrorBody {
+  try {
+    const v = JSON.parse(text);
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
 }
 
 export async function request<T>(path: string, opts?: RequestInit): Promise<T> {
@@ -52,7 +71,8 @@ export async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const err = await errorFrom(res);
-    noticeSecondFactor(res.status, (err as { code?: unknown }).code);
+    // A firewall block says nothing about two-step sign-in, and every extra call counts toward a ban.
+    if (!(err as { edgeBlocked?: boolean }).edgeBlocked) noticeSecondFactor(res.status, (err as { code?: unknown }).code);
     throw err;
   }
   if (res.status === 204) return undefined as T;

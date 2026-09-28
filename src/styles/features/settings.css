@@ -40,3 +40,9 @@
 
 /* The organization picker in the API-keys page header needs room for a name. */
 .settings-org-picker { min-width: calc(var(--space-7) * 5); }
+
+/* Connections & keys: the numbered steps of the MCP help, each a heading line and what follows. */
+.mcp-steps { margin: 0; padding-left: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
+.mcp-steps > li { padding-left: var(--space-1); min-width: 0; }
+.mcp-steps > li > .fw-medium + * { margin-top: var(--space-1); }
+.mcp-steps > li::marker { color: var(--color-text-subtle); font-variant-numeric: tabular-nums; }

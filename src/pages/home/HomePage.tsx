@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { edgeBlocked } from '../../lib/apiError';
 import { HOME_WINDOWS, type HomeWindow, type QuickActionId } from '../../api/home';
 import { useMyOrganizationNames, useSecondFactorStatus } from '../../api/hooks';
 import { ENROL_DETAIL, ENROL_TITLE, secondFactorPrompt } from '../../lib/secondFactor';
@@ -83,7 +84,7 @@ export function HomePage() {
   const tiles = useMemo(() => visibleActions(actions.data?.data?.items ?? []), [actions.data]);
 
   // An org that is not the caller's (a stale link): back to all of theirs rather than a dead page.
-  const refusedOrg = !!org && agg.error?.status === 403;
+  const refusedOrg = !!org && agg.error?.status === 403 && !edgeBlocked(agg.error);
   useEffect(() => { if (refusedOrg) change({ org: null }); });
 
   // Home-scoped single keys: `r` refreshes; each tile's key opens its flow.

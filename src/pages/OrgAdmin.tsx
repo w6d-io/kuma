@@ -118,7 +118,7 @@ function OrgMembers({ org, orgName, pushToast }: { org: string; orgName: string;
       )}
       {hardError && <div className="mb-12"><ApiErrorState compact error={hardError} what="this organization" onRetry={() => { usersQ.refetch(); grantsQ.refetch(); assignableQ.refetch(); }} /></div>}
 
-      <Card>
+      <Card className="pf-host">
         <div className="row wrap gap-8 px-12 py-8 border-b">
           <AddMember org={org} orgName={orgName} pushToast={pushToast} />
           <div className="flex-1" />

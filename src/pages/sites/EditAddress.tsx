@@ -6,7 +6,9 @@ import { addressOf, addressUrl, formOf, formProblems, groupChecks, linksToMove, 
 import type { Check, Preview } from '../../lib/sites/types';
 import type { SiteEditor } from './useSiteEditor';
 import { CheckList, RiskBadge, type CheckLine } from './parts';
-import { describeSiteError, useSiteAction } from './useAction';
+import { describeSiteError, publishAction, useSiteAction } from './useAction';
+import { stepUpAndResume } from '../../lib/resume';
+import { goSites, sitesHref } from '../../lib/sites/route';
 
 /**
  * Edit address (Settings, and the address in the site header): label, zone and path prefix of a site
@@ -108,20 +110,32 @@ export function EditAddressDialog({ ed, open, onClose, canApply, onApplied }: {
     onClose();
   }
 
-  // As Review's apply: save the version, then apply it; a missing second factor goes to prove it.
+  // As Review's apply: save the version, then apply it. A missing second factor after the save leaves
+  // that version saved and not live: Review says so, and publishes it by itself after the step-up.
   async function saveAndApply() {
     if (!candidate) return;
     setApplying(true);
     setFailure(null);
+    let savedVersion: number | null = null;
     try {
+      await ed.settle();
       const saved = await sitesApi.save(ed.name, candidate, { note: `address ${addressUrl(from ?? to)} → ${addressUrl(to)}`, etag: ed.detail.data?.etag });
+      savedVersion = saved.version;
+      ed.reset();
       await sitesApi.apply(ed.name, saved.version);
       pushToast(`Address changed to ${addressUrl(to)}`, { sub: 'The gateway moves the rules now; follow it on Status.' });
-      ed.reset();
       onClose();
       onApplied?.();
     } catch (err) {
-      if ((err as SiteError).code === 'reauth_required') await run('Apply', () => Promise.reject(err));
+      if ((err as SiteError).code === 'reauth_required' && savedVersion != null) {
+        onClose();
+        goSites(sitesHref({ view: 'site', name: ed.name, tab: 'review' }));
+        if (stepUpAndResume(publishAction(ed.name), { version: savedVersion })) {
+          pushToast('Confirm it’s you', { err: true, sub: `v${savedVersion} (the new address) is saved but not live yet. Taking you to prove your second factor; back here it is published by itself.`, ttl: 4000 });
+        }
+      } else if ((err as SiteError).code === 'reauth_required') {
+        await run('Apply', () => Promise.reject(err));
+      }
       setFailure({ message: describeSiteError(err), checks: checksOf(err) });
     } finally {
       setApplying(false);

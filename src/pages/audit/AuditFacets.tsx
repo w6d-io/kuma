@@ -3,6 +3,7 @@ import type { AuditFacets as Facets, FacetCount } from '../../api/audit';
 import { Button, Checkbox, Input, Select, Skeleton } from '../../components/ui';
 import { ACTOR_TYPE_LABEL, activeCount, clearFilters, toggleFacet, type AuditFilters, type FacetKey } from '../../lib/audit/filters';
 import { eventPhrase, shortId } from '../../lib/audit/format';
+import { useActorName } from '../../lib/audit/actorNames';
 
 function Group({ title, items, selected, onToggle, format, limit = 8 }: {
   title: string; items: FacetCount[] | undefined; selected: string[]; onToggle: (v: string) => void;
@@ -57,7 +58,7 @@ export function AuditFacets({ facets, filters, onChange, platform, orgName }: {
         </form>
         {(facets?.actor ?? []).slice(0, 5).map((i) => (
           <Checkbox key={i.key} checked={filters.actor === i.key} onChange={() => { single('actor')(i.key); setActor(filters.actor === i.key ? '' : i.key); }}
-            label={<span className="audit-facet-row"><span className="mono">user · {shortId(i.key)}</span><span className="mono text-xs muted">{i.count}</span></span>} />
+            label={<span className="audit-facet-row"><FacetActor id={i.key} /><span className="mono text-xs muted">{i.count}</span></span>} />
         ))}
       </fieldset>
       {platform && (facets?.org?.length ?? 0) > 0 && (
@@ -76,4 +77,12 @@ export function AuditFacets({ facets, filters, onChange, platform, orgName }: {
       <Button size="sm" variant="ghost" disabled={n === 0} onClick={() => { setActor(''); onChange(clearFilters(filters)); }}>Clear all{n ? ` (${n})` : ''}</Button>
     </div>
   );
+}
+
+/** A top actor by name when jinbe resolved it, else its short id; the full id on hover either way. */
+function FacetActor({ id }: { id: string }) {
+  const who = useActorName(id);
+  if (who === null) return <span className="mono" title={id}>deleted user · {shortId(id)}</span>;
+  if (who && (who.name || who.email)) return <span className="audit-clip" title={`${who.email ?? ''} · ${id}`}>{who.name || who.email}</span>;
+  return <span className="mono" title={id}>user · {shortId(id)}</span>;
 }

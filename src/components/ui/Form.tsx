@@ -71,7 +71,7 @@ export function ActionBar({ start, align = 'end', divider = false, className, ch
   children: ReactNode;
 }) {
   return (
-    <div className={cx('action-bar', align === 'start' && 'start', divider && 'divider', className)}>
+    <div className={cx('action-bar', align === 'start' && 'start', divider && 'is-divided', className)}>
       {start && <div className="action-bar-start">{start}</div>}
       <div className="action-bar-end">{children}</div>
     </div>

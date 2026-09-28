@@ -38,7 +38,7 @@ const answer = (checks: Check[]): Preview => ({ artefacts: { routeMap: [], roles
 
 function editor(site: Site, over: Partial<SiteEditor> = {}): SiteEditor {
   return {
-    name: 'echo', site, saved: site, current: site, changes: [], update: vi.fn(), reset: vi.fn(),
+    name: 'echo', site, saved: site, current: site, changes: [], update: vi.fn(), reset: vi.fn(), settle: vi.fn(async () => {}),
     detail: { data: { site, version: 3, etag: 'e3', status: 'live', applied: { version: 3 } } },
     ...over,
   } as unknown as SiteEditor;

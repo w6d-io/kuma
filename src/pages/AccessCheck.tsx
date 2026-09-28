@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { api, type LookupHit } from '../api/client';
-import { useServices } from '../api/hooks';
+import { useAllRoutes, useServices } from '../api/hooks';
 import { orgAccessApi, type AccessCheckResult } from '../api/orgAccess';
-import { METHODS, describeCheckError, explain, formFromQuery, requiredPermissions, validateCheck, type CheckForm } from '../lib/accessCheck';
+import { METHODS, describeCheckError, explain, formFromQuery, requiredPermissions, routeChoices, validateCheck, withRoute, type CheckForm } from '../lib/accessCheck';
 import { linkedPerson } from '../lib/personFind';
 import { formatHash, parseHash } from '../lib/route';
 import { PersonBadges, PersonFinder } from '../components/PersonFinder';
@@ -27,6 +27,10 @@ export function AccessCheckPage() {
   const [person, setPerson] = useState<LookupHit | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const services = useServices();
+  // The routes to pick from: the chosen site's, or every site's while none is chosen.
+  const routeSites = form.app ? [form.app] : (services.data ?? []).map((s) => s.name);
+  const routes = useAllRoutes(routeSites);
+  const choices = routeChoices(routes.data ?? {}, form.app);
   const check = useMutation({ mutationFn: (f: CheckForm) => orgAccessApi.accessCheck(f) });
   // The address last acted on. The same one arriving twice (mount, then the hashchange that brought
   // us here) is one link; the one this page writes back is already on screen.
@@ -95,7 +99,7 @@ export function AccessCheckPage() {
       <PageHeader title="Access checker" sub="Ask whether a person can call a route, and why — the same question the gateway asks" />
 
       <form
-        className="panel mb-12 ac-form"
+        className="panel pf-host mb-12 ac-form"
         onSubmit={(e) => { e.preventDefault(); run(form); }}
       >
         <FieldRow>
@@ -125,8 +129,32 @@ export function AccessCheckPage() {
             {form.app && !(services.data ?? []).some((s) => s.name === form.app) && <option value={form.app}>{form.app}</option>}
           </Select>
         </Field>
-        <Button variant="primary" type="submit" disabled={check.isPending}>{check.isPending ? 'Checking…' : 'Check'}</Button>
+        <Button variant="primary" type="submit" loading={check.isPending}>Check</Button>
         </FieldRow>
+        <Field
+          label={<>Or pick a route <span className="muted">{form.app ? `of ${form.app}` : 'of any site'}</span></>}
+          hint={routes.isLoading ? 'Loading the routes the sites declare…' : choices.length === 0 ? 'No declared routes to pick from.' : 'Fills method, path and site; the path keeps its :parameters, which match any value.'}
+        >
+          <Select
+            id="ac-route"
+            mono
+            value=""
+            disabled={choices.length === 0}
+            onChange={(e) => {
+              const c = choices.find((x) => x.key === e.target.value);
+              if (c) { setForm((f) => withRoute(f, c)); setProblem(null); }
+            }}
+          >
+            <option value="">{routes.isLoading ? 'Loading routes…' : choices.length ? `Choose one of ${choices.length} route${choices.length === 1 ? '' : 's'}…` : 'No routes to pick from'}</option>
+            {[...new Set(choices.map((c) => c.site))].map((site) => (
+              <optgroup key={site} label={site}>
+                {choices.filter((c) => c.site === site).map((c) => (
+                  <option key={c.key} value={c.key}>{c.method} {c.path}{c.permission ? ` → ${c.permission}` : ''}</option>
+                ))}
+              </optgroup>
+            ))}
+          </Select>
+        </Field>
         {problem && <div className="small text-danger" role="alert">{problem}</div>}
       </form>
 

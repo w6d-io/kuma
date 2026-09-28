@@ -4,8 +4,10 @@ import { useActor, useReveal } from './useActor';
 
 export function ActorCell({ actor }: { actor: AuditActor }) {
   const { label } = useActor(actor);
+  // The full id stays one hover away (and in the detail), whatever the row shows.
+  const id = actor.type === 'user' && actor.id ? actor.id : undefined;
   return (
-    <span className="audit-actor">
+    <span className="audit-actor" title={id}>
       <span className={`audit-actor-dot ${label.kind}`} aria-hidden="true">{label.kind === 'system' ? I.cog : label.kind === 'service' ? I.key : label.kind === 'user' ? '' : '?'}</span>
       <span className="min-w-0">
         <span className="small audit-clip">{label.primary}</span>

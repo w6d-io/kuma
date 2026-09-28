@@ -104,7 +104,7 @@
 /* ── ActionBar ────────────────────────────────────────────────── */
 .action-bar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-2); }
 .action-bar.start, .action-bar.start > .action-bar-end { justify-content: flex-start; }
-.action-bar.divider { border-top: 1px solid var(--color-border); padding-top: var(--space-3); }
+.action-bar.is-divided { border-top: 1px solid var(--color-border); padding-top: var(--space-3); }
 .action-bar-start { display: flex; align-items: center; gap: var(--space-2); margin-right: auto; min-width: 0; }
 .action-bar-end { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
 
@@ -130,3 +130,31 @@
 .table tbody th.small { font-size: var(--text-sm); }
 /* Tables stacked one above the other share their columns when told to. */
 .table.fixed { table-layout: fixed; }
+
+/* ── CopyField ────────────────────────────────────────────────── */
+/* The value takes the width, the button keeps its own; a long secret scrolls inside the box rather
+   than widening a drawer. The note line is empty until the clipboard refuses. */
+.copy-field { display: flex; flex-direction: column; min-width: 0; }
+.copy-field-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.copy-field-row > .input { flex: 1 1 auto; min-width: 0; text-overflow: ellipsis; }
+.copy-field-row > .btn { flex: none; }
+.copy-field-note:empty { display: none; }
+.copy-field-note { margin-top: var(--space-1); font-size: var(--text-sm); line-height: var(--leading-sm); color: var(--color-warning); }
+
+/* ── ChecklistGroups ──────────────────────────────────────────── */
+/* Each group ruled off from the next; its options indented under the "all" box so the box that
+   ticks them reads as their heading. Options flow in columns when the drawer is wide enough. */
+.checklist { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.checklist-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
+.checklist-head > .input-wrap { flex: 1 1 12rem; max-width: 20rem; }
+.checklist-count { font-size: var(--text-sm); color: var(--color-text-muted); font-variant-numeric: tabular-nums; margin-right: auto; }
+.checklist > .empty-hint { padding: var(--space-3); }
+.checklist-group { margin: 0; padding: var(--space-3); border: 0; border-bottom: 1px solid var(--color-border); min-width: 0; }
+.checklist-group:last-child { border-bottom: 0; }
+.checklist-title { display: flex; flex-direction: column; gap: var(--space-half); padding-left: calc(var(--check-size) + var(--space-2)); }
+.checklist-options {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-2); padding-left: calc(var(--check-size) + var(--space-2));
+}
+.checklist-options .checkbox-label { overflow-wrap: anywhere; }

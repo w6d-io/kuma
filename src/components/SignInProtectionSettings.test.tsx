@@ -96,5 +96,7 @@ describe('SignInProtectionSettings', () => {
     click(byText(container, 'button', /^Closed$/));
     click(byText(container, 'button', /^Save$/));
     expect(h.toast).toHaveBeenCalledWith('Two-factor re-verification required', expect.objectContaining({ err: true }));
+    // Remembered for the way back, where it is saved again by itself.
+    expect(JSON.parse(sessionStorage.getItem('kuma:resume:sign-in-protection') ?? '{}').data.next.registration.mode).toBe('closed');
   });
 });

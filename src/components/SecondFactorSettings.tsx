@@ -4,7 +4,7 @@ import { useAuthMethods, useSecondFactorGroups, useSetSecondFactorGroups } from 
 import { MultiSelectPills } from './ui/Primitives';
 import { I, Button, Callout, Card } from './ui';
 import { toastFor } from '../lib/apiError';
-import { bounceToStepUp } from '../lib/stepUp';
+import { stepUpAndResume, useResume } from '../lib/resume';
 import { sameGroups, secondFactorWarnings } from '../lib/secondFactor';
 
 /**
@@ -22,6 +22,14 @@ export function SecondFactorSettings() {
 
   useEffect(() => { if (data) setDraft(data.groups); }, [data]);
 
+  // Back from the step-up the save needed: the same groups saved again, once, if nobody changed the
+  // setting meanwhile; otherwise they are put back in the form to be checked and saved by hand.
+  useResume<{ next: string[]; was: string[] }>('second-factor-groups', !!data, ({ next, was }) => {
+    setDraft(next);
+    if (data && sameGroups(data.groups, was)) submit(next);
+    else pushToast('The requirement changed meanwhile', { sub: 'Nothing was saved. Your choice is back in the form — check it and save.', ttl: 8000 });
+  });
+
   const options = useMemo(
     () => [...new Set([...Object.keys(state.groups ?? {}), ...(data?.groups ?? [])])].sort(),
     [state.groups, data],
@@ -32,9 +40,10 @@ export function SecondFactorSettings() {
   const warnings = secondFactorWarnings(draft, auth?.methods);
   const toggle = (g: string) => setDraft(d => (d ?? []).includes(g) ? (d ?? []).filter(x => x !== g) : [...(d ?? []), g]);
 
-  function submit() {
-    if (!draft) return;
-    save.mutate(draft, {
+  function submit(next = draft) {
+    if (!next || !data) return;
+    const was = data.groups;
+    save.mutate(next, {
       onSuccess: (r) => pushToast('Two-step sign-in requirement saved', {
         sub: r.groups.length
           ? `Members of ${r.groups.join(', ')} set up a second factor at their next sign-in.`
@@ -42,8 +51,10 @@ export function SecondFactorSettings() {
       }),
       onError: (e: Error & { code?: string }) => {
         if (e.code === 'reauth_required') {
-          pushToast('Two-factor re-verification required', { err: true, sub: 'You will be sent to re-verify your second factor, then back here to save again. This is not a sign-out.' });
-          bounceToStepUp();
+          const going = stepUpAndResume('second-factor-groups', { next, was });
+          pushToast('Two-factor re-verification required', { err: true, sub: going
+            ? 'Nothing was saved yet. You will be sent to re-verify your second factor; back here it is saved by itself. This is not a sign-out.'
+            : 'Nothing was saved. Re-verify your second factor, then save again.' });
           return;
         }
         pushToast(...toastFor(e));
@@ -68,8 +79,8 @@ export function SecondFactorSettings() {
         </Callout>
       )}
       <div className="row wrap gap-8 mt-12">
-        <Button variant="primary" onClick={submit} disabled={!dirty || save.isPending}>
-          {save.isPending ? 'Saving…' : 'Save'}
+        <Button variant="primary" onClick={() => submit()} disabled={!dirty} loading={save.isPending}>
+          Save
         </Button>
         <Button variant="ghost" onClick={() => setDraft(data.defaultGroups)} disabled={sameGroups(draft, data.defaultGroups) || save.isPending}>
           Reset to recommended

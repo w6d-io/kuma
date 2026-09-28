@@ -1,5 +1,6 @@
 import { useApp } from '../contexts/AppContext';
 import { bounceToStepUp } from '../lib/stepUp';
+import { stepUpAndAskToRedo } from '../lib/resume';
 import { rememberPendingChange, type PendingIntent } from '../lib/pendingChange';
 import { toastFor } from '../lib/apiError';
 
@@ -74,12 +75,18 @@ export function useApplyChange() {
             return;
           }
           if (err.code === 'reauth_required') {
+            // A group change comes back proposed again (the drawer reopens on it); anything else is
+            // asked for again by the page it comes back to — never left looking as if it went through.
             pushToast(
               'Two-factor re-verification required',
-              { err: true, sub: `You will be sent to re-verify your second factor, then back here to retry. This is not a sign-out. ${nothingApplied}`.trim() },
+              { err: true, sub: `You will be sent to re-verify your second factor, then back here ${resume ? 'with your change ready to apply' : 'to make the change again'}. This is not a sign-out. ${nothingApplied}`.trim() },
             );
-            if (resume) rememberPendingChange(resume);
-            bounceToStepUp();
+            if (resume) {
+              rememberPendingChange(resume);
+              bounceToStepUp();
+            } else {
+              stepUpAndAskToRedo(`Redo the ${_verb} change for ${target}: nothing was applied before the check.`);
+            }
             return;
           }
           if (err.status === 404) {

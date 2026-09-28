@@ -152,3 +152,24 @@
 .site-toolbar select.input, .site-tester select.input, .site-route-editor .row select.input, .site-pathpart select.input,
 .site-catchall select.input, .site-list select.input, .site-stage > select.input, .site-handler select.input,
 .site-panel .row > select.input, .panel .row > select.input { width: auto; max-width: 100%; }
+
+/* ── OpenAPI import ─────────────────────────────────────────── */
+/* Rows read top-down: operation, route, access, risk, decision. A high-risk row carries the 3px
+   danger bar (the status Badge rule), a row that still needs something the warning bar. */
+.import-table td { vertical-align: top; }
+.import-table td.import-decision { min-width: 14rem; }
+.import-table td.import-route { min-width: 11rem; }
+.import-table td.import-op { min-width: 13rem; }
+.import-route-inline { display: none; margin-top: var(--space-1); }
+/* A laptop screen: the route folds under its operation rather than squeezing both columns. */
+@media (max-width: 1180px) {
+  .import-table .import-route { display: none; }
+  .import-route-inline { display: block; }
+  .import-table td.import-decision { min-width: 12rem; }
+}
+.import-row.is-high > td:first-child { box-shadow: inset 3px 0 0 var(--color-danger); }
+.import-row.is-attention > td:first-child { box-shadow: inset 3px 0 0 var(--color-warning); }
+.import-row.is-open > td, .import-detail > td { background: var(--color-surface-2); }
+.import-risk-line { max-width: 18rem; overflow-wrap: anywhere; }
+.import-list { margin: var(--space-1) 0 0; padding-left: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); }
+.toolbar.import-bulk { background: var(--color-accent-soft); }

@@ -1,24 +1,28 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { api } from '../../api/client';
+import { api, type LookupHit } from '../../api/client';
 import { orgAccessApi } from '../../api/orgAccess';
 import { readMemberInput } from '../../lib/orgGrants';
 import { statusOf } from '../../lib/apiError';
-import { Button, Input } from '../../components/ui';
+import { Button } from '../../components/ui';
+import { PersonFinder } from '../../components/PersonFinder';
 import { makeToastErr, type PushToast } from './toastErr';
 
 /**
  * Adds somebody who already has an account to this org. Their other orgs and their site access stay.
- * By email when the caller may look people up, by user id otherwise — the form says which it needs.
+ * Found as you type (the checker's quick find: start of an email, a whole one, or a Kratos id) and
+ * picked from the list; typed out in full when the caller may not look people up.
  */
 export function AddMember({ org, orgName, pushToast }: { org: string; orgName: string; pushToast: PushToast }) {
   const qc = useQueryClient();
   const [value, setValue] = useState('');
+  // The person picked from the list, while the box still shows their address.
+  const [picked, setPicked] = useState<LookupHit | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
   const add = async () => {
-    const target = readMemberInput(value);
+    const target = picked && picked.email === value ? { kind: 'id' as const, id: picked.id } : readMemberInput(value);
     if (target.kind === 'invalid') { setProblem('Enter their email or their user id.'); return; }
     setBusy(true);
     setProblem(null);
@@ -37,6 +41,7 @@ export function AddMember({ org, orgName, pushToast }: { org: string; orgName: s
       await orgAccessApi.addMember(org, id);
       pushToast(`Added to ${orgName}`, { sub: 'Their other organizations and site access are unchanged.' });
       setValue('');
+      setPicked(null);
       qc.invalidateQueries({ queryKey: ['org-users', org] });
       qc.invalidateQueries({ queryKey: ['org-grants', org] });
     } catch (err) {
@@ -54,19 +59,16 @@ export function AddMember({ org, orgName, pushToast }: { org: string; orgName: s
 
   return (
     <form className="row gap-8 wrap" onSubmit={(e) => { e.preventDefault(); void add(); }}>
-      <Input
-        mono
+      <PersonFinder
         size="sm"
         className="orgs-member-input"
-        aria-label="Email or user id of an existing account"
-        placeholder="Existing account: email or user id"
-        autoComplete="off"
-        data-1p-ignore
-        data-lpignore="true"
+        aria-label="Find an existing account by email or user id"
+        placeholder="Find an existing account: email or user id"
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(v) => { setValue(v); if (picked && picked.email !== v) setPicked(null); }}
+        onPick={(h) => { setValue(h.email); setPicked(h); setProblem(null); }}
       />
-      <Button size="sm" type="submit" disabled={busy || !value.trim()}>{busy ? 'Adding…' : 'Add member'}</Button>
+      <Button size="sm" type="submit" loading={busy} disabled={!value.trim()}>Add member</Button>
       {problem && <span className="small text-danger" role="alert">{problem}</span>}
     </form>
   );

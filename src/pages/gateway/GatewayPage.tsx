@@ -9,7 +9,9 @@ import { QueryError } from '../sites/parts';
 import { useSession } from '../../api/hooks';
 import { permits } from '../../policy/model';
 import { HandlerPanel } from './HandlerPanel';
-import { ChangeReview } from './ChangeReview';
+import { ChangeReview, GATEWAY_APPLY, type GatewayResume } from './ChangeReview';
+import { useResume } from '../../lib/resume';
+import { useApp } from '../../contexts/AppContext';
 import '../sites/sites.css';
 import './gateway.css';
 
@@ -40,6 +42,15 @@ export function GatewayPage() {
   const gw = useGateway();
   const rollout = useRollout();
   const [review, setReview] = useState<HandlerChange[] | null>(null);
+  const [resumeNote, setResumeNote] = useState<string | null>(null);
+  const { pushToast } = useApp();
+  // Back from the step-up an apply was refused for: the same change, applied again by itself once
+  // its checks pass — unless the gateway changed meanwhile, then it is only reopened for review.
+  useResume<GatewayResume>(perms.canApply ? GATEWAY_APPLY : null, !!gw.data, (p) => {
+    setReview(p.changes);
+    if (gw.data?.etag === p.etag) setResumeNote(p.note);
+    else pushToast('The gateway changed while you confirmed your second factor', { sub: 'Nothing was applied. Check the change again, then apply it.', ttl: 8000 });
+  });
   const [filter, setFilter] = useState<'all' | HandlerKind>(view.kind && !view.name ? view.kind : 'all');
   const unavailable = !!gw.error && notAvailable(gw.error);
   const kinds = filter === 'all' ? HANDLER_KINDS : [filter];
@@ -121,7 +132,7 @@ export function GatewayPage() {
         eyebrow={selected ? KIND_LABEL[selected.kind] : undefined}
       >
         {selected && (review
-          ? <ChangeReview changes={review} state={gw.data} canApply={perms.canApply} onDone={() => { setReview(null); void gw.refetch(); }} />
+          ? <ChangeReview changes={review} state={gw.data} canApply={perms.canApply} resumeNote={resumeNote} onDone={() => { setReview(null); setResumeNote(null); void gw.refetch(); }} />
           : <HandlerPanel key={`${selected.kind}/${selected.name}/${gw.data?.version ?? 0}`} row={selected} level={level} canEdit={canEdit}
               onLevel={(l) => go(gatewayHref(selected.kind, selected.name, { level: l === 'basic' ? undefined : l }))}
               onReview={setReview} />)}

@@ -24,7 +24,7 @@ export function ApiErrorState({
   return (
     <div role="alert" className={cx('panel', 'api-error', compact && 'compact')}>
       <span className="api-error-ico">
-        {view.kind === 'forbidden' ? I.shield : view.kind === 'unconfigured' ? I.info : I.alert}
+        {view.kind === 'forbidden' || view.kind === 'blocked' ? I.shield : view.kind === 'unconfigured' ? I.info : I.alert}
       </span>
       <div className="flex-1 min-w-0">
         <div className="fw-medium">{title}</div>

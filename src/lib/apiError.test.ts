@@ -110,3 +110,24 @@ describe('no organisation database', () => {
     expect(v.retryable).toBe(true);
   });
 });
+
+describe('edge firewall block', () => {
+  // What errorFrom throws for a 403 with an empty body — the Coraza WAF on Envoy.
+  const waf = () => Object.assign(new Error('Blocked by the web firewall'), { status: 403, edgeBlocked: true, details: {} });
+
+  it('says the firewall blocked it, not a missing role, and warns against retrying', () => {
+    const v = describeApiError(waf(), { groups: [] });
+    expect(v.kind).toBe('blocked');
+    expect(v.title).toBe('Blocked by the web firewall');
+    expect(v.detail).toMatch(/Do not retry/);
+    expect(v.detail).toMatch(/4 hours/);
+    expect(v.detail).not.toMatch(/roles|no groups/);
+    expect(v.retryable).toBe(false);
+    expect(toastFor(waf())[0]).toBe('Blocked by the web firewall');
+  });
+
+  it('keeps the role wording for a jinbe or Oathkeeper 403 that explains itself', () => {
+    const jinbe = Object.assign(new Error('Forbidden'), { status: 403, code: 'forbidden', edgeBlocked: false, details: { error: 'forbidden' } });
+    expect(describeApiError(jinbe, { groups: ['viewer'] }).detail).toMatch(/Your roles do not include/);
+  });
+});

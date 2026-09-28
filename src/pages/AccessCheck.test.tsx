@@ -4,7 +4,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, key, render, type } from '../components/ui/testing';
 
 vi.mock('../auth/session', () => ({ bearerToken: async () => null }));
-vi.mock('../api/hooks', () => ({ useServices: () => ({ data: [{ name: 'fleet' }] }) }));
+vi.mock('../api/hooks', () => ({
+  useServices: () => ({ data: [{ name: 'fleet' }, { name: 'billing' }] }),
+  useAllRoutes: (names: string[]) => ({
+    isLoading: false,
+    data: Object.fromEntries(names.map((n) => [n, n === 'fleet'
+      ? [{ method: 'GET', path: '/api/clusters/:id', permission: 'fleet:read' }, { method: 'delete', path: '/api/clusters/:id', permission: 'fleet:write' }]
+      : [{ method: '*', path: '/invoices' }]])),
+  }),
+}));
 
 import { AccessCheckPage } from './AccessCheck';
 
@@ -45,6 +53,29 @@ const mount = () => {
 };
 const email = () => document.getElementById('ac-email') as HTMLInputElement;
 const checks = () => calls.filter((c) => c.url.includes('/access-check'));
+
+describe('Access checker route picker', () => {
+  const route = () => document.getElementById('ac-route') as HTMLSelectElement;
+  const choose = (sel: HTMLSelectElement, value: string) => act(() => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(sel, value);
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  it('offers every site\'s declared routes and fills method, path and site from one', async () => {
+    mount();
+    await settle();
+    const labels = [...route().querySelectorAll('option')].map((o) => o.textContent);
+    expect(labels).toContain('GET /api/clusters/:id → fleet:read');
+    expect(labels).toContain('DELETE /api/clusters/:id → fleet:write');
+    expect(labels).toContain('GET /invoices');
+    await choose(route(), 'fleet DELETE /api/clusters/:id');
+    expect((document.getElementById('ac-method') as HTMLSelectElement).value).toBe('DELETE');
+    expect((document.getElementById('ac-path') as HTMLInputElement).value).toBe('/api/clusters/:id');
+    expect((document.getElementById('ac-app') as HTMLSelectElement).value).toBe('fleet');
+    // With a site chosen, only its routes are offered.
+    expect([...route().querySelectorAll('option')].map((o) => o.textContent)).not.toContain('GET /invoices');
+  });
+});
 
 describe('Access checker quick find', () => {
   it('offers people as you type, debounced, and loads one into the checker with one click', async () => {

@@ -7,6 +7,7 @@ import { namespaceProblem, portProblem, serviceProblem } from '../../../lib/site
 import type { Site } from '../../../lib/sites/types';
 import type { SiteEditor } from '../useSiteEditor';
 import { useSiteAction } from '../useAction';
+import { useResume } from '../../../lib/resume';
 import { BrandFields } from './BrandFields';
 import { useBrand } from './brand';
 import { BrandPreview } from './LoginPreview';
@@ -26,6 +27,21 @@ export function SettingsTab({ ed, readOnly, canApply, onEditAddress }: { ed: Sit
   const [confirm, setConfirm] = useState<'pause' | 'resume' | 'delete' | null>(null);
   const [clone, setClone] = useState<{ name: string; host: string } | null>(null);
   const blast = useQuery({ queryKey: ['sites', 'blast', ed.name], queryFn: () => sitesApi.blastRadius(ed.name), enabled: confirm === 'delete', retry: false });
+  const savedState = ed.saved?.state ?? ed.site?.state;
+  // Back from the step-up: a pause or resume runs again by itself while the site is still in the
+  // state it was asked from. A delete is never re-run unasked — its confirmation opens again.
+  useResume<{ pausing: boolean }>(canApply ? `site-pause:${ed.name}` : null, !!ed.detail.data, ({ pausing }) => {
+    if ((savedState === 'paused') !== pausing) void pauseOrResume(pausing);
+  });
+  useResume<true>(canApply ? `site-delete:${ed.name}` : null, !!ed.detail.data, () => setConfirm('delete'));
+
+  async function pauseOrResume(pausing: boolean) {
+    const name = ed.site?.displayName ?? ed.name;
+    await run(pausing ? 'Pause' : 'Resume', () => (pausing ? sitesApi.pause(ed.name) : sitesApi.resume(ed.name)), pausing ? `${name} is paused` : `${name} is live again`,
+      { resume: `site-pause:${ed.name}`, data: { pausing } });
+    setConfirm(null);
+    invalidate(ed.name);
+  }
   if (!site) return <Callout tone="warning" icon={I.alert}>This draft is incomplete.</Callout>;
 
   const set = (fn: (s: Site) => Site) => ed.update(fn);
@@ -118,12 +134,7 @@ export function SettingsTab({ ed, readOnly, canApply, onEditAddress }: { ed: Sit
         confirmLabel={confirm === 'pause' ? 'Pause' : 'Resume'}
         busy={busy === 'Pause' || busy === 'Resume'}
         onCancel={() => setConfirm(null)}
-        onConfirm={async () => {
-          const pausing = confirm === 'pause';
-          await run(pausing ? 'Pause' : 'Resume', () => (pausing ? sitesApi.pause(ed.name) : sitesApi.resume(ed.name)), pausing ? `${site.displayName} is paused` : `${site.displayName} is live again`);
-          setConfirm(null);
-          invalidate(ed.name);
-        }}
+        onConfirm={() => pauseOrResume(confirm === 'pause')}
       />
       <ConfirmDialog
         open={confirm === 'delete'}
@@ -145,7 +156,7 @@ export function SettingsTab({ ed, readOnly, canApply, onEditAddress }: { ed: Sit
         ) : 'What it takes with it could not be counted.'}
         onCancel={() => setConfirm(null)}
         onConfirm={async () => {
-          const out = await run('Delete', () => sitesApi.remove(ed.name), `${site.displayName} deleted — a snapshot is kept for 30 days`);
+          const out = await run('Delete', () => sitesApi.remove(ed.name), `${site.displayName} deleted — a snapshot is kept for 30 days`, { resume: `site-delete:${ed.name}`, data: true, confirmAgain: true });
           setConfirm(null);
           if (out) { invalidate(); goSites(sitesHref({ view: 'list' })); }
         }}
