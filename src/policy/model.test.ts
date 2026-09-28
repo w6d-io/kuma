@@ -81,6 +81,17 @@ describe('whether a held permission covers a required one', () => {
     expect(covers('admin:write', 'admin.membership.bulk:write')).toBe(true);
   });
 
+  it('admits everything for the wildcard OPA resolves for a super admin', () => {
+    expect(covers('*', 'admin:read')).toBe(true);
+    expect(covers('*', 'admin.membership:write')).toBe(true);
+    expect(permits(['*'], 'admin:write')).toBe(true);
+  });
+
+  it('does not treat a verb or resource wildcard as the full one', () => {
+    expect(covers('admin:*', 'admin:read')).toBe(false);
+    expect(covers('*:read', 'admin:read')).toBe(false);
+  });
+
   it('admits the exact permission', () => {
     expect(covers('admin.membership:write', 'admin.membership:write')).toBe(true);
     expect(covers('context:read', 'context:read')).toBe(true);
@@ -105,10 +116,6 @@ describe('whether a held permission covers a required one', () => {
     expect(covers('context:read', 'contexts:read')).toBe(false);
   });
 
-  it('gives no meaning to a wildcard, because the model defines none', () => {
-    // The console used to pass its own checks on `*`, which no role carries any more.
-    expect(covers('*', 'admin:read')).toBe(false);
-  });
 });
 
 describe('what a set of held permissions admits', () => {

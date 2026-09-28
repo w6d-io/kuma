@@ -69,6 +69,9 @@ export function resolveRoles(
  * would light up a control the mutation then refuses.
  */
 export function covers(held: string, required: string): boolean {
+  // `*` is what OPA resolves for a super admin (or an app-wide admin role): everything in the app,
+  // exactly as rbac.rego's `user_permissions["*"]` admits every route.
+  if (held === '*') return true;
   if (held === required) return true;
   const [heldResource, heldVerb] = held.split(':');
   const [requiredResource, requiredVerb] = required.split(':');
