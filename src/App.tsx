@@ -6,7 +6,7 @@ import { useSession, useStats, useRealtime, useUserSearch } from './api/hooks';
 import { searchedToUser } from './api/transforms';
 import { THEMES, nextTheme, themeLabel } from './theme';
 import { Button, ButtonBase, EmptyHint, Segmented, Switch, Toasts, I, cx } from './components/ui';
-import { DashboardPage } from './pages/Dashboard';
+import { HomePage } from './pages/home/HomePage';
 import { UsersPage, UserDrawer } from './pages/Users';
 import { OrgAdminPage } from './pages/OrgAdmin';
 import { AccessCheckPage } from './pages/AccessCheck';
@@ -85,7 +85,8 @@ function RailDrawer({ onOpenTweaks }: { onOpenTweaks: () => void }) {
 function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; onOpenTweaks: () => void }) {
   const { page, setPage, state, tweaks, apiError } = useApp();
   const showCounts = tweaks?.showCounts !== false;
-  const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
+  // Home is scoped to whoever is looking; the admin API refusing them is not news there.
+  const isForbidden = page !== "dashboard" && (simulatingForbidden(tweaks) || (apiError as any)?.status === 403);
 
   const { data: session } = useSession();
   const { data: stats } = useStats();
@@ -182,7 +183,7 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
   const { page, pipeline, theme, cycleTheme, persona, tweaks, isLive, isLoading, apiError, state } = useApp();
   const title = navItemFor(page)?.name || "Console";
   const showPipe = tweaks?.showPipeline !== false;
-  const isForbidden = simulatingForbidden(tweaks) || (apiError as any)?.status === 403;
+  const isForbidden = page !== "dashboard" && (simulatingForbidden(tweaks) || (apiError as any)?.status === 403);
 
   useEffect(() => {
     if ((apiError as any)?.status === 401) {
@@ -215,7 +216,7 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
             {isLive ? "live" : "offline"}
           </span>
         )}
-        {!isLoading && (apiError || simulatingForbidden(tweaks)) && (
+        {!isLoading && (apiError || simulatingForbidden(tweaks)) && !(page === "dashboard" && (apiError as { status?: number } | null)?.status === 403) && (
           <span className="sync-pill err" title={apiError?.message || "simulated 403"}>
             <span className="d" />
             {simulatingForbidden(tweaks) || (apiError as any)?.status === 403 ? "forbidden" :
@@ -459,8 +460,10 @@ function AppShell() {
         {/* Keyed on the page so React remounts the subtree and the entrance plays on every
             navigation. Without the key the class is already applied and nothing animates. */}
         <div className="content page-enter" key={page}>
-          {(simulatingForbidden(tweaks) || [403, 503].includes((apiError as any)?.status)) ? <BlockedPage /> : <>
-            {page === "dashboard" && <DashboardPage />}
+          {/* Home asks its own endpoint, scoped to whoever is looking: a refusal from the admin API
+              (support, an org admin) must not replace the one page built for them. */}
+          {page !== "dashboard" && (simulatingForbidden(tweaks) || [403, 503].includes((apiError as any)?.status)) ? <BlockedPage /> : <>
+            {page === "dashboard" && <HomePage />}
             {page === "users" && <UsersPage />}
             {page === "groups" && <GroupsPage />}
             {page === "roles" && <RolesPage />}

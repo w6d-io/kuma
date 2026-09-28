@@ -28,3 +28,7 @@ export { Skeleton, SkeletonText, SkeletonRows, SkeletonPanel, SkeletonTiles } fr
 export { Pagination, usePagination } from './Pagination';
 export { I } from './Icons';
 export { cx } from './cx';
+export { BarSeries, Meter } from './Chart';
+export type { Bucket } from './Chart';
+export { RelativeTime, Kpi, SourceState, QueueItem, HealthItem, ActionTile } from './Briefing';
+export type { QueueSeverity, HealthItemState } from './Briefing';

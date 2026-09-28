@@ -131,6 +131,10 @@ describe.each([['light', light], ['dark', dark]] as const)('%s theme', (_name, v
   it('draws a focus ring that stands out 3:1 from the surface', () => {
     expect(contrast('--color-focus-ring', '--color-surface', vars)).toBeGreaterThanOrEqual(3);
   });
+
+  it.each([['--chart-pass'], ['--chart-fail']])('fills chart marks in %s that stand out 3:1 from the surface', (fill) => {
+    expect(contrast(fill, '--color-surface', vars)).toBeGreaterThanOrEqual(3);
+  });
 });
 
 describe('the dark theme', () => {

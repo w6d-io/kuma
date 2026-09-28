@@ -1,0 +1,635 @@
+{
+  "scope": {
+    "platform": true,
+    "orgs": [],
+    "roles": [],
+    "org": null
+  },
+  "generatedAt": "2026-09-28T07:33:06.767Z",
+  "window": "24h",
+  "modules": {
+    "health": {
+      "status": "ok",
+      "asOf": "2026-09-28T07:33:06.758Z",
+      "stale": false,
+      "sources": {
+        "kube": {
+          "state": "not_configured",
+          "connect": {
+            "setting": "SITES_KUBE=in-cluster",
+            "docs": "docs/SERVICE_PLUG.md"
+          }
+        },
+        "prometheus": {
+          "state": "not_configured",
+          "connect": {
+            "setting": "PROMETHEUS_URL",
+            "docs": "jinbe/docs/observability.md"
+          }
+        },
+        "loki": {
+          "state": "not_configured",
+          "connect": {
+            "setting": "LOKI_URL",
+            "docs": "docs/OBSERVABILITY.md"
+          }
+        },
+        "kratos": {
+          "state": "ok"
+        },
+        "redis": {
+          "state": "ok"
+        },
+        "grafana": {
+          "state": "not_configured",
+          "connect": {
+            "setting": "GRAFANA_URL",
+            "docs": "jinbe/docs/observability.md"
+          }
+        }
+      },
+      "data": {
+        "environment": {
+          "name": "test-env",
+          "production": false
+        },
+        "components": [
+          {
+            "id": "gateway",
+            "state": "not_deployed",
+            "summary": "not connected",
+            "link": {
+              "page": "gateway"
+            }
+          },
+          {
+            "id": "gateway_rules",
+            "state": "ok",
+            "summary": "served 2 s ago",
+            "link": {
+              "page": "gateway"
+            }
+          },
+          {
+            "id": "opa",
+            "state": "ok",
+            "summary": "1/1 engines on rev-abcd",
+            "link": {
+              "page": "gateway",
+              "anchor": "engines"
+            }
+          },
+          {
+            "id": "opal_data",
+            "state": "ok",
+            "summary": "30 s ago",
+            "link": {
+              "page": "gateway",
+              "anchor": "opal"
+            }
+          },
+          {
+            "id": "kratos",
+            "state": "ok",
+            "summary": "ready",
+            "link": {
+              "page": "users"
+            }
+          },
+          {
+            "id": "jinbe",
+            "state": "ok",
+            "summary": "ready \u00b7 abcdef1"
+          },
+          {
+            "id": "redis",
+            "state": "ok",
+            "summary": "ok"
+          },
+          {
+            "id": "audit_store",
+            "state": "unknown",
+            "summary": "not connected",
+            "link": {
+              "page": "audit"
+            }
+          },
+          {
+            "id": "audit_archive",
+            "state": "degraded",
+            "summary": "archive 2 h behind",
+            "link": {
+              "page": "audit"
+            },
+            "since": "2026-09-28T05:33:06.753Z"
+          },
+          {
+            "id": "certificates",
+            "state": "unknown",
+            "summary": "not connected"
+          }
+        ]
+      }
+    },
+    "attention": {
+      "status": "ok",
+      "asOf": "2026-09-28T07:33:06.758Z",
+      "stale": false,
+      "sources": {
+        "kube": {
+          "state": "not_configured",
+          "connect": {
+            "setting": "SITES_KUBE=in-cluster",
+            "docs": "docs/SERVICE_PLUG.md"
+          }
+        },
+        "prometheus": {
+          "state": "not_configured",
+          "connect": {
+            "setting": "PROMETHEUS_URL",
+            "docs": "jinbe/docs/observability.md"
+          }
+        },
+        "loki": {
+          "state": "not_configured",
+          "connect": {
+            "setting": "LOKI_URL",
+            "docs": "docs/OBSERVABILITY.md"
+          }
+        },
+        "sites": {
+          "state": "ok"
+        },
+        "access_review": {
+          "state": "ok"
+        },
+        "directory": {
+          "state": "ok"
+        },
+        "recert": {
+          "state": "ok"
+        },
+        "recert_inbox": {
+          "state": "ok"
+        }
+      },
+      "data": {
+        "items": [
+          {
+            "actionable": true,
+            "id": "audit_archive_lag:outbox",
+            "kind": "audit_archive_lag",
+            "severity": "warning",
+            "title": "Audit archive is 2 h behind",
+            "detail": "3 events waiting",
+            "since": "2026-09-28T05:33:06.753Z",
+            "target": {
+              "page": "audit",
+              "params": {}
+            },
+            "metrics": {
+              "count": 3
+            }
+          },
+          {
+            "actionable": true,
+            "id": "site_request_pending:req-1",
+            "kind": "site_request_pending",
+            "severity": "warning",
+            "title": "Apply request for Payroll v4",
+            "detail": "requested by Ada Lovelace \u00b7 risk high \u00b7 needs a second approver",
+            "subject": {
+              "type": "request",
+              "id": "req-1",
+              "label": "Payroll"
+            },
+            "since": "2026-09-28T06:33:06.753Z",
+            "target": {
+              "page": "sites",
+              "params": {
+                "view": "requests",
+                "id": "req-1"
+              }
+            }
+          },
+          {
+            "actionable": true,
+            "id": "privileged_no_mfa:all",
+            "kind": "privileged_no_mfa",
+            "severity": "warning",
+            "title": "2 people with full access have no second factor",
+            "since": "2026-09-28T07:33:06.759Z",
+            "target": {
+              "page": "access-review",
+              "params": {
+                "filter": "no-mfa"
+              }
+            },
+            "metrics": {
+              "count": 2
+            }
+          },
+          {
+            "actionable": true,
+            "id": "site_draft_stale:fleet",
+            "kind": "site_draft_stale",
+            "severity": "info",
+            "title": "Fleet has a draft untouched for 10 d",
+            "subject": {
+              "type": "site",
+              "id": "fleet",
+              "label": "Fleet"
+            },
+            "since": "2026-09-18T07:33:06.753Z",
+            "target": {
+              "page": "sites",
+              "params": {
+                "name": "fleet",
+                "tab": "draft"
+              }
+            }
+          },
+          {
+            "actionable": true,
+            "id": "site_unapplied:fleet",
+            "kind": "site_unapplied",
+            "severity": "info",
+            "title": "Fleet has saved changes that aren't applied",
+            "detail": "v5 saved \u00b7 v4 live",
+            "subject": {
+              "type": "site",
+              "id": "fleet",
+              "label": "Fleet"
+            },
+            "since": "2026-09-28T05:33:06.753Z",
+            "target": {
+              "page": "sites",
+              "params": {
+                "name": "fleet"
+              }
+            }
+          },
+          {
+            "actionable": true,
+            "id": "unassigned_users:all",
+            "kind": "unassigned_users",
+            "severity": "info",
+            "title": "1 person is in no group and can reach nothing",
+            "since": "2026-09-28T07:33:06.753Z",
+            "target": {
+              "page": "users",
+              "params": {
+                "filter": "unassigned"
+              }
+            },
+            "metrics": {
+              "count": 1
+            }
+          },
+          {
+            "actionable": true,
+            "id": "privileged_dormant:all",
+            "kind": "privileged_dormant",
+            "severity": "info",
+            "title": "1 privileged account has been inactive for 30 days",
+            "since": "2026-09-28T07:33:06.759Z",
+            "target": {
+              "page": "access-review",
+              "params": {
+                "filter": "dormant"
+              }
+            },
+            "metrics": {
+              "count": 1
+            }
+          }
+        ],
+        "counts": {
+          "critical": 0,
+          "warning": 3,
+          "info": 4
+        },
+        "truncated": false
+      }
+    },
+    "people": {
+      "status": "ok",
+      "asOf": "2026-09-28T07:33:06.758Z",
+      "stale": false,
+      "sources": {
+        "directory": {
+          "state": "ok"
+        },
+        "organisations": {
+          "state": "ok"
+        },
+        "access_review": {
+          "state": "warming"
+        }
+      },
+      "data": {
+        "identities": 12,
+        "active": 10,
+        "inactive": 2,
+        "fullAccess": 2,
+        "unassigned": 1,
+        "byGroup": [
+          {
+            "group": "users",
+            "members": 12
+          },
+          {
+            "group": "admins",
+            "members": 2
+          }
+        ],
+        "byOrg": [
+          {
+            "orgId": "11111111-1111-4111-8111-111111111111",
+            "members": 4,
+            "name": "Acme"
+          },
+          {
+            "orgId": "22222222-2222-4222-8222-222222222222",
+            "members": 3,
+            "name": "Globex"
+          }
+        ],
+        "orgsTotal": 2
+      }
+    },
+    "activity": {
+      "status": "ok",
+      "asOf": "2026-09-28T07:33:06.758Z",
+      "stale": false,
+      "sources": {
+        "audit_legacy": {
+          "state": "ok"
+        },
+        "loki": {
+          "state": "not_configured",
+          "connect": {
+            "setting": "LOKI_URL",
+            "docs": "docs/OBSERVABILITY.md"
+          }
+        }
+      },
+      "data": {
+        "window": "24h",
+        "signIns": {
+          "succeeded": 1,
+          "failed": 0,
+          "prevSucceeded": 0,
+          "prevFailed": 0,
+          "distinctUsers": 1,
+          "failedFactor": null,
+          "failedSpike": null
+        },
+        "series": [
+          {
+            "t": "2026-09-27T07:33:06.757Z",
+            "succeeded": 0,
+            "failed": 0,
+            "changes": 0
+          },
+          {
+            "t": "2026-09-27T08:33:06.757Z",
+            "succeeded": 0,
+            "failed": 0,
+            "changes": 0
+          }
+        ],
+        "byCategory": {
+          "auth": 1
+        },
+        "denied": {
+          "total": 0,
+          "prev": 0
+        },
+        "topDeniedRoutes": [],
+        "source": "redis-legacy",
+        "truncated": false
+      }
+    },
+    "access": {
+      "status": "unavailable",
+      "asOf": "2026-09-28T07:33:06.758Z",
+      "stale": false,
+      "sources": {
+        "decisions": {
+          "state": "not_deployed",
+          "connect": {
+            "setting": "opa-authz-proxy decision log (OBS-1.4)",
+            "docs": "docs/research/obs-flow.md#36"
+          }
+        }
+      },
+      "reason": "not_deployed",
+      "connect": {
+        "setting": "opa-authz-proxy decision log (OBS-1.4)",
+        "docs": "docs/research/obs-flow.md#36"
+      }
+    },
+    "sites": {
+      "status": "ok",
+      "asOf": "2026-09-28T07:33:06.758Z",
+      "stale": false,
+      "sources": {
+        "sites": {
+          "state": "ok"
+        },
+        "kube": {
+          "state": "not_configured",
+          "connect": {
+            "setting": "SITES_KUBE=in-cluster",
+            "docs": "docs/SERVICE_PLUG.md"
+          }
+        }
+      },
+      "data": {
+        "counts": {
+          "live": 1,
+          "attention": 1,
+          "draft": 1,
+          "paused": 0,
+          "deleted": 1
+        },
+        "pendingRequests": 2,
+        "unhealthy": null,
+        "list": [
+          {
+            "name": "fleet",
+            "displayName": "Fleet",
+            "host": "fleet.example.com",
+            "status": "attention",
+            "ready": null,
+            "version": 5,
+            "appliedVersion": 4,
+            "appliedAt": "2026-09-28T05:33:06.753Z",
+            "appliedBy": {
+              "id": "id-bob",
+              "label": "Bob Chen"
+            },
+            "draftAt": "2026-09-18T07:33:06.753Z",
+            "orgs": 1
+          },
+          {
+            "name": "payroll",
+            "displayName": "Payroll",
+            "host": "payroll.example.com",
+            "status": "live",
+            "ready": null,
+            "version": 3,
+            "appliedVersion": 3,
+            "appliedAt": "2026-09-28T06:33:06.753Z",
+            "appliedBy": {
+              "id": "id-ada",
+              "label": "Ada Lovelace"
+            },
+            "draftAt": null,
+            "orgs": 1
+          },
+          {
+            "name": "draft-only",
+            "displayName": "Draft only",
+            "host": null,
+            "status": "draft",
+            "ready": null,
+            "version": 0,
+            "appliedVersion": null,
+            "appliedAt": null,
+            "appliedBy": null,
+            "draftAt": "2026-09-28T07:33:06.753Z",
+            "orgs": 0
+          }
+        ]
+      }
+    },
+    "changes": {
+      "status": "ok",
+      "asOf": "2026-09-28T07:33:06.758Z",
+      "stale": false,
+      "sources": {
+        "audit_legacy": {
+          "state": "ok"
+        }
+      },
+      "data": {
+        "source": "redis-legacy",
+        "items": [
+          {
+            "eventId": "1727500000000-0",
+            "ts": "2026-09-28T07:33:06.753Z",
+            "event": "rbac.assign",
+            "category": "rbac",
+            "result": "ok",
+            "actor": {
+              "id": "id-bob",
+              "label": "Bob Chen",
+              "type": "user"
+            },
+            "target": {
+              "type": "user",
+              "id": null,
+              "label": "Ada Lovelace"
+            },
+            "link": {
+              "page": "audit",
+              "params": {
+                "eventId": "1727500000000-0",
+                "ts": "2026-09-28T07:33:06.753Z"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "actions": {
+      "status": "ok",
+      "asOf": "2026-09-28T07:33:06.767Z",
+      "stale": false,
+      "sources": {
+        "sites": {
+          "state": "ok"
+        }
+      },
+      "data": {
+        "items": [
+          {
+            "id": "review_requests",
+            "enabled": true,
+            "reason": "mfa_required",
+            "count": 1
+          },
+          {
+            "id": "new_site",
+            "enabled": true
+          },
+          {
+            "id": "invite_user",
+            "enabled": true
+          },
+          {
+            "id": "grant_access",
+            "enabled": true
+          },
+          {
+            "id": "check_access",
+            "enabled": true
+          },
+          {
+            "id": "find_user",
+            "enabled": true
+          },
+          {
+            "id": "open_audit",
+            "enabled": true
+          },
+          {
+            "id": "start_recert",
+            "enabled": true
+          },
+          {
+            "id": "org_api_key",
+            "enabled": false,
+            "reason": "no_permission"
+          },
+          {
+            "id": "revoke_sessions",
+            "enabled": true
+          },
+          {
+            "id": "send_recovery",
+            "enabled": true
+          },
+          {
+            "id": "open_gateway",
+            "enabled": false,
+            "reason": "not_deployed"
+          }
+        ]
+      }
+    },
+    "me": {
+      "status": "ok",
+      "asOf": "2026-09-28T07:33:06.767Z",
+      "stale": false,
+      "sources": {
+        "organisations": {
+          "state": "ok"
+        },
+        "recert": {
+          "state": "ok"
+        }
+      },
+      "data": {
+        "subject": "root",
+        "name": "Name root",
+        "roles": [],
+        "orgs": [],
+        "recertPending": 0,
+        "aal": "aal2"
+      }
+    }
+  }
+}

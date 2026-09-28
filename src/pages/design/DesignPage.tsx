@@ -6,6 +6,7 @@ import { LayoutSection } from './LayoutSection';
 import { SurfacesSection } from './SurfacesSection';
 import { OverlaysSection } from './OverlaysSection';
 import { FlowSection } from './FlowSection';
+import { DataSection } from './DataSection';
 
 /**
  * `#/design` — the living style guide. Every kit component in every state, drawn by the kit itself,
@@ -21,6 +22,7 @@ const SECTIONS = [
   { id: 'controls', label: 'Controls' },
   { id: 'layout', label: 'Layout' },
   { id: 'surfaces', label: 'Surfaces' },
+  { id: 'data', label: 'Data' },
   { id: 'overlays', label: 'Overlays' },
   { id: 'flow', label: 'Flows & code' },
 ] as const;
@@ -50,6 +52,7 @@ export function DesignPage() {
         <ControlsSection />
         <LayoutSection />
         <SurfacesSection />
+        <DataSection />
         <OverlaysSection />
         <FlowSection />
       </div>

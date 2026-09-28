@@ -11,7 +11,17 @@
   min-height: 100vh;
   min-height: 100dvh;
 }
+/* The rail's column, painted the full height of the page. The rail itself is sticky and one
+   viewport tall, so on a page taller than the window its colour alone would stop where it ends. */
+.app::before {
+  content: "";
+  grid-column: 1; grid-row: 1;
+  background: var(--color-sidebar);
+  border-right: 1px solid var(--color-border);
+}
 .sidebar {
+  grid-column: 1; grid-row: 1;
+  align-self: start;
   background: var(--color-sidebar);
   border-right: 1px solid var(--color-border);
   display: flex; flex-direction: column;
@@ -407,7 +417,8 @@
     grid-template-columns: 1fr;
   }
 
-  .sidebar {
+  .sidebar,
+  .app::before {
     display: none;
   }
 

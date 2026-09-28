@@ -467,6 +467,9 @@ const REALTIME_KEYS: readonly (readonly string[])[] = [
   ['services'], ['all-roles'], ['all-routes'], ['access-rules'],
   ['org-users'], ['my-orgs'], ['org-service-map'], ['org-admin-map'], ['assignable-groups'], ['audit'],
   ['access-review'],
+  // The Home's modules that a change moves; each refetches through its own endpoint, never the
+  // whole briefing.
+  ['home', 'attention'], ['home', 'sites'], ['home', 'changes'],
 ];
 
 // True real-time: subscribe to the server's SSE change stream (GET
@@ -489,6 +492,7 @@ export function useRealtime(enabled: boolean) {
     const onSecuritySignal = () => {
       qc.invalidateQueries({ queryKey: ['audit'] });
       qc.invalidateQueries({ queryKey: ['access-review'] });
+      qc.invalidateQueries({ queryKey: ['home', 'attention'] });
     };
     const connect = () => {
       es?.close();

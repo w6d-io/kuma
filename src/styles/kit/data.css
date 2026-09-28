@@ -1,0 +1,129 @@
+/* Kit — data and briefing: BarSeries, Meter, RelativeTime, Kpi, SourceState, QueueItem, HealthItem,
+   ActionTile. Colour only where state lives: status squares, the 3px accent bar, the second series. */
+
+/* ── BarSeries ────────────────────────────────────────────────── */
+.bars { position: relative; }
+.bars-legend { display: flex; gap: var(--space-3); font-size: var(--text-xs); color: var(--color-text-subtle); margin-bottom: var(--space-2); }
+.bars-key { display: inline-flex; align-items: center; gap: var(--space-1); }
+.bars-key::before { content: ""; width: 8px; height: 8px; flex: none; background: var(--chart-pass); }
+.bars-key.is-b::before { background: var(--chart-fail); }
+.bars-plot { position: relative; margin-right: var(--space-7); }
+.bars-plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.bars-grid { stroke: var(--chart-grid); stroke-width: 1; }
+.bars-a { fill: var(--chart-pass); }
+.bars-b { fill: var(--chart-fail); }
+.bars-b-hatch { display: none; }
+.bars-hatch { stroke: CanvasText; stroke-width: 2; }
+.bars-hit { fill: transparent; }
+.bars-bar { outline: none; cursor: default; }
+a.bars-bar { cursor: pointer; }
+.bars-bar.on .bars-hit, .bars-bar:focus-visible .bars-hit { fill: var(--color-hover); }
+.bars-bar:focus-visible .bars-hit { stroke: var(--color-focus-ring); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.bars-axis-y { position: absolute; top: 0; bottom: 0; right: calc(-1 * var(--space-7)); width: var(--space-7); pointer-events: none; }
+.bars-axis-y span { position: absolute; left: var(--space-1); transform: translateY(50%); font-size: var(--text-xs); color: var(--color-text-subtle); font-variant-numeric: tabular-nums; }
+.bars-axis-x { position: relative; height: var(--leading-xs); margin: var(--space-1) var(--space-7) 0 0; }
+.bars-axis-x span { position: absolute; top: 0; font-size: var(--text-xs); color: var(--color-text-subtle); white-space: nowrap; }
+.bars-tip {
+  position: absolute; bottom: calc(100% + var(--space-1)); transform: translateX(-50%);
+  z-index: var(--z-popover); pointer-events: none;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.bars-tip.left { transform: translateX(-100%); }
+.bars-tip-t { color: var(--color-text-subtle); font-size: var(--text-xs); }
+.bars-table-toggle { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-accent); background: none; border: 0; padding: 0; cursor: pointer; }
+.bars-table-toggle:hover { text-decoration: underline; }
+@media (forced-colors: active) {
+  .bars-b-hatch { display: inline; }
+  .bars-a { fill: CanvasText; }
+  .bars-b { fill: Canvas; stroke: CanvasText; }
+}
+
+/* ── Meter ────────────────────────────────────────────────────── */
+.meter { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.meter-track { display: block; width: 80px; height: 6px; flex: none; background: var(--color-surface-3); border-radius: var(--radius-sm); overflow: hidden; }
+.meter-fill { display: block; height: 100%; background: var(--chart-line); }
+.meter-text { font-size: var(--text-sm); white-space: nowrap; }
+
+/* ── RelativeTime ─────────────────────────────────────────────── */
+.reltime { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ── Kpi ──────────────────────────────────────────────────────── */
+.kpi { display: flex; flex-direction: column; gap: var(--space-half); min-width: 0; padding: var(--space-2) 0; color: inherit; text-decoration: none; }
+.kpi.is-link { border-radius: var(--radius-sm); }
+.kpi.is-link:hover .kpi-value { color: var(--color-accent); }
+.kpi.is-link:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+.kpi-label { font-size: var(--text-sm); color: var(--color-text-muted); }
+.kpi-value { font-size: var(--text-xl); line-height: var(--leading-xl); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--color-text); }
+.kpi-sub { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); color: var(--color-text-subtle); font-variant-numeric: tabular-nums; }
+.kpi-sub.tone-warning { color: var(--color-warning); font-weight: var(--weight-medium); }
+.kpi-sub.tone-danger { color: var(--color-danger); font-weight: var(--weight-medium); }
+.kpi-ico { display: inline-grid; place-items: center; width: 12px; }
+
+/* ── SourceState ──────────────────────────────────────────────── */
+.source-state { display: flex; gap: var(--space-3); align-items: flex-start; }
+/* The neutral status square (the same 6px mark as a status Badge): no state, no box a pointer
+   could take for a checkbox. */
+.source-state-mark { width: 6px; height: 6px; flex: none; margin-top: 7px; background: var(--color-text-subtle); }
+.source-state-body { min-width: 0; }
+.source-state-title { font-weight: var(--weight-medium); }
+.source-state-what, .source-state-how { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: var(--space-half); }
+.source-state-how code { font-family: var(--font-mono); font-size: var(--text-xs); padding: 0 var(--space-1); background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+.source-state-how a { color: var(--color-accent); }
+
+/* ── QueueItem ────────────────────────────────────────────────── */
+.queue-item {
+  position: relative;
+  display: flex; align-items: center; gap: var(--space-3);
+  min-height: 40px; padding: var(--space-2) var(--space-4);
+  color: inherit; text-decoration: none;
+  border-bottom: 1px solid var(--color-border);
+}
+.queue-item:hover { background: var(--color-surface-2); }
+.queue-item:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: -2px; }
+.queue-item.is-critical::before, .queue-item.is-warning::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+.queue-item.is-critical::before { background: var(--color-danger); }
+.queue-item.is-warning::before { background: var(--color-warning); }
+.queue-ico { width: 16px; display: grid; place-items: center; flex: none; color: var(--color-text-subtle); }
+.queue-item.is-critical .queue-ico { color: var(--color-danger); }
+.queue-item.is-warning .queue-ico { color: var(--color-warning); }
+.queue-text { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--space-2); }
+.queue-title { font-weight: var(--weight-medium); }
+.queue-detail { color: var(--color-text-muted); font-size: var(--text-sm); }
+.queue-age { flex: none; font-size: var(--text-sm); color: var(--color-text-subtle); font-variant-numeric: tabular-nums; }
+.queue-chev { flex: none; color: var(--color-text-subtle); }
+@media (max-width: 860px) { .queue-item { min-height: 48px; align-items: flex-start; } .queue-ico, .queue-age, .queue-chev { margin-top: 2px; } }
+
+/* ── HealthItem ───────────────────────────────────────────────── */
+.health-item { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border: 0; background: none; color: inherit; font: inherit; border-radius: var(--radius-sm); text-align: left; }
+button.health-item { cursor: pointer; }
+button.health-item:hover { background: var(--color-surface-2); }
+.health-mark { width: 8px; height: 8px; flex: none; background: var(--color-success); }
+.health-mark.is-degraded { background: var(--color-warning); }
+.health-mark.is-down { background: var(--color-danger); }
+.health-mark.is-unknown, .health-mark.is-not_deployed { background: var(--color-text-subtle); }
+.health-label { font-weight: var(--weight-medium); white-space: nowrap; }
+.health-summary { color: var(--color-text-muted); font-size: var(--text-sm); white-space: nowrap; }
+.health-word { font-size: var(--text-sm); color: var(--color-text-subtle); }
+.health-item.is-down .health-label, .health-item.is-down .health-summary { color: var(--color-danger); }
+.health-item.is-degraded .health-summary { color: var(--color-warning); }
+
+/* ── ActionTile ───────────────────────────────────────────────── */
+.action-tile {
+  display: flex; align-items: center; gap: var(--space-2);
+  min-height: 44px; width: 100%; padding: var(--space-2) var(--space-3);
+  background: var(--color-surface); color: inherit; text-decoration: none; text-align: left; font: inherit;
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--duration-fast), background var(--duration-fast);
+}
+.action-tile:hover { border-color: var(--color-border-strong); background: var(--color-surface-2); }
+.action-tile:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 1px; }
+.action-tile-ico { width: 16px; display: grid; place-items: center; flex: none; color: var(--color-text-muted); }
+.action-tile-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.action-tile-verb { font-weight: var(--weight-medium); }
+.action-tile-hint { font-size: var(--text-xs); color: var(--color-text-subtle); }
+.action-tile-kbd { flex: none; }
+@media (max-width: 860px) { .action-tile-kbd { display: none; } }

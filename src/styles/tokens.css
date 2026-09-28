@@ -73,6 +73,14 @@
   --color-info-soft: var(--primary-soft-3);
   --color-info-line: var(--primary-soft);
 
+  /* ── Charts ───────────────────────────────────────────────────────── */
+  /* The one two-colour encoding (signed in / failed, allowed / denied), validated for colour-vision
+     deficiency in both themes (home-design §6). Text never uses these. */
+  --chart-pass: var(--color-accent);
+  --chart-fail: var(--color-danger);
+  --chart-grid: var(--color-border);
+  --chart-line: var(--color-text-muted);
+
   /* ── Radii: three, all Strada's ───────────────────────────────────── */
   /* --radius-sm 3px (tags, kbd), --radius-md 6px (controls, cards, dialogs), --radius-round for
      things that are circles by nature: avatars, switch tracks and thumbs, radios, spinners, step
@@ -166,6 +174,8 @@
     --color-info: color-mix(in srgb, var(--theme-blue) 72%, white);
     --color-info-soft: rgb(79 195 247 / 0.12);
     --color-info-line: rgb(79 195 247 / 0.3);
+    --chart-pass: #3f9be6;
+    --chart-fail: #ef5b50;
     --shadow-sm: 0 1px 0 rgb(0 0 0 / 0.3);
     --shadow-md: 0 8px 24px rgb(0 0 0 / 0.4);
     --shadow-lg: 0 20px 60px rgb(0 0 0 / 0.55);
@@ -211,6 +221,8 @@
   --color-info: color-mix(in srgb, var(--theme-blue) 72%, white);
   --color-info-soft: rgb(79 195 247 / 0.12);
   --color-info-line: rgb(79 195 247 / 0.3);
+  --chart-pass: #3f9be6;
+  --chart-fail: #ef5b50;
   --shadow-sm: 0 1px 0 rgb(0 0 0 / 0.3);
   --shadow-md: 0 8px 24px rgb(0 0 0 / 0.4);
   --shadow-lg: 0 20px 60px rgb(0 0 0 / 0.55);

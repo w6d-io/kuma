@@ -24,6 +24,7 @@
 @import './kit/surfaces.css';
 @import './kit/overlays.css';
 @import './kit/flow.css';
+@import './kit/data.css';
 @import './shell.css';
 @import './features/access.css';
 @import './features/rules.css';
@@ -34,3 +35,4 @@
 @import './features/people.css';
 @import './features/design.css';
 @import './features/rbac.css';
+@import './features/home.css';
