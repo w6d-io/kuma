@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../contexts/AppContext';
 import { accountsApi, type PersonalKeyView } from '../api/accounts';
 import { useOrgCatalog } from '../api/orgCatalog';
+import { useMcpStatus } from '../api/hooks';
 import { ApiErrorState } from '../components/ApiErrorState';
 import { Button, Card, ConfirmDialog, EmptyRow, EmptyState, I, LoadingRows, PageHeader, Table, TagList, Th } from '../components/ui';
 import { MY_API_KEYS, personalKeysOff, useMyApiKeys } from '../hooks/usePersonalKeys';
@@ -16,14 +17,16 @@ import { CreatorCell, ExpiryCell } from './apikeys/parts';
 /**
  * Connections & keys (`#/connections`): the signed-in person's own keys, for an AI assistant or any
  * MCP client that acts as them. Each key acts in one organization, never with more than they hold
- * there, and expires within 30 days. On a platform without personal keys (404) the page says so
- * calmly, and the rail does not list it.
+ * there, and expires within 30 days (or the administrator's shorter maximum). On a platform without
+ * personal keys (404) the page says so calmly — "turned off by an administrator" when the deployment
+ * allows them but Settings → AI assistants is off (GET /mcp/status) — and the rail does not list it.
  */
 export function ConnectionsPage() {
   const qc = useQueryClient();
   const { pushToast } = useApp();
   const { orgs } = useOrgCatalog();
   const q = useMyApiKeys();
+  const status = useMcpStatus();
   const [creating, setCreating] = useState(false);
   const [revoking, setRevoking] = useState<PersonalKeyView | null>(null);
   const [busy, setBusy] = useState(false);
@@ -31,18 +34,26 @@ export function ConnectionsPage() {
     <PageHeader
       title="Connections & keys"
       sub="Keys you create for yourself, so an AI assistant or another MCP client can act as you"
-      actions={!q.isError && <Button variant="primary" icon={I.plus} onClick={() => setCreating(true)}>Create key</Button>}
+      actions={!q.isError && status.data?.off !== 'administrator' && <Button variant="primary" icon={I.plus} onClick={() => setCreating(true)}>Create key</Button>}
     />
   );
 
-  if (personalKeysOff(q.error)) {
+  if (personalKeysOff(q.error) || status.data?.off === 'administrator') {
+    const byAdmin = status.data?.off === 'administrator';
     return (
       <>
         {header}
         <Card>
-          <EmptyState icon={I.info} title="Personal keys aren’t enabled on this platform">
-            An administrator of the platform can switch them on. Nothing is wrong with your account.
-          </EmptyState>
+          {byAdmin ? (
+            <EmptyState icon={I.info} title="AI assistants are turned off by an administrator">
+              Personal keys cannot be created or used for now; keys you already have are kept and work again
+              when an administrator turns AI assistants back on. Nothing is wrong with your account.
+            </EmptyState>
+          ) : (
+            <EmptyState icon={I.info} title="Personal keys aren’t enabled on this platform">
+              An administrator of the platform can switch them on. Nothing is wrong with your account.
+            </EmptyState>
+          )}
         </Card>
       </>
     );

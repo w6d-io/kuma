@@ -1,4 +1,5 @@
 import { Card, CodeView, CopyField, Field } from '../../components/ui';
+import { useMcpStatus } from '../../api/hooks';
 import { MCP_URL_PLACEHOLDER, mcpConfig, mcpServerUrl } from '../../lib/apiKeys';
 
 /**
@@ -7,7 +8,9 @@ import { MCP_URL_PLACEHOLDER, mcpConfig, mcpServerUrl } from '../../lib/apiKeys'
  * placeholder, never a key read back — keys cannot be read back.
  */
 export function McpHelp({ secret, framed = true }: { secret?: string; framed?: boolean }) {
-  const url = mcpServerUrl();
+  // The address an administrator set (Settings → AI assistants), else the console's MCP_SERVER_URL.
+  const status = useMcpStatus();
+  const url = status.data?.serverUrl?.replace(/\/$/, '') || mcpServerUrl();
   const body = (
     <ol className="mcp-steps">
       <li>

@@ -1,7 +1,7 @@
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useEffect } from 'react';
 import { api, API_BASE } from './client';
-import type {AuditEventFilters, AuthConfigState, AuthMethodName, SignInProtection } from './client';
+import type {AuditEventFilters, AuthConfigState, AuthMethodName, McpSettings, SignInProtection } from './client';
 import type { RolesMap, RouteMapsMap, AuditEvent, User } from './types';
 import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents, normalizeAuditEvents } from './transforms';
 
@@ -237,6 +237,40 @@ export function useSetSignInProtection() {
   return useMutation({
     mutationFn: (settings: SignInProtection) => api.setSignInProtection(settings),
     onSuccess: (data) => qc.setQueryData(['sign-in-protection'], data),
+  });
+}
+
+export function useMcpSettings() {
+  return useQuery({
+    queryKey: ['mcp-settings'],
+    queryFn: () => api.getMcpSettings(),
+    staleTime: CONFIG_STALE_TIME,
+    retry: (count, err: Error & { status?: number }) => err?.status !== 404 && count < 2,
+  });
+}
+
+export const MCP_STATUS = ['mcp-status'] as const;
+
+export function useSetMcpSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (settings: McpSettings) => api.setMcpSettings(settings),
+    onSuccess: (data) => {
+      qc.setQueryData(['mcp-settings'], data);
+      // What people see on Connections & keys follows at once, their own keys list included.
+      qc.invalidateQueries({ queryKey: MCP_STATUS });
+      qc.invalidateQueries({ queryKey: ['my-api-keys'] });
+    },
+  });
+}
+
+/** Is MCP on and where is its server. A jinbe that predates the switch answers 404: treated as unknown. */
+export function useMcpStatus() {
+  return useQuery({
+    queryKey: MCP_STATUS,
+    queryFn: () => api.getMcpStatus(),
+    staleTime: 30_000,
+    retry: false,
   });
 }
 
