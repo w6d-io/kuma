@@ -17,6 +17,8 @@
     <!--              Used for redirect on 401 responses. Required in env-isolated test/dev. -->
     <!-- GRAFANA_URL: base URL of Grafana for per-event audit trace deep-links. -->
     <!--              Empty → no trace link rendered. -->
+    <!-- MCP_SERVER_URL: where MCP clients connect with a personal key (Connections & keys). -->
+    <!--              Empty → the help panel says to ask an administrator. -->
     <script>
       window.__API_BASE__ = "${API_BASE}";
       window.__AUTH_DOMAIN__ = "${AUTH_DOMAIN}";
@@ -30,6 +32,7 @@
       window.__ORG_DIRECTORY_AUDIENCE__ = "${ORG_DIRECTORY_AUDIENCE}";
       window.__ORG_DIRECTORY_URL__ = "${ORG_DIRECTORY_URL}";
       window.__ORG_SELECTION_URL__ = "${ORG_SELECTION_URL}";
+      window.__MCP_SERVER_URL__ = "${MCP_SERVER_URL}";
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
