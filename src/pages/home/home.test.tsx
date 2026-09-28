@@ -164,6 +164,27 @@ describe('HomePage', () => {
     delete (window as unknown as { __AUTH_DOMAIN__?: string }).__AUTH_DOMAIN__;
   });
 
+  it('words the audit outbox item from its counts, with its own icon, and counts a missing archiver as no fault', async () => {
+    const home = platformHome();
+    const now = new Date().toISOString();
+    home.modules.attention.data!.items.push({ id: 'audit_outbox_near_cap:outbox', kind: 'audit_outbox_near_cap', severity: 'info', title: 'server words', since: now, actionable: true, target: { page: 'audit' }, metrics: { count: 9200, cap: 10000 } });
+    const h = home.modules.health.data!;
+    h.components = [
+      ...h.components.map((c) => (c.id === 'audit_archive' ? { ...c, state: 'not_deployed' as const, summary: 'no archiver configured' } : c)),
+      { id: 'waf', state: 'degraded', summary: '3/7 sites behind the WAF', metrics: { total: 7, waf: 3, unknown: 0, unprotected: 4, unprotectedHosts: 3 } },
+    ];
+    serve(home);
+    const { container } = await page();
+    const item = [...container.querySelectorAll('.queue-item')].find((a) => a.textContent?.includes('Audit outbox'))!;
+    expect(item.textContent).toContain('Audit outbox nearly full: 9,200 of 10,000 events');
+    expect(item.textContent).toContain('The audit log itself is unaffected.');
+    expect(item.querySelector('.queue-ico i')!.className).toContain('fa-box');
+    expect(item.getAttribute('href')).toContain('#/audit');
+    expect(container.textContent).toContain('4 sites (3 hosts) not behind the WAF');
+    // The audit row is ok (its store is); only the WAF counts against the platform.
+    expect(container.querySelector('.health-fold')!.textContent).toContain('9 of 10 systems ok');
+  });
+
   it('never draws a forbidden module for support, and puts the finder first', async () => {
     serve(supportHome());
     const { container } = await page();

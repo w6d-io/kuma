@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ageOf, deltaOf, healthRows, personaOf, summaryClauses, visibleActions } from './briefing';
+import { ageOf, deltaOf, healthRows, personaOf, summaryClauses, visibleActions, wafSummary } from './briefing';
+import type { HealthComponent } from '../../api/home';
 import { homeHref, homeSelfHref } from './href';
 import { parseHash } from '../route';
 import { parseSitesHash } from '../sites/route';
@@ -72,6 +73,32 @@ describe('healthRows', () => {
     const rows = healthRows(health(NOW).components);
     expect(rows.map((r) => r.label)).toEqual(['Gateway', 'Gateway rules', 'Policy engine', 'Policy sync', 'Sign-in', 'Console API', 'Data store', 'Audit log', 'Certificates']);
     expect(rows.find((r) => r.key === 'audit')).toMatchObject({ state: 'degraded', summary: 'archive 3 min behind' });
+  });
+  it('does not let an archive that is not deployed here win the audit row: it is noted, the store is the state', () => {
+    const comps = health(NOW).components.map((c) => (c.id === 'audit_archive' ? { ...c, state: 'not_deployed' as const, summary: 'no archiver configured' } : c));
+    const audit = healthRows(comps).find((r) => r.key === 'audit')!;
+    expect(audit).toMatchObject({ state: 'ok', summary: 'reachable', notes: ['Archive: no archiver configured'] });
+  });
+
+  it('keeps the policy engine ok when OPAL manages it', () => {
+    const comps = health(NOW).components.map((c) => (c.id === 'opa' ? { ...c, summary: 'reachable (OPAL-managed)' } : c));
+    expect(healthRows(comps).find((r) => r.key === 'opa')).toMatchObject({ state: 'ok', summary: 'reachable (OPAL-managed)' });
+  });
+});
+
+describe('wafSummary', () => {
+  const waf = (metrics?: Record<string, number>, summary = '1/5 sites behind the WAF'): HealthComponent => ({ id: 'waf', state: 'degraded', summary, ...(metrics ? { metrics } : {}) });
+  it('counts the sites not behind the WAF, and their hosts when fewer', () => {
+    expect(wafSummary(waf({ total: 7, waf: 3, unknown: 0, unprotected: 4, unprotectedHosts: 3 }))).toBe('4 sites (3 hosts) not behind the WAF');
+    expect(wafSummary(waf({ total: 2, waf: 1, unknown: 0, unprotected: 1, unprotectedHosts: 1 }))).toBe('1 site not behind the WAF');
+  });
+  it('says all are behind, none are live, or how many are unknown', () => {
+    expect(wafSummary(waf({ total: 3, waf: 3, unknown: 0, unprotected: 0, unprotectedHosts: 0 }))).toBe('all 3 sites behind the WAF');
+    expect(wafSummary(waf({ total: 0, waf: 0, unknown: 0, unprotected: 0, unprotectedHosts: 0 }))).toBe('no live sites');
+    expect(wafSummary(waf({ total: 4, waf: 2, unknown: 1, unprotected: 1, unprotectedHosts: 1 }))).toBe('1 site not behind the WAF · 1 site unknown');
+  });
+  it('keeps the server’s words from an older jinbe without counts', () => {
+    expect(wafSummary(waf(undefined))).toBe('1/5 sites behind the WAF');
   });
 });
 

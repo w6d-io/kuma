@@ -45,6 +45,8 @@ export interface HealthComponent {
   summary: string;
   since?: string;
   link?: { page: string; params?: Record<string, string>; anchor?: string } | { grafana: string };
+  /** The counts behind the summary. waf: `{total, waf, unknown, unprotected, unprotectedHosts}`. */
+  metrics?: Record<string, number>;
 }
 
 export interface Health {
