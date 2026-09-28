@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { entryOf, gatewayProblem, nextStep, protectionOf } from './zones';
+import { anyProtected, defaultGateway, entryOf, fromStatus, gatewayProblem, nextStep, protectionOf } from './zones';
 import type { GatewayInfo } from './types';
 
 const eg = (protectedByWaf = true): GatewayInfo => ({
@@ -42,5 +42,24 @@ describe('zone exposure', () => {
     expect(nextStep({})).toMatch(/Attach a Gateway/);
     expect(nextStep({ gateway: 'envoy-gateway-system/eg' })).toMatch(/DNS at the Gateway, then drop the Ingress/);
     expect(nextStep({ ingress: 'none', gateway: 'envoy-gateway-system/eg' })).toBeNull();
+  });
+});
+
+describe('WAF by default', () => {
+  it('jinbe\'s protection state wins, in words', () => {
+    const p = { state: 'none' as const, reason: 'ingress_bypass' as const, gateway: 'envoy-gateway-system/eg', waf: 'envoy-gateway-system/waf-coraza', ipReputation: null, message: 'the nginx Ingress still answers' };
+    expect(protectionOf({ ingress: 'none', gateway: 'envoy-gateway-system/eg', protection: p }, [eg()])).toMatchObject({ tone: 'warning', label: 'WAF bypassable' });
+    expect(fromStatus({ ...p, state: 'waf', reason: 'gateway' })).toMatchObject({ tone: 'success', label: 'Protected by WAF' });
+    expect(fromStatus({ ...p, reason: 'no_gateway' })).toMatchObject({ tone: 'danger', label: 'No WAF' });
+    expect(fromStatus({ ...p, reason: 'gateway_not_protected' })).toMatchObject({ tone: 'danger', label: 'Gateway not protected' });
+  });
+
+  it('the default Gateway is a protected one that can serve the domain', () => {
+    expect(defaultGateway([eg()], 'dev.example.com', 'default')?.key).toBe('envoy-gateway-system/eg');
+    expect(defaultGateway([eg()], 'apps.dev.example.com', 'default')).toBeNull();
+    expect(defaultGateway([eg()], 'apps.dev.example.com', 'issuer')?.key).toBe('envoy-gateway-system/eg');
+    expect(defaultGateway([eg(false)], 'dev.example.com', 'default')).toBeNull();
+    expect(anyProtected([eg(false)])).toBeNull();
+    expect(anyProtected([eg(false), eg()])?.key).toBe('envoy-gateway-system/eg');
   });
 });

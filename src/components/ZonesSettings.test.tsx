@@ -13,6 +13,7 @@ type Call = { method: string; path: string; body?: Record<string, unknown> };
 let calls: Call[] = [];
 let zone: Record<string, unknown> = {};
 let dnsOnGateway = false;
+let gateways: unknown[] = [];
 
 const gateway = {
   key: 'envoy-gateway-system/eg', namespace: 'envoy-gateway-system', name: 'eg', exists: true, className: 'eg', addresses: ['envoy.elb'], programmed: true, message: '',
@@ -29,14 +30,16 @@ beforeEach(() => {
   h.toasts = [];
   h.permissions = ['admin:read', 'admin:write'];
   dnsOnGateway = false;
+  gateways = [gateway];
   zone = { name: 'dev', suffix: 'dev.example.com', wildcard: '*.dev.example.com', cookieDomain: '.dev.example.com', sso: true, tls: 'wildcard', ingress: 'per-site', gateway: 'envoy-gateway-system/eg', ready: true, source: 'zone' };
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const c: Call = { method: init?.method ?? 'GET', path: new URL(String(url), 'http://x').pathname.replace(/^\/api/, ''), body: init?.body ? JSON.parse(String(init.body)) : undefined };
     calls.push(c);
     const ok = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } });
     if (c.path === '/whoami') return ok({ authenticated: true, email: 'sam@example.com', permissions: h.permissions, groups: ['admins'] });
-    if (c.path === '/admin/sites/zones') return ok([zone]);
-    if (c.path === '/admin/sites/gateways') return ok({ gateways: [gateway] });
+    if (c.path === '/admin/sites/zones' && c.method === 'GET') return ok([zone]);
+    if (c.path === '/admin/sites/gateways') return ok({ gateways });
+    if (c.path === '/admin/sites/zones' && c.method === 'POST') return ok({ name: 'x', checks: [] }, 201);
     if (c.path === '/admin/sites/zones/dev' && c.method === 'PATCH') {
       const host = { host: 'echo-sandbox-tes.dev.example.com', addresses: ['51.44.199.227'] };
       if (!dnsOnGateway && !c.body?.confirm) {
@@ -58,6 +61,10 @@ const text = () => document.body.textContent ?? '';
 const button = (label: string) => [...document.body.querySelectorAll('button')].find((b) => b.textContent?.trim() === label) ?? null;
 const click = (el: Element | null) => act(() => { (el as HTMLElement).click(); });
 const selectIn = (label: string) => [...document.body.querySelectorAll('.field')].find((f) => f.querySelector('.field-label')?.textContent?.includes(label))?.querySelector('select') as HTMLSelectElement;
+const typeIn = (el: Element, value: string) => act(() => {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, value);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+});
 const choose = (sel: HTMLSelectElement, value: string) => act(() => {
   Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(sel, value);
   sel.dispatchEvent(new Event('change', { bubbles: true }));
@@ -100,5 +107,53 @@ describe('Settings · Zones', () => {
     expect(text()).toContain('WAF bypassable');
     expect(button('Edit exposure')).toBeNull();
     expect(button('Create zone')).toBeNull();
+  });
+
+  it('Create zone: the WAF-protected Gateway by default, nothing to confirm', async () => {
+    mount();
+    await settle();
+    click(button('Create zone'));
+    await settle();
+    typeIn(document.querySelector('input[placeholder="apps.dev.example.com"]')!, 'shop.dev.example.com');
+    await settle();
+    expect(selectIn('Gateway').value).toBe('');
+    typeIn(document.querySelector('input[placeholder="apps.dev.example.com"]')!, 'dev.example.com');
+    await settle();
+    expect(selectIn('Gateway').value).toBe('envoy-gateway-system/eg');
+    expect(selectIn('nginx Ingress').value).toBe('none');
+    expect(text()).not.toContain('This zone will have no WAF');
+    click(button('Create'));
+    await settle();
+    expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ domain: 'dev.example.com', ingress: 'none', tls: { mode: 'default' }, gateway: { namespace: 'envoy-gateway-system', name: 'eg' } });
+  });
+
+  it('Create zone on nginx while a protected Gateway exists: warned, confirmed, and sent as such', async () => {
+    mount();
+    await settle();
+    click(button('Create zone'));
+    await settle();
+    typeIn(document.querySelector('input[placeholder="apps.dev.example.com"]')!, 'apps.dev.example.com');
+    await settle();
+    // no listener for *.apps.dev: the hint says how to get the WAF anyway
+    expect(text()).toContain('This zone will have no WAF');
+    expect(text()).toContain('choose "Issued for the zone" to put it behind the WAF');
+    expect(button('Create')!.disabled).toBe(true);
+    click(document.body.querySelector('input[type="checkbox"]'));
+    await settle();
+    click(button('Create'));
+    await settle();
+    expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ domain: 'apps.dev.example.com', ingress: 'wildcard', tls: { mode: 'default' }, acknowledgeNoWaf: true });
+  });
+
+  it('no protected Gateway in the cluster: nginx, with a No WAF warning and nothing to confirm', async () => {
+    gateways = [];
+    mount();
+    await settle();
+    click(button('Create zone'));
+    await settle();
+    typeIn(document.querySelector('input[placeholder="apps.dev.example.com"]')!, 'apps.dev.example.com');
+    await settle();
+    expect(text()).toContain('No WAF-protected Gateway was found in the cluster');
+    expect(button('Create')!.disabled).toBe(false);
   });
 });

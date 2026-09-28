@@ -4,7 +4,7 @@ import { Badge, Button, ButtonBase, Callout, EmptyRow, EmptyState, I, Input, Loa
 import { sitesApi, useSites, notAvailable } from '../../api/sites';
 import { goSites, sitesHref } from '../../lib/sites/route';
 import type { SiteSummary } from '../../lib/sites/types';
-import { QueryError, StatusBadge } from './parts';
+import { QueryError, StatusBadge, WafBadge } from './parts';
 import { timeAgo } from '../../lib/sites/format';
 import { useSitePerms } from './usePerms';
 
@@ -128,7 +128,7 @@ export function SitesList({ query }: { query: Record<string, string> }) {
                   </td>
                   <td className="mono small">{s.host}</td>
                   <td className="small">{s.system ? 'System site' : s.kind ?? '—'}</td>
-                  <td><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}</td>
+                  <td><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}<WafBadge p={s.protection} /></td>
                   <td className="small tabular">{s.status === 'draft' && !s.appliedVersion ? 'draft' : `v${s.appliedVersion ?? s.version}`}</td>
                 </tr>
               ))}
@@ -138,7 +138,7 @@ export function SitesList({ query }: { query: Record<string, string> }) {
             {shown.map((s) => (
               <li key={s.name}>
                 <ButtonBase className="site-card" onClick={() => open(s)}>
-                  <span className="row gap-8 items-baseline"><span className="fw-medium">{s.displayName}</span><StatusBadge status={s.status} /></span>
+                  <span className="row gap-8 items-baseline"><span className="fw-medium">{s.displayName}</span><StatusBadge status={s.status} /><WafBadge p={s.protection} /></span>
                   <span className="mono small">{s.host}</span>
                   <span className="small muted">{subline(s)}</span>
                 </ButtonBase>

@@ -57,10 +57,11 @@ export const sitesApi = {
   get: (name: string) => request<SiteDetail>(`${BASE}/${enc(name)}`),
   zones: () => request<Zone[]>(`${BASE}/zones`),
   zone: (name: string) => request<ZoneDetail>(`${BASE}/zones/${enc(name)}`),
-  createZone: (body: { domain: string; ingress?: ZoneIngress; tls?: ZoneDetail['tls']; gateway?: ZoneGatewayRef }) =>
+  /** No gateway and no ingress: jinbe picks the WAF-protected Gateway. `acknowledgeNoWaf`: nginx on purpose. */
+  createZone: (body: { domain: string; ingress?: ZoneIngress; tls?: ZoneDetail['tls']; gateway?: ZoneGatewayRef; acknowledgeNoWaf?: boolean }) =>
     request<ZoneDetail>(`${BASE}/zones`, { method: 'POST', body: json(body) }),
   /** The exposure only (never the domain); `confirm` drops the Ingress despite the DNS check. */
-  updateZone: (name: string, body: { ingress?: ZoneIngress; gateway?: ZoneGatewayRef | null; tls?: ZoneDetail['tls']; confirm?: boolean }) =>
+  updateZone: (name: string, body: { ingress?: ZoneIngress; gateway?: ZoneGatewayRef | null; tls?: ZoneDetail['tls']; confirm?: boolean; acknowledgeNoWaf?: boolean }) =>
     request<ZoneDetail>(`${BASE}/zones/${enc(name)}`, { method: 'PATCH', body: json(body) }),
   /** The Gateways a zone may be attached to, with their WAF / IP reputation state. */
   gateways: () => request<{ gateways: GatewayInfo[] }>(`${BASE}/gateways`),

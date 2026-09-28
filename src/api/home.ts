@@ -35,7 +35,7 @@ export interface Module<T> {
 
 // ── health ──────────────────────────────────────────────────────────────────
 
-export type HealthId = 'jinbe' | 'redis' | 'kratos' | 'opa' | 'opal_data' | 'gateway' | 'gateway_rules' | 'audit_store' | 'audit_archive' | 'certificates';
+export type HealthId = 'waf' | 'jinbe' | 'redis' | 'kratos' | 'opa' | 'opal_data' | 'gateway' | 'gateway_rules' | 'audit_store' | 'audit_archive' | 'certificates';
 export type HealthState = 'ok' | 'degraded' | 'down' | 'unknown' | 'not_deployed';
 
 export interface HealthComponent {

@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { Badge, Button, Callout, Card, EmptyHint, I, Table, Th } from '../../../components/ui';
 import { sitesApi, useSiteStatus, useInvalidateSite, notAvailable } from '../../../api/sites';
-import type { Condition } from '../../../lib/sites/types';
+import type { Condition, ProtectionStatus } from '../../../lib/sites/types';
+import { fromStatus } from '../../../lib/sites/zones';
 import type { SiteEditor } from '../useSiteEditor';
 import { NotAvailable, QueryError } from '../parts';
 import { timeAgo } from '../../../lib/sites/format';
@@ -27,6 +28,18 @@ function Conditions({ list }: { list: Condition[] }) {
   );
 }
 
+/** Behind the WAF or not (jinbe reads the zone, its Gateway and the Gateway's policies). */
+function Protection({ p }: { p: ProtectionStatus }) {
+  const v = fromStatus(p);
+  const policies = [p.waf && `WAF ${p.waf}`, p.ipReputation && `IP bans ${p.ipReputation}`].filter(Boolean).join(' · ');
+  return (
+    <Callout tone={v.tone === 'neutral' ? 'neutral' : v.tone} icon={p.state === 'waf' ? I.shield : I.alert} title={v.label}>
+      <p className="small m-0">{p.message}</p>
+      {policies && <p className="small mb-0 muted">{policies}</p>}
+    </Callout>
+  );
+}
+
 export function StatusTab({ ed }: { ed: SiteEditor }) {
   const status = useSiteStatus(ed.name, { poll: true });
   const events = useQuery({ queryKey: ['sites', 'events', ed.name], queryFn: () => sitesApi.events(ed.name), retry: false, refetchInterval: (q) => (notAvailable(q.state.error) ? false : 10_000) });
@@ -44,6 +57,8 @@ export function StatusTab({ ed }: { ed: SiteEditor }) {
           <ul className="site-list mono small">{applied.rules.map((r) => <li key={r}>{r}</li>)}</ul>
         </Card>
       )}
+
+      {status.data?.protection && <Protection p={status.data.protection} />}
 
       <Card title="Site object" sub="Reconciled by the Site operator: Validated · RulesSynced · RulesLoaded · IngressReady · RouteReady (the Gateway route, behind the WAF) · CertificateReady">
         {status.isLoading ? <EmptyHint>Loading…</EmptyHint> : status.error ? <QueryError error={status.error} what="the Site object’s status" /> : status.data && (

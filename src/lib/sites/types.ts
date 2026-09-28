@@ -82,6 +82,19 @@ export interface Site {
 
 export type SiteStatus = 'live' | 'applying' | 'attention' | 'draft' | 'paused' | 'platform' | 'legacy';
 
+/**
+ * Is a zone — and every site under it — behind the WAF (jinbe `protection`)? `waf` needs a Gateway whose
+ * Coraza policy is in force and no nginx Ingress left; `none` says why (reason) and names the policies.
+ */
+export interface ProtectionStatus {
+  state: 'waf' | 'none';
+  reason: 'gateway' | 'no_gateway' | 'ingress_bypass' | 'gateway_not_protected' | 'gateway_unknown' | 'no_zone';
+  gateway: string | null;
+  waf: string | null;
+  ipReputation: string | null;
+  message: string;
+}
+
 export interface SiteSummary {
   name: string;
   displayName: string;
@@ -97,6 +110,8 @@ export interface SiteSummary {
   draft?: { by: string; at?: string; changes?: number };
   attention?: string[];
   system?: boolean;
+  /** Behind the WAF or not; null when the cluster could not say, absent on older servers. */
+  protection?: ProtectionStatus | null;
 }
 
 export interface SiteDetail {
@@ -180,6 +195,8 @@ export interface Zone {
   gateway?: string;
   /** The operator's Ready for the current spec; absent = unknown. */
   ready?: boolean;
+  /** Zone CRs: behind the WAF or not, as jinbe reads it from the cluster. */
+  protection?: ProtectionStatus;
   source?: 'zone' | 'config';
 }
 
@@ -228,8 +245,8 @@ export interface ZoneDetail {
   ingress: ZoneIngress;
   ingressClass: string | null;
   gateway: ZoneGatewayRef | null;
-  exposure: { entry: 'ingress' | 'gateway' | 'both'; wafBypass: boolean; protected: boolean | null };
-  protection?: GatewayProtection;
+  exposure: { entry: 'ingress' | 'gateway' | 'both'; wafBypass: boolean };
+  protection: ProtectionStatus;
   tls: { mode: 'default' | 'issuer' | 'secret'; issuer?: string; secretName?: string };
   cookieDomain: string | null;
   sso: boolean;
@@ -291,6 +308,7 @@ export interface Condition { type: string; status: 'True' | 'False' | 'Unknown';
 
 export interface SiteK8sStatus {
   exists?: boolean;
+  protection?: ProtectionStatus | null;
   version?: number;
   generation: number;
   observedGeneration: number;

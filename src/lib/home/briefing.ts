@@ -43,6 +43,7 @@ export interface HealthRow {
 
 /** The path a request and a change travel, in that order (home-design §4.2). */
 const STRIP: Array<{ key: string; ids: HealthId[]; label: string; tip: string; consequence: string }> = [
+  { key: 'waf', ids: ['waf'], label: 'WAF', tip: 'Live sites behind the Envoy Gateway’s WAF (Coraza), with no nginx Ingress left around it.', consequence: 'sites answer without WAF inspection or IP bans.' },
   { key: 'gateway', ids: ['gateway'], label: 'Gateway', tip: 'Oathkeeper — checks who is calling before a request reaches a site.', consequence: 'sites behind it are unreachable.' },
   { key: 'gateway_rules', ids: ['gateway_rules'], label: 'Gateway rules', tip: 'The rules the gateway loads. It re-reads them every 5 seconds; this is when they were last served and whether they compiled.', consequence: 'rule changes are not reaching the gateway.' },
   { key: 'opa', ids: ['opa'], label: 'Policy engine', tip: 'OPA — decides whether a signed-in person may call a route.', consequence: 'every request that needs a permission is denied.' },

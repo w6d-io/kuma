@@ -1,4 +1,4 @@
-import type { GatewayInfo, Zone, ZoneIngress } from './types';
+import type { GatewayInfo, ProtectionStatus, Zone, ZoneIngress } from './types';
 
 /**
  * How a zone is reached, and whether that is behind the WAF (Settings → Zones). A zone is served by
@@ -24,7 +24,19 @@ export function entryOf(z: Pick<Zone, 'ingress' | 'gateway'>): 'ingress' | 'gate
 
 export const ENTRY_LABEL = { ingress: 'nginx', gateway: 'Envoy Gateway', both: 'nginx + Envoy (migrating)' } as const;
 
-export function protectionOf(z: Pick<Zone, 'ingress' | 'gateway'>, gateways: readonly GatewayInfo[] | undefined): ProtectionState {
+/** jinbe's protection state in words and a tone (zones and sites alike). */
+export function fromStatus(p: ProtectionStatus): ProtectionState {
+  switch (p.reason) {
+    case 'gateway': return { tone: 'success', label: 'Protected by WAF', detail: p.message };
+    case 'ingress_bypass': return { tone: 'warning', label: 'WAF bypassable', detail: p.message };
+    case 'gateway_unknown': return { tone: 'neutral', label: 'Unknown', detail: p.message };
+    case 'gateway_not_protected': return { tone: 'danger', label: 'Gateway not protected', detail: p.message };
+    default: return { tone: 'danger', label: 'No WAF', detail: p.message };
+  }
+}
+
+export function protectionOf(z: Pick<Zone, 'ingress' | 'gateway' | 'protection'>, gateways: readonly GatewayInfo[] | undefined): ProtectionState {
+  if (z.protection) return fromStatus(z.protection);
   const entry = entryOf(z);
   if (entry === 'ingress') return { tone: 'danger', label: 'No WAF', detail: 'Served by nginx: no WAF, no IP bans. Attach the zone to a Gateway.' };
   const gw = gateways?.find((g) => g.key === z.gateway);
@@ -58,4 +70,18 @@ export function nextStep(z: Pick<Zone, 'ingress' | 'gateway'>): string | null {
     case 'both': return 'Point the site hosts’ DNS at the Gateway, then drop the Ingress.';
     default: return null;
   }
+}
+
+/**
+ * The Gateway a new zone gets by default (owner decision: WAF by default): the first one with the WAF
+ * in force that can serve `*.<domain>` — its own listener for TLS default, any for an issued
+ * certificate (the zone brings its own listener). Null: no such Gateway, nginx is the fallback.
+ */
+export function defaultGateway(gateways: readonly GatewayInfo[], domain: string, tls: 'default' | 'issuer' | 'secret'): GatewayInfo | null {
+  return gateways.find((g) => g.exists && g.protection.protected && (tls !== 'default' || !domain || !!coveringListener(g, domain))) ?? null;
+}
+
+/** Any Gateway with the WAF in force: choosing nginx while one exists is an explicit choice. */
+export function anyProtected(gateways: readonly GatewayInfo[]): GatewayInfo | null {
+  return gateways.find((g) => g.exists && g.protection.protected) ?? null;
 }

@@ -7,6 +7,8 @@ import { HTTP_METHODS, type Access, type HttpMethod, type RiskLevel, type SiteSt
 import { toggleMethod } from '../../lib/sites/paths';
 import { accessWord, type CheckLevel } from '../../lib/sites/format';
 import { gatewayHref, kindOfHandler } from '../../lib/gateway/logic';
+import type { ProtectionStatus } from '../../lib/sites/types';
+import { fromStatus } from '../../lib/sites/zones';
 
 /** Pieces every Sites screen shares: status, checks, methods, access, locked handlers, gaps. */
 
@@ -130,4 +132,11 @@ export function QueryError({ error, what, className }: { error: unknown; what: s
   if (notAvailable(error)) return <NotAvailable what={what} />;
   const v = describeApiError(error);
   return <Callout tone="danger" icon={I.alert} title={v.title} className={className}>{v.detail}</Callout>;
+}
+
+/** "No WAF" / "WAF bypassable" on a site that is not behind the WAF; nothing when it is or nobody knows. */
+export function WafBadge({ p }: { p?: ProtectionStatus | null }) {
+  if (!p || p.state === 'waf') return null;
+  const v = fromStatus(p);
+  return <Badge tone={v.tone} mono={false} title={v.detail}>{v.label}</Badge>;
 }
