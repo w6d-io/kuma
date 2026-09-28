@@ -1,7 +1,7 @@
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useEffect } from 'react';
 import { api, API_BASE } from './client';
-import type {AuditEventFilters, AuthConfigState, AuthMethodName } from './client';
+import type {AuditEventFilters, AuthConfigState, AuthMethodName, SignInProtection } from './client';
 import type { RolesMap, RouteMapsMap, AuditEvent, User } from './types';
 import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents, normalizeAuditEvents } from './transforms';
 
@@ -220,6 +220,23 @@ export function useSetSecondFactorGroups() {
   return useMutation({
     mutationFn: (groups: string[]) => api.setSecondFactorGroups(groups),
     onSuccess: (data) => qc.setQueryData(['second-factor-groups'], data),
+  });
+}
+
+export function useSignInProtection() {
+  return useQuery({
+    queryKey: ['sign-in-protection'],
+    queryFn: () => api.getSignInProtection(),
+    staleTime: CONFIG_STALE_TIME,
+    retry: (count, err: Error & { status?: number }) => err?.status !== 404 && count < 2,
+  });
+}
+
+export function useSetSignInProtection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (settings: SignInProtection) => api.setSignInProtection(settings),
+    onSuccess: (data) => qc.setQueryData(['sign-in-protection'], data),
   });
 }
 
