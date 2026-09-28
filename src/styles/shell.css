@@ -495,5 +495,6 @@
 .two-step-banner { font-family: var(--font-sans); }
 .two-step-banner.is-soft { background: var(--color-info-soft); color: var(--color-info); border-bottom-color: color-mix(in srgb, var(--color-info) 30%, var(--color-border)); }
 .two-step-banner-link { color: inherit; font-weight: var(--weight-medium); text-decoration: underline; white-space: nowrap; }
-.userbtn-alert { width: 8px; height: 8px; border-radius: 50%; background: var(--color-warning); flex: none; }
+/* A status mark, square like every status marker (Badge.tsx, .sync-pill .d): never a round label. */
+.userbtn-alert { width: 6px; height: 6px; background: var(--color-warning); flex: none; }
 .usermenu-item.is-alert { color: var(--color-warning); font-weight: var(--weight-medium); }
