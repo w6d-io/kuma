@@ -12,12 +12,14 @@ import { UserAccessTab } from './UserAccessTab';
 import { UserTrail } from './UserTrail';
 import { UserProfileTab } from './UserProfileTab';
 import { UserSessionsTab } from './UserSessionsTab';
+import { UserSignInTab } from './UserSignInTab';
 import { UserDangerTab } from './UserDangerTab';
 
-type DrawerTab = 'groups' | 'profile' | 'sessions' | 'activity' | 'danger';
+type DrawerTab = 'groups' | 'profile' | 'signin' | 'sessions' | 'activity' | 'danger';
 const DRAWER_TABS: { value: DrawerTab; label: string }[] = [
   { value: 'groups', label: 'Access' },
   { value: 'profile', label: 'Edit' },
+  { value: 'signin', label: 'Sign-in' },
   { value: 'sessions', label: 'Sessions' },
   { value: 'activity', label: 'Activity' },
   { value: 'danger', label: 'Danger' },
@@ -185,6 +187,7 @@ export function UserDrawer() {
             </>
           )}
           {drawerTab === "profile" && <UserProfileTab user={user} />}
+          {drawerTab === "signin" && <UserSignInTab user={user} />}
           {drawerTab === "sessions" && <UserSessionsTab user={user} />}
           {drawerTab === "activity" && <UserTrail user={user} />}
           {drawerTab === "danger" && <UserDangerTab key={user.id} user={user} onDeleted={() => setUserDrawer(null)} />}

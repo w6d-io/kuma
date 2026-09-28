@@ -27,6 +27,8 @@ export async function errorFrom(res: Response, message?: string): Promise<Error>
     // gate refusal, and without it here the console can only show the previous state and leave the
     // reader to guess whether part of the change went through.
     applied: body.applied,
+    // Seconds, from a 429's Retry-After: how long a limited action stays refused.
+    retryAfter: Number(res.headers?.get?.('retry-after')) || undefined,
     details: body,
   });
 }
