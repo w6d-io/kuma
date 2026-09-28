@@ -28,8 +28,14 @@ export interface ActorLabel {
  */
 export function actorLabel(actor: AuditActor, revealed?: { name?: string; email?: string } | null | 'missing'): ActorLabel {
   if (actor.type === 'system') return { kind: 'system', primary: 'system' };
-  if (actor.type === 'anonymous' || !actor.id) return { kind: 'anonymous', primary: 'anonymous' };
-  if (actor.type === 'service') return { kind: 'service', primary: `service · ${shortId(actor.id)}` };
+  if (actor.type === 'anonymous') {
+    // Nobody signed in: say so, with the little the line keeps (network, browser family).
+    const where = [actor.ip_net, actor.ua_family].filter(Boolean).join(' · ');
+    return { kind: 'anonymous', primary: 'Unauthenticated visitor', ...(where ? { secondary: where } : {}) };
+  }
+  if (actor.type === 'service') return { kind: 'service', primary: actor.id ? `service · ${actor.id.length > 24 ? shortId(actor.id) : actor.id}` : 'service' };
+  // A person the event could not name by id (older events, or only an address was known).
+  if (!actor.id) return { kind: 'user', primary: actor.identifier_hmac ? `person · ${actor.identifier_hmac.slice(-8)}` : 'unidentified person' };
   if (revealed === 'missing') return { kind: 'user', primary: `deleted user · ${shortId(actor.id)}` };
   if (revealed && (revealed.name || revealed.email)) {
     return { kind: 'user', primary: revealed.name || revealed.email!, secondary: revealed.name ? revealed.email : undefined };
@@ -48,6 +54,10 @@ const PHRASES: Record<string, string> = {
   'access.denied': 'denied',
   'access.decision': 'gateway decision',
   'access.checked': 'checked access',
+  'access.summary': 'gateway access (hour)',
+  'site.synced': 'site re-synced',
+  'site.permissions_published': 'site permissions published',
+  'apikey.used': 'API key used',
   'audit.exported': 'exported the audit log',
   'audit.queried': 'queried the audit log',
 };

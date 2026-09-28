@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { AuditFacets as Facets, FacetCount } from '../../api/audit';
 import { Button, Checkbox, Input, Select, Skeleton } from '../../components/ui';
-import { activeCount, clearFilters, toggleFacet, type AuditFilters, type FacetKey } from '../../lib/audit/filters';
+import { ACTOR_TYPE_LABEL, activeCount, clearFilters, toggleFacet, type AuditFilters, type FacetKey } from '../../lib/audit/filters';
 import { eventPhrase, shortId } from '../../lib/audit/format';
 
 function Group({ title, items, selected, onToggle, format, limit = 8 }: {
@@ -34,6 +34,7 @@ export function AuditFacets({ facets, filters, onChange, platform, orgName }: {
   orgName: (id: string) => string;
 }) {
   const [actor, setActor] = useState(filters.actor ?? '');
+  // Unauthenticated callers are hidden unless shown or picked: the facet says so rather than hiding it silently.
   const toggle = (key: FacetKey) => (v: string) => onChange(toggleFacet(filters, key, v));
   const single = (key: 'site' | 'org' | 'actor') => (v: string) => onChange({ ...filters, [key]: filters[key] === v ? undefined : v });
   const n = activeCount(filters);
@@ -42,6 +43,12 @@ export function AuditFacets({ facets, filters, onChange, platform, orgName }: {
       <Group title="Result" items={facets?.result} selected={filters.result} onToggle={toggle('result')} />
       <Group title="Category" items={facets?.category} selected={filters.category} onToggle={toggle('category')} />
       <Group title="Event" items={facets?.event} selected={filters.event} onToggle={toggle('event')} format={eventPhrase} />
+      <Group title="Actor kind" items={facets?.actor_type ?? (facets ? [] : undefined)} selected={filters.actor_type} onToggle={toggle('actor_type')}
+        format={(k) => ACTOR_TYPE_LABEL[k] ?? k} />
+      {filters.actor_type.length === 0 && (
+        <Checkbox checked={!!filters.anon} onChange={() => onChange({ ...filters, anon: !filters.anon })}
+          label={<span className="small">Show unauthenticated visitors</span>} />
+      )}
       <fieldset className="audit-facet">
         <legend className="audit-facet-title">Actor</legend>
         <form className="row gap-4" onSubmit={(ev) => { ev.preventDefault(); onChange({ ...filters, actor: actor.trim() || undefined }); }}>
