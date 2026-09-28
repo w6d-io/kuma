@@ -12,8 +12,8 @@ afterEach(() => {
 });
 
 describe('saved views', () => {
-  it('ships the five defaults', () => {
-    expect(DEFAULT_VIEWS.map((v) => v.name)).toEqual(['High-risk changes', 'Denied access', 'Logins failed', 'API keys', 'Grants this week']);
+  it('ships the defaults, gateway access and unauthenticated traffic included', () => {
+    expect(DEFAULT_VIEWS.map((v) => v.name)).toEqual(['High-risk changes', 'Denied access', 'Logins failed', 'API keys', 'Grants this week', 'Gateway access (hourly)', 'Unauthenticated traffic']);
   });
   it('adds, replaces by name and persists local views', () => {
     let views = addLocalView([], ' Mine ', { result: 'denied' }, 1);

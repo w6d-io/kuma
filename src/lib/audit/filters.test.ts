@@ -35,8 +35,16 @@ describe('rangeProblem', () => {
 
 describe('toQuery', () => {
   it('sends only the facets that are set, and trims free text to 64 chars', () => {
-    const q = toQuery(f({ result: ['denied'], q: `  ${'x'.repeat(80)} ` }), null, NOW);
-    expect(q).toEqual({ from: '2026-09-18T12:00:00.000Z', to: '2026-09-25T12:00:00.000Z', result: 'denied', q: 'x'.repeat(64) });
+    const q = toQuery(f({ range: '7d', result: ['denied'], q: `  ${'x'.repeat(80)} ` }), null, NOW);
+    expect(q).toEqual({ from: '2026-09-18T12:00:00.000Z', to: '2026-09-25T12:00:00.000Z', result: 'denied', q: 'x'.repeat(64), actor_type: ['user', 'service', 'system'] });
+  });
+  it('hides unauthenticated callers by default; shown on request; a picked kind is sent as picked', () => {
+    expect(toQuery(f(), null, NOW).actor_type).toEqual(['user', 'service', 'system']);
+    expect(toQuery(f({ anon: true }), null, NOW).actor_type).toBeUndefined();
+    expect(toQuery(f({ actor_type: ['anonymous'] }), null, NOW).actor_type).toEqual(['anonymous']);
+  });
+  it('opens on the last 24 hours', () => {
+    expect(EMPTY_FILTERS.range).toBe('24h');
   });
   it('drops org for an org admin (jinbe forces their scope)', () => {
     expect(toQuery(f({ org: 'acme' }), { platform: false, orgs: ['acme'] }, NOW).org).toBeUndefined();
@@ -59,6 +67,7 @@ describe('facets', () => {
   it('counts narrowing filters but not the range', () => {
     expect(activeCount(f({ range: '30d' }))).toBe(0);
     expect(activeCount(f({ event: ['a.b', 'c.d'], actor: 'u1', q: ' ' }))).toBe(3);
+    expect(activeCount(f({ actor_type: ['user'] }))).toBe(1);
   });
   it('clears filters but keeps the range', () => {
     expect(clearFilters(f({ range: '24h', result: ['denied'] }))).toEqual(f({ range: '24h' }));
@@ -99,6 +108,14 @@ describe('address round-trip', () => {
     expect(got).toEqual(f({ event: ['org.grants.*'], result: ['denied'] }));
   });
   it('rejects a custom range over 30 days', () => {
-    expect(filtersFromParams({ range: 'custom', from: '2026-01-01', to: '2026-09-01' }).range).toBe('7d');
+    expect(filtersFromParams({ range: 'custom', from: '2026-01-01', to: '2026-09-01' }).range).toBe(EMPTY_FILTERS.range);
+  });
+  it('round-trips the actor kind and the show-unauthenticated switch, dropping unknown kinds', () => {
+    expect(filtersToParams(f({ actor_type: ['user', 'service'], anon: true }))).toEqual({ actor_type: 'user,service', anon: '1' });
+    expect(filtersFromParams({ actor_type: 'user,robot', anon: '1' })).toEqual(f({ actor_type: ['user'], anon: true }));
+  });
+  it('a saved view keeps a picked kind, never the default hiding', () => {
+    expect(toServerFilters({ result: 'denied' })).toEqual({ result: 'denied' });
+    expect(toServerFilters({ actor_type: 'anonymous' })).toEqual({ actor_type: ['anonymous'] });
   });
 });

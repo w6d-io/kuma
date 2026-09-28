@@ -23,9 +23,16 @@ describe('actorLabel', () => {
   it('reads a lookup that found nobody as a deleted user', () => {
     expect(actorLabel(actor, 'missing').primary).toBe('deleted user · 3f2a9c10');
   });
-  it('names system and anonymous actors', () => {
-    expect(actorLabel({ type: 'system' }).kind).toBe('system');
-    expect(actorLabel({ type: 'user', id: null }).kind).toBe('anonymous');
+  it('names system, service and unauthenticated actors — "anonymous" only for nobody signed in', () => {
+    expect(actorLabel({ type: 'system' })).toEqual({ kind: 'system', primary: 'system' });
+    expect(actorLabel({ type: 'service', id: 'ci-deployer' })).toEqual({ kind: 'service', primary: 'service · ci-deployer' });
+    expect(actorLabel({ type: 'anonymous', ip_net: '192.168.102.0/24', ua_family: 'curl' }))
+      .toEqual({ kind: 'anonymous', primary: 'Unauthenticated visitor', secondary: '192.168.102.0/24 · curl' });
+    expect(actorLabel({ type: 'anonymous' })).toEqual({ kind: 'anonymous', primary: 'Unauthenticated visitor' });
+  });
+  it('a person without an id is still a person (older events), never "anonymous"', () => {
+    expect(actorLabel({ type: 'user', id: null })).toEqual({ kind: 'user', primary: 'unidentified person' });
+    expect(actorLabel({ type: 'user', id: null, identifier_hmac: 'hmac-sha256:0123456789abcdef0123456789abcdef' }).primary).toBe('person · 89abcdef');
   });
   it('shortens ids', () => {
     expect(shortId(null)).toBe('—');

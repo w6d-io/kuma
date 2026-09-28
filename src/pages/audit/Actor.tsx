@@ -6,7 +6,7 @@ export function ActorCell({ actor }: { actor: AuditActor }) {
   const { label } = useActor(actor);
   return (
     <span className="audit-actor">
-      <span className={`audit-actor-dot ${label.kind}`} aria-hidden="true">{label.kind === 'system' ? I.cog : label.kind === 'user' ? '' : '?'}</span>
+      <span className={`audit-actor-dot ${label.kind}`} aria-hidden="true">{label.kind === 'system' ? I.cog : label.kind === 'service' ? I.key : label.kind === 'user' ? '' : '?'}</span>
       <span className="min-w-0">
         <span className="small audit-clip">{label.primary}</span>
         {label.secondary && <span className="text-xs muted audit-clip">{label.secondary}</span>}

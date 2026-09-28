@@ -10,7 +10,15 @@ import { MAX_RANGE_DAYS, type AuditQuery, type AuditScope } from '../../api/audi
  */
 
 export type RangePreset = '1h' | '24h' | '7d' | '30d' | 'custom';
-export type FacetKey = 'event' | 'category' | 'result';
+export type FacetKey = 'event' | 'category' | 'result' | 'actor_type';
+
+/** Who acted, as a kind. `anonymous` is an unauthenticated caller — mostly scanners at the gateway. */
+export const ACTOR_TYPES = ['user', 'service', 'system', 'anonymous'] as const;
+export const ACTOR_TYPE_LABEL: Record<string, string> = {
+  user: 'Person', service: 'Service', system: 'System', anonymous: 'Unauthenticated',
+};
+/** What the log shows unless asked otherwise: everything but unauthenticated noise. */
+export const DEFAULT_ACTOR_TYPES = ['user', 'service', 'system'];
 
 export interface AuditFilters {
   range: RangePreset;
@@ -24,12 +32,17 @@ export interface AuditFilters {
   event: string[];
   category: string[];
   result: string[];
+  /** Kinds of actor picked in the facet; none picked = everyone but unauthenticated, unless `anon`. */
+  actor_type: string[];
+  /** Show unauthenticated callers too (they are hidden by default). */
+  anon?: boolean;
   severity?: string;
   trace_id?: string;
   q?: string;
 }
 
-export const EMPTY_FILTERS: AuditFilters = { range: '7d', event: [], category: [], result: [] };
+// A day by default: most readers come for what just happened, and a week is one click away.
+export const EMPTY_FILTERS: AuditFilters = { range: '24h', event: [], category: [], result: [], actor_type: [] };
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -63,6 +76,8 @@ export function toQuery(f: AuditFilters, scope?: AuditScope | null, now: number 
   const q: AuditQuery = { ...resolveRange(f, now) };
   if (f.org && scope?.platform !== false) q.org = f.org;
   if (f.actor) q.actor = f.actor;
+  if (f.actor_type.length) q.actor_type = f.actor_type.slice(0, ACTOR_TYPES.length);
+  else if (!f.anon) q.actor_type = DEFAULT_ACTOR_TYPES;
   if (f.target) q.target = f.target;
   if (f.site) q.site = f.site;
   if (f.event.length) q.event = f.event.slice(0, MAX_EVENTS);
@@ -87,7 +102,7 @@ export function toggleFacet(f: AuditFilters, key: FacetKey, value: string): Audi
 
 /** How many narrowing filters are on, not counting the range. */
 export function activeCount(f: AuditFilters): number {
-  return f.event.length + f.category.length + f.result.length
+  return f.event.length + f.category.length + f.result.length + f.actor_type.length
     + [f.org, f.actor, f.target, f.site, f.severity, f.trace_id, f.q?.trim()].filter(Boolean).length;
 }
 
@@ -125,7 +140,8 @@ export function filtersToParams(f: AuditFilters): Record<string, string> {
     const v = f[k];
     if (v) out[k] = v;
   }
-  for (const k of ['event', 'category', 'result'] as const) if (f[k].length) out[k] = f[k].join(',');
+  for (const k of ['event', 'category', 'result', 'actor_type'] as const) if (f[k].length) out[k] = f[k].join(',');
+  if (f.anon) out.anon = '1';
   return out;
 }
 
@@ -137,7 +153,9 @@ export function filtersFromParams(p: Record<string, string> | undefined): AuditF
     event: list(p.event, (x) => EVENT_RE.test(x)).slice(0, MAX_EVENTS),
     category: list(p.category, (x) => /^[a-z_]+$/.test(x)).slice(0, 1),
     result: list(p.result, (x) => ['success', 'denied', 'failure', 'error'].includes(x)).slice(0, 1),
+    actor_type: list(p.actor_type, (x) => (ACTOR_TYPES as readonly string[]).includes(x)),
   };
+  if (p.anon === '1') f.anon = true;
   if (range === 'custom') {
     const from = iso(p.from);
     const to = iso(p.to);
@@ -164,6 +182,8 @@ export function toServerFilters(params: Record<string, string>): ServerFilters {
   const out: Partial<AuditQuery> = { ...q };
   delete out.from;
   delete out.to;
+  // The default (unauthenticated hidden) is the reader's, not the view's: only a picked kind is saved.
+  if (!params.actor_type) delete out.actor_type;
   return out as ServerFilters;
 }
 

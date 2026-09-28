@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useMyOrganizationNames } from '../api/hooks';
 import { MAX_ENTRIES, type AuditQuery, type AuditScope } from '../api/audit';
-import { Button, Callout, Card, EmptyState, I, Input, PageHeader } from '../components/ui';
+import { Button, Callout, Card, EmptyState, I, Input, PageHeader, Tabs } from '../components/ui';
 import { useApp } from '../contexts/AppContext';
 import {
   EMPTY_FILTERS, PRESET_LABEL, activeCount, clearFilters, filtersFromParams, filtersToParams, toQuery, zoomTo, type AuditFilters,
@@ -18,6 +18,7 @@ import { AuditHistogram } from './audit/AuditHistogram';
 import { AuditError, AuditEvents, AuditLoading } from './audit/AuditTimeline';
 import { AuditToolbar, SavedViewsBar } from './audit/AuditToolbar';
 import { AuditEventPage } from './audit/AuditEventPage';
+import { AuditAccess } from './audit/AuditAccess';
 import { useAuditEventPages, useAuditFacets, useAuditHistogram, useLiveTail, useSavedViews } from './audit/queries';
 
 /** The live tail follows the same facets; its range is "from now on". */
@@ -59,6 +60,7 @@ function AuditTimelinePage() {
   const [live, setLive] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [q, setQ] = useState(filters.q ?? '');
+  const [view, setView] = useState<'events' | 'access'>('events');
 
   const setFilters = useCallback((f: AuditFilters) => {
     setFiltersRaw(f);
@@ -77,7 +79,11 @@ function AuditTimelinePage() {
   const query = useMemo(() => toQuery(filters, scope, now), [filters, scope, now]);
   const eventsQ = useAuditEventPages(query);
   const facetsQ = useAuditFacets(query, eventsQ.isSuccess);
-  const summaryQ = useAuditHistogram(summaryWindow(filters.range), query.org, eventsQ.isSuccess);
+  // The facets carry the histogram for the same range and filters; an older jinbe does not, and the
+  // unfiltered summary is asked instead.
+  const facetSeries = facetsQ.data?.series;
+  const summaryQ = useAuditHistogram(summaryWindow(filters.range), query.org, facetsQ.isSuccess && !facetSeries);
+  const histogram = facetSeries ? { window: filters.range, total: facetsQ.data?.total ?? 0, series: facetSeries } : summaryQ.data;
   const saved = useSavedViews();
 
   const firstPage = eventsQ.data?.pages[0];
@@ -105,7 +111,7 @@ function AuditTimelinePage() {
   // A shared view belongs to one organisation: the one on screen, or an org admin's own.
   const shareOrg = platform ? filters.org : scope?.orgs.length === 1 ? scope.orgs[0] : undefined;
   const refresh = () => { setNow(Date.now()); void qc.invalidateQueries({ queryKey: ['audit', 'log'] }); };
-  const openUser = (id: string) => setFilters({ ...clearFilters(filters), actor: id });
+  const openUser = (id: string) => { setView('events'); setFilters({ ...clearFilters(filters), actor: id }); };
   const applySearch = () => setFilters({ ...filters, q: q.trim() || undefined });
 
   return (
@@ -123,6 +129,17 @@ function AuditTimelinePage() {
 
       <AuditToolbar filters={filters} onChange={setFilters} platform={platform} orgs={orgList}
         live={tail.mode} onLive={setLive} onRefresh={refresh} onExport={() => setExporting(true)} />
+
+      {platform && (
+        <Tabs label="Audit view" idBase="audit-view" value={view} onChange={setView} className="mb-12"
+          items={[{ value: 'events', label: 'Events', icon: I.audit }, { value: 'access', label: 'Gateway access', icon: I.gate }]} />
+      )}
+
+      {view === 'access' && platform ? (
+        <div id="audit-view-panel-access" role="tabpanel" aria-labelledby="audit-view-tab-access">
+          <AuditAccess range={range} onOpenUser={openUser} />
+        </div>
+      ) : (
 
       <div className="audit-layout">
         <aside aria-label="Filters">
@@ -142,11 +159,11 @@ function AuditTimelinePage() {
 
           <Card pad="sm" className="audit-histo-card">
             <div className="row justify-between gap-8 wrap">
-              <span className="small muted">All events in {query.org ? orgName(query.org) : 'scope'} · {filters.range === 'custom' ? 'no histogram for a custom range' : PRESET_LABEL[filters.range]}</span>
-              {summaryQ.data && <span className="mono small">{summaryQ.data.total.toLocaleString()} events</span>}
-              {!summaryQ.data && facetsQ.data?.total != null && <span className="mono small">{facetsQ.data.total.toLocaleString()} matching</span>}
+              <span className="small muted">{facetSeries ? 'Matching events' : 'All events'} in {query.org ? orgName(query.org) : 'scope'} · {filters.range === 'custom' ? (facetSeries ? 'custom range' : 'no histogram for a custom range') : PRESET_LABEL[filters.range]}</span>
+              {facetsQ.data?.total != null ? <span className="mono small">{facetsQ.data.total.toLocaleString()} matching</span>
+                : summaryQ.data && <span className="mono small">{summaryQ.data.total.toLocaleString()} events</span>}
             </div>
-            <AuditHistogram summary={summaryQ.data} loading={summaryQ.isLoading && eventsQ.isSuccess}
+            <AuditHistogram summary={histogram} loading={eventsQ.isSuccess && (facetsQ.isLoading || (summaryQ.isLoading && !facetSeries && facetsQ.isSuccess))}
               onZoom={(t, ms) => setFilters(zoomTo(filters, t, ms))} />
           </Card>
 
@@ -193,6 +210,8 @@ function AuditTimelinePage() {
           )}
         </div>
       </div>
+
+      )}
 
       <AuditExportDialog open={exporting} onClose={() => setExporting(false)} query={query}
         rangeLabel={`${fmtDay(range.from)} – ${fmtDay(range.to)}${activeCount(filters) ? ` · ${activeCount(filters)} filter${activeCount(filters) > 1 ? 's' : ''}` : ''}`} />

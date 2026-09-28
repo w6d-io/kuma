@@ -137,6 +137,73 @@ describe('AuditPage', () => {
     expect(container.textContent).toContain('Clear filters');
   });
 
+  it('hides unauthenticated callers by default, with an actor-kind facet and a switch to show them', async () => {
+    const calls: string[] = [];
+    const base = routes([200, page({ events: [ev({ actor: { type: 'anonymous', ip_net: '192.168.102.0/24', ua_family: 'curl' } })] })]);
+    serve((p) => { calls.push(p); return base(p); });
+    const { container } = mount();
+    await flush();
+    const events = calls.find((c) => c.startsWith('/api/audit/events?'))!;
+    expect(new URLSearchParams(events.split('?')[1]).getAll('actor_type')).toEqual(['user', 'service', 'system']);
+    expect(container.textContent).toContain('Unauthenticated visitor');
+    expect(container.textContent).toContain('192.168.102.0/24 · curl');
+    expect([...container.querySelectorAll('legend')].map((l) => l.textContent)).toContain('Actor kind');
+    const show = [...container.querySelectorAll('label')].find((l) => l.textContent?.includes('Show unauthenticated visitors'))!;
+    click(show.querySelector('input'));
+    await flush();
+    expect(window.location.hash).toContain('anon=1');
+    const last = calls.filter((c) => c.startsWith('/api/audit/events?')).pop()!;
+    expect(new URLSearchParams(last.split('?')[1]).getAll('actor_type')).toEqual([]);
+  });
+
+  it('draws the histogram from the facets (same filters) and then does not ask for the summary', async () => {
+    const calls: string[] = [];
+    const withSeries = { ...facets, series: [{ t: new Date().toISOString(), total: 4, failed: 1, denied: 1 }] };
+    const base = routes([200, page()]);
+    serve((p) => { calls.push(p); return p.startsWith('/api/audit/facets') ? [200, withSeries] : base(p); });
+    const { container } = mount();
+    await flush();
+    expect(container.querySelectorAll('.audit-bar').length).toBe(1);
+    expect(container.textContent).toContain('Matching events');
+    expect(calls.some((c) => c.startsWith('/api/audit/summary'))).toBe(false);
+  });
+
+  it('a platform reader gets the Gateway access view: allowed and denied by person and host, scanner-only hosts on request', async () => {
+    const access = {
+      totals: { allowed: 120, denied: 900, unauthenticated: { allowed: 20, denied: 880 } },
+      subjects: [{ subject: '3f2a9c10-1111', kind: 'user', allowed: 100, denied: 20, hosts: ['echo.example.com'] }],
+      hosts: [
+        { host: 'echo.example.com', allowed: 100, denied: 20, unauthenticated: 0 },
+        { host: 'scan.example.com', allowed: 0, denied: 880, unauthenticated: 880 },
+      ],
+      series: [{ t: new Date().toISOString(), allowed: 120, denied: 900 }],
+      truncated: false, range: { from: new Date().toISOString(), to: new Date().toISOString() }, queryMs: 12,
+    };
+    const base = routes([200, page()]);
+    serve((p) => (p.startsWith('/api/audit/access') ? [200, access] : base(p)));
+    const { container } = mount();
+    await flush();
+    const tab = [...container.querySelectorAll('[role="tab"]')].find((t) => t.textContent?.includes('Gateway access'))!;
+    click(tab);
+    await flush();
+    expect(container.textContent).toContain('Allowed');
+    expect(container.textContent).toContain('100');
+    expect(container.textContent).toContain('user · 3f2a9c10');
+    expect(container.textContent).toContain('echo.example.com');
+    expect(container.textContent).not.toContain('scan.example.com');
+    const show = [...container.querySelectorAll('label')].find((l) => l.textContent?.includes('only unauthenticated traffic'))!;
+    click(show.querySelector('input'));
+    await flush();
+    expect(container.textContent).toContain('scan.example.com');
+  });
+
+  it('an org admin gets no Gateway access tab', async () => {
+    serve(routes([200, page({ scope: { orgs: ['acme'], platform: false } })]));
+    const { container } = mount();
+    await flush();
+    expect([...container.querySelectorAll('[role="tab"]')].some((t) => t.textContent?.includes('Gateway access'))).toBe(false);
+  });
+
   it('opens one event from #/audit/event/<id>', async () => {
     window.location.hash = '#/audit/event/e1?ts=2026-09-25T11:00:00Z';
     serve(routes([200, page()]));

@@ -17,6 +17,8 @@ export type ChainStatus = 'verified' | 'unverified' | 'broken';
 export interface AuditActor {
   type: 'user' | 'system' | 'service' | 'anonymous' | string;
   id?: string | null;
+  /** An address kept as an HMAC when there was no id: two events about one person line up. */
+  identifier_hmac?: string;
   session_id_hash?: string;
   ip_net?: string;
   ip_hmac?: string;
@@ -91,6 +93,8 @@ export interface AuditQuery {
   to: string;
   org?: string;
   actor?: string;
+  /** Kinds of actor: user, service, system, anonymous (repeatable). */
+  actor_type?: string[];
   target?: string;
   site?: string;
   /** Up to 10 catalog keys or prefixes (`org.*`). */
@@ -109,11 +113,14 @@ export interface AuditFacets {
   result: FacetCount[];
   site: FacetCount[];
   actor: FacetCount[];
+  actor_type?: FacetCount[];
   org?: FacetCount[];
   severity?: FacetCount[];
   total?: number;
   /** Some facet had more than 20 keys: only the top 20 are listed. */
   truncated?: boolean;
+  /** Events per bucket over the same range and filters (`t` = bucket start). Older jinbe: absent. */
+  series?: { t: string; total: number; failed: number; denied?: number }[];
 }
 
 export interface AuditWindowSummary {
@@ -125,6 +132,18 @@ export interface AuditWindowSummary {
   series: { t: string; total: number; failed?: number }[];
   topDenied?: FacetCount[];
   topActors?: { actorId: string; count: number }[];
+}
+
+/** What the gateway allowed and refused over a range (`GET /audit/access`, platform readers only). */
+export interface GatewayTally { allowed: number; denied: number }
+export interface GatewayAccess {
+  totals: GatewayTally & { unauthenticated: GatewayTally };
+  subjects: (GatewayTally & { subject: string; kind: 'user' | 'service'; hosts: string[] })[];
+  hosts: (GatewayTally & { host: string; unauthenticated: number })[];
+  series: (GatewayTally & { t: string })[];
+  truncated: boolean;
+  range: { from: string; to: string };
+  queryMs?: number;
 }
 
 export interface AuditEventDetail {
@@ -178,10 +197,13 @@ export const auditApi = {
   events: (q: AuditQuery, cursor?: string | null, limit = PAGE_LIMIT) =>
     request<AuditEventsPage>(withQs('/audit/events', auditQueryString({ ...q, limit, cursor }))),
 
-  // Counts sit under `facets`, beside the page-level total/truncated.
+  // Counts sit under `facets`, beside the page-level total/truncated/series.
   facets: (q: AuditQuery) =>
-    request<{ facets?: AuditFacets; total?: number; truncated?: boolean } & Partial<AuditFacets>>(withQs('/audit/facets', auditQueryString(q)))
-      .then((r): AuditFacets => ({ ...(r.facets ?? (r as AuditFacets)), total: r.total, truncated: r.truncated })),
+    request<{ facets?: AuditFacets; total?: number; truncated?: boolean; series?: AuditFacets['series'] } & Partial<AuditFacets>>(withQs('/audit/facets', auditQueryString(q)))
+      .then((r): AuditFacets => ({ ...(r.facets ?? (r as AuditFacets)), total: r.total, truncated: r.truncated, series: r.series })),
+
+  gatewayAccess: (range: { from: string; to: string }) =>
+    request<GatewayAccess>(withQs('/audit/access', auditQueryString(range))),
 
   /** Totals and the series for the last `window` (`24h`, `7d`…) — jinbe takes only the window and org. */
   summary: (window: string, org?: string) =>

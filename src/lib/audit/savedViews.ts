@@ -22,6 +22,8 @@ export const DEFAULT_VIEWS: SavedView[] = [
   { id: 'default:logins-failed', name: 'Logins failed', params: { event: 'auth.login.failed' }, origin: 'default' },
   { id: 'default:api-keys', name: 'API keys', params: { event: 'apikey.*' }, origin: 'default' },
   { id: 'default:grants-week', name: 'Grants this week', params: { event: 'org.grants.*', range: '7d' }, origin: 'default' },
+  { id: 'default:gateway', name: 'Gateway access (hourly)', params: { event: 'access.summary' }, origin: 'default' },
+  { id: 'default:unauthenticated', name: 'Unauthenticated traffic', params: { actor_type: 'anonymous' }, origin: 'default' },
 ];
 
 const KEY = 'kuma.audit.views';
