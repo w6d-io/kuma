@@ -7,9 +7,10 @@ import { ApiErrorState } from '../components/ApiErrorState';
 import { Button, Callout, Card, ConfirmDialog, EmptyRow, EmptyState, I, LoadingRows, PageHeader, Table, TagList, Th } from '../components/ui';
 import { MY_API_KEYS, personalKeysOff, useMyApiKeys } from '../hooks/usePersonalKeys';
 import { toastFor } from '../lib/apiError';
-import { MCP_SCOPE } from '../lib/apiKeys';
+import { MCP_SCOPE, PERSONAL_EXPIRY_DEFAULT } from '../lib/apiKeys';
 import { CreatePersonalKeyDrawer } from './apikeys/CreatePersonalKeyDrawer';
 import { McpHelp } from './apikeys/McpHelp';
+import { McpKeyFacts, McpTroubleshooting } from './apikeys/McpGuide';
 import { CreatorCell, ExpiryCell } from './apikeys/parts';
 
 /**
@@ -121,6 +122,8 @@ export function ConnectionsPage() {
           </Card>
         )}
         <McpHelp />
+        <McpKeyFacts maxDays={status.data?.personalKeys?.maxDays ?? PERSONAL_EXPIRY_DEFAULT} />
+        <McpTroubleshooting />
       </div>
       {creating && <CreatePersonalKeyDrawer onClose={() => setCreating(false)} onCreated={() => qc.invalidateQueries({ queryKey: MY_API_KEYS })} />}
       <ConfirmDialog
