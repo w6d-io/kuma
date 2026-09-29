@@ -98,7 +98,33 @@ describe('Connections & keys', () => {
     expect([...document.querySelectorAll('.tag-list .badge')].map((b) => b.textContent)).toEqual(['users:read']);
     expect(text()).toContain('All my permissions');
     expect((document.querySelector('.copy-field input') as HTMLInputElement).value).toBe('https://mcp.dev.example.com/mcp');
-    expect(text()).toContain('"Authorization": "Bearer stk_mcp_…"');
+    expect(text()).toContain("export example_MCP_KEY='stk_mcp_<your key>'");
+    expect(text()).toContain('claude mcp add --transport http --scope user example https://mcp.dev.example.com/mcp');
+    expect(text()).toContain('Authorization: Bearer $example_MCP_KEY');
+  });
+
+  it('walks through each client in its own tab, then what a key can do and what refusals mean', async () => {
+    (window as unknown as { __MCP_SERVER_URL__: string }).__MCP_SERVER_URL__ = 'https://mcp.dev.example.com/mcp';
+    api.status.data = { enabled: true, serverUrl: null, off: null, personalKeys: { maxDays: 7 } };
+    mount();
+    await settle();
+    const tabs = [...document.querySelectorAll('[role=tab]')].map((t) => t.textContent);
+    expect(tabs).toEqual(['Claude Code', 'Claude Desktop', 'Cursor', 'VS Code', 'curl']);
+    click(button(/^Claude Desktop$/));
+    expect(text()).toContain('"mcp-remote"');
+    expect(text()).toContain('"AUTH_HEADER": "Bearer stk_mcp_<your key>"');
+    click(button(/^Cursor$/));
+    expect(text()).toContain('"Authorization": "Bearer ${env:example_MCP_KEY}"');
+    click(button(/^VS Code$/));
+    expect(text()).toContain('"type": "http"');
+    expect(text()).toContain('${input:example-mcp-key}');
+    click(button(/^curl$/));
+    expect(text()).toContain('"method":"tools/list"');
+    expect(document.querySelector('[role=tabpanel]')!.getAttribute('aria-labelledby')).toBe('mcp-client-tab-curl');
+    expect(text()).toContain('7 days at most on this platform');
+    expect(text()).toContain('Publish or roll back a site');
+    expect(text()).toContain('403 mcp_disabled — not enabled for your groups');
+    expect(text()).toContain('503 retry_later');
   });
 
   it('creates a key with all your permissions by default, without asking for an organization, and shows it once', async () => {
@@ -115,7 +141,9 @@ describe('Connections & keys', () => {
     expect(api.createMyApiKey).toHaveBeenCalledWith({ label: 'Laptop', expires_in_days: 30 });
     expect((document.querySelector('.drawer .copy-field input') as HTMLInputElement).value).toBe('stk_mcp_c2.s');
     expect(document.querySelector('.drawer')!.textContent).toContain('with all your permissions');
-    expect(document.querySelector('.drawer')!.textContent).toContain('"Authorization": "Bearer stk_mcp_c2.s"');
+    expect(document.querySelector('.drawer')!.textContent).toContain("export example_MCP_KEY='stk_mcp_c2.s'");
+    click([...document.querySelectorAll('.drawer [role=tab]')].find((t) => t.textContent === 'Claude Desktop')!);
+    expect(document.querySelector('.drawer')!.textContent).toContain('"AUTH_HEADER": "Bearer stk_mcp_c2.s"');
   });
 
   it('narrows a key to permissions ticked from your own, grouped by resource', async () => {

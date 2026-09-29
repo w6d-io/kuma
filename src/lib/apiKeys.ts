@@ -159,8 +159,3 @@ export function mcpServerUrl(): string {
 
 /** Where the MCP server answers when the deployment has not said (MCP_SERVER_URL unset). */
 export const MCP_URL_PLACEHOLDER = 'https://mcp.<your platform>/mcp';
-
-/** The client configuration most MCP clients take: the server address, and the key as a bearer header. */
-export function mcpConfig(url: string, key: string): string {
-  return JSON.stringify({ mcpServers: { platform: { url, headers: { Authorization: `Bearer ${key}` } } } }, null, 2);
-}
