@@ -1,6 +1,6 @@
 /**
  * Settings · AI assistants (MCP): the administrator's switch, the server address people are shown,
- * how long a personal key may live, and which organizations may use it (jinbe /admin/settings/mcp).
+ * how long a personal key may live, and which groups may use it (jinbe /admin/settings/mcp).
  * jinbe validates again on save; this is so the form can say what is wrong before anyone presses Save.
  */
 import type { McpSettings } from '../api/client';
@@ -13,7 +13,7 @@ export interface McpDraft {
   serverUrl: string;
   maxDays: number;
   scope: 'all' | 'selected';
-  orgs: string[];
+  groups: string[];
 }
 
 export function toMcpDraft(s: McpSettings): McpDraft {
@@ -21,8 +21,8 @@ export function toMcpDraft(s: McpSettings): McpDraft {
     enabled: s.enabled,
     serverUrl: s.serverUrl ?? '',
     maxDays: s.personalKeys.maxDays,
-    scope: s.allowedOrgs === 'all' ? 'all' : 'selected',
-    orgs: s.allowedOrgs === 'all' ? [] : [...s.allowedOrgs],
+    scope: s.allowedGroups === 'all' ? 'all' : 'selected',
+    groups: s.allowedGroups === 'all' ? [] : [...s.allowedGroups],
   };
 }
 
@@ -32,13 +32,13 @@ export function fromMcpDraft(d: McpDraft): McpSettings {
     enabled: d.enabled,
     serverUrl: url || null,
     personalKeys: { maxDays: d.maxDays },
-    allowedOrgs: d.scope === 'all' ? 'all' : [...new Set(d.orgs)].sort(),
+    allowedGroups: d.scope === 'all' ? 'all' : [...new Set(d.groups)].sort(),
   };
 }
 
 export interface McpDraftProblems {
   serverUrl?: string;
-  orgs?: string;
+  groups?: string;
 }
 
 /** What stops Save, per field. */
@@ -53,13 +53,13 @@ export function mcpDraftProblems(d: McpDraft): McpDraftProblems {
     } catch { /* not a URL */ }
     if (!ok) out.serverUrl = 'An https:// address, without a user name or password in it.';
   }
-  if (d.scope === 'selected' && !d.orgs.length) out.orgs = 'Pick at least one organization, or choose all of them.';
+  if (d.scope === 'selected' && !d.groups.length) out.groups = 'Pick at least one group, or choose all of them.';
   return out;
 }
 
-/** Same settings, whatever the order of the org list. */
+/** Same settings, whatever the order of the group list. */
 export function sameMcp(a: McpSettings, b: McpSettings): boolean {
-  const norm = (s: McpSettings) => JSON.stringify({ ...s, allowedOrgs: s.allowedOrgs === 'all' ? 'all' : [...s.allowedOrgs].sort() });
+  const norm = (s: McpSettings) => JSON.stringify({ ...s, allowedGroups: s.allowedGroups === 'all' ? 'all' : [...s.allowedGroups].sort() });
   return norm(a) === norm(b);
 }
 

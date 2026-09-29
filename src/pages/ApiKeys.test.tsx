@@ -5,7 +5,7 @@ import { cleanup, click, render, type } from '../components/ui/testing';
 
 // An organization's API keys: scopes as compact tags, a create drawer whose scopes are ticked by site
 // (never typed while a catalogue exists), the secret shown once with a confirm before closing
-// uncopied — and the org's personal-key policy below, absent where the platform has none.
+// uncopied — and nothing about personal keys, which belong to people, not to organizations.
 
 const ORG = '3cb95fec-bc9f-48b1-8fa7-f3da8ed9fff8';
 const ME = 'a1b2c3d4-0000-4000-8000-000000000001';
@@ -14,8 +14,6 @@ const api = vi.hoisted(() => ({
   apiKeyScopes: vi.fn(),
   createApiKey: vi.fn(),
   revokeApiKey: vi.fn(),
-  apiKeyPolicy: vi.fn(),
-  setApiKeyPolicy: vi.fn(),
   toast: vi.fn(),
 }));
 vi.mock('../api/accounts', () => ({ accountsApi: api }));
@@ -28,7 +26,6 @@ vi.mock('../api/hooks', () => ({
 
 import { ApiKeysPage } from './ApiKeys';
 
-const notFound = () => Object.assign(new Error('Personal API keys are not enabled on this deployment.'), { status: 404 });
 const key = {
   client_id: '15b59756-cfe7-45e6-8173-51026fe0a065', organization_id: ORG, label: 'test keys',
   scopes: ['fleet:read', 'fleet:write', 'wiki:read', 'crm:read'], created_by: ME, created_at: '2026-09-20T10:00:00Z', expires_at: null,
@@ -47,7 +44,6 @@ beforeEach(() => {
   Object.values(api).forEach((f) => f.mockReset());
   api.listApiKeys.mockResolvedValue({ data: [key], total: 1 });
   api.apiKeyScopes.mockResolvedValue([{ scope: 'fleet:write', sites: ['fleet'] }, { scope: 'fleet:read', sites: ['fleet'] }, { scope: 'wiki:read', sites: ['wiki'] }]);
-  api.apiKeyPolicy.mockRejectedValue(notFound());
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -61,7 +57,7 @@ describe('API keys', () => {
     expect(text()).toContain('Never');
     // No last-use column while jinbe does not say it.
     expect([...document.querySelectorAll('th')].map((t) => t.textContent)).not.toContain('Last used');
-    // The platform has no personal keys: nothing to decide, nothing shown.
+    // Personal keys are not an organization's business: no policy card.
     expect(text()).not.toContain('Personal keys');
   });
 
@@ -105,22 +101,5 @@ describe('API keys', () => {
     await settle();
     expect(text()).not.toContain('Close without copying');
     expect(text()).not.toContain('Copy the secret now');
-  });
-
-  it('asks before forbidding personal keys, which stops the ones already issued', async () => {
-    api.apiKeyPolicy.mockResolvedValue({ personal_keys: 'allowed' });
-    api.setApiKeyPolicy.mockResolvedValue({ personal_keys: 'forbidden' });
-    mount();
-    await settle();
-    const sw = document.querySelector('[role=switch]') as HTMLButtonElement;
-    expect(sw.getAttribute('aria-checked')).toBe('true');
-    expect(document.querySelector(`label[for="${sw.id}"]`)!.textContent).toContain('Members may create personal keys');
-    click(sw);
-    await settle();
-    expect(api.setApiKeyPolicy).not.toHaveBeenCalled();
-    expect(text()).toContain('refused from its next call');
-    click(button(/^Forbid personal keys$/));
-    await settle();
-    expect(api.setApiKeyPolicy).toHaveBeenCalledWith(ORG, { personal_keys: 'forbidden' });
   });
 });

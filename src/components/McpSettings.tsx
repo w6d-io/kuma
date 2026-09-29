@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useMcpSettings, useSetMcpSettings } from '../api/hooks';
-import { useOrgCatalog } from '../api/orgCatalog';
+import { useGroups, useMcpSettings, useSetMcpSettings } from '../api/hooks';
 import type { McpSettings as McpSettingsDoc } from '../api/client';
 import { I, Badge, Button, Callout, Card, ChecklistGroups, Field, Input, Segmented, Select, Switch } from './ui';
 import { toastFor } from '../lib/apiError';
@@ -21,7 +20,7 @@ export function McpSettings() {
   const { pushToast } = useApp();
   const { data, isError } = useMcpSettings();
   const save = useSetMcpSettings();
-  const { orgs } = useOrgCatalog();
+  const groups = useGroups().data;
   const [draft, setDraft] = useState<McpDraft | null>(null);
 
   useEffect(() => { if (data) setDraft(toMcpDraft(data.settings)); }, [data]);
@@ -34,12 +33,11 @@ export function McpSettings() {
   });
 
   const candidate = useMemo(() => (draft ? fromMcpDraft(draft) : null), [draft]);
-  const orgOptions = useMemo(() => {
-    const known = new Map(orgs.map((o) => [o.id, o.name] as const));
-    // A stored org the catalogue does not list (deleted, or not readable) stays visible, by id.
-    for (const id of draft?.orgs ?? []) if (!known.has(id)) known.set(id, undefined);
-    return [...known].map(([id, name]) => ({ value: id, label: name ?? <span className="mono">{id}</span>, search: `${name ?? ''} ${id}` }));
-  }, [orgs, draft?.orgs]);
+  const groupOptions = useMemo(() => {
+    // A stored group the list does not hold (deleted, or not readable) stays visible, so it can be unticked.
+    const names = [...new Set([...(groups ?? []).map((g) => g.name), ...(draft?.groups ?? [])])].sort();
+    return names.map((name) => ({ value: name, label: <span className="mono">{name}</span>, search: name }));
+  }, [groups, draft?.groups]);
 
   if (isError || !data || !draft || !candidate) return null;
 
@@ -114,34 +112,34 @@ export function McpSettings() {
 
       <div className="settings-row">
         <div className="flex-1 min-w-0">
-          <div className="fw-medium text-base">Organizations</div>
+          <div className="fw-medium text-base">Groups</div>
           <div className="small muted">
             {draft.scope === 'all'
-              ? 'Members of every organization may use it.'
-              : 'Only members acting in the organizations below. Keys and tokens for any other organization are refused.'}
+              ? 'Everyone who can sign in to the console may use it, with their own permissions.'
+              : 'Only members of the groups below. Anyone else is refused, including with a key they already have.'}
           </div>
         </div>
         <Segmented
-          label="Organizations"
+          label="Groups"
           value={draft.scope}
           onChange={(v) => patch({ scope: v })}
-          options={[{ value: 'all', label: 'All' }, { value: 'selected', label: 'Only some' }]}
+          options={[{ value: 'all', label: 'All groups' }, { value: 'selected', label: 'Only some' }]}
         />
       </div>
 
       {draft.scope === 'selected' && (
-        <Field label="Allowed organizations" error={problems.orgs} required>
+        <Field label="Allowed groups" error={problems.groups} required>
           <ChecklistGroups
-            label="Allowed organizations"
-            groups={[{ id: 'orgs', label: 'Organizations', options: orgOptions }]}
-            value={draft.orgs}
-            onChange={(next) => patch({ orgs: next })}
+            label="Allowed groups"
+            groups={[{ id: 'groups', label: 'Groups', options: groupOptions }]}
+            value={draft.groups}
+            onChange={(next) => patch({ groups: next })}
           />
         </Field>
       )}
 
       <div className="row wrap gap-8 mt-12">
-        <Button variant="primary" onClick={() => submit()} disabled={!dirty || !!problems.serverUrl || !!problems.orgs} loading={save.isPending}>
+        <Button variant="primary" onClick={() => submit()} disabled={!dirty || !!problems.serverUrl || !!problems.groups} loading={save.isPending}>
           Save
         </Button>
         <Button variant="ghost" onClick={() => setDraft(toMcpDraft(data.settings))} disabled={!dirty || save.isPending}>

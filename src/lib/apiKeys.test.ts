@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseScopes, allowedScopesFrom, initialScopes, normalizeCatalog, groupBySite, expiryLabel, expiryState, scopeHint, sortScopes, mcpServerUrl } from './apiKeys';
+import { parseScopes, allowedScopesFrom, initialScopes, normalizeCatalog, groupBySite, expiryLabel, expiryState, scopeHint, sortScopes, mcpServerUrl, normalizePlatformScopes, scopeGroupLabel, scopeGroupOf } from './apiKeys';
 
 describe('parseScopes', () => {
   it('splits on commas and spaces and drops duplicates', () => {
@@ -98,5 +98,22 @@ describe('mcpServerUrl', () => {
     expect(mcpServerUrl()).toBe('');
     delete w.__MCP_SERVER_URL__;
     expect(mcpServerUrl()).toBe('');
+  });
+});
+
+describe('platform scopes (personal keys)', () => {
+  it('keeps jinbe\'s group, reads it off the scope when missing, and drops anything else', () => {
+    expect(normalizePlatformScopes([{ scope: 'users:read', group: 'users' }, 'admin.organisation:read', { scope: 'audit:read' }, 42, { group: 'x' }])).toEqual([
+      { scope: 'users:read', group: 'users' },
+      { scope: 'admin.organisation:read', group: 'admin' },
+      { scope: 'audit:read', group: 'audit' },
+    ]);
+    expect(normalizePlatformScopes(null)).toEqual([]);
+    expect(scopeGroupOf('org:manage_users')).toBe('org');
+  });
+
+  it('names known resources and capitalizes the rest', () => {
+    expect(scopeGroupLabel('audit')).toBe('Audit trail');
+    expect(scopeGroupLabel('billing')).toBe('Billing');
   });
 });

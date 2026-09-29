@@ -3,7 +3,7 @@
 // `request`, same errors — so each file stays readable.
 import { request, type KratosIdentity } from './client';
 import type { KratosSession } from '../lib/sessions';
-import { normalizeCatalog, type ScopeEntry } from '../lib/apiKeys';
+import { normalizeCatalog, normalizePlatformScopes, type PlatformScope, type ScopeEntry } from '../lib/apiKeys';
 
 export interface ApiKeyView {
   client_id: string;
@@ -23,9 +23,17 @@ export interface ApiKeySecretView extends ApiKeyView {
   client_secret: string;
 }
 
-/** A person's own key (MCP): acts as them in one organization, 30 days at most. */
-export interface PersonalKeyView extends ApiKeyView {
+/**
+ * A person's own key (MCP): not bound to any organization — it acts as them with their platform
+ * permissions, all of them (`all_permissions`) or the ones chosen at creation, re-checked on every
+ * call. 30 days at most. `organization_id` is null; a key made before this may still carry one, which
+ * means nothing any more.
+ */
+export interface PersonalKeyView extends Omit<ApiKeyView, 'organization_id'> {
   kind: 'personal';
+  organization_id?: string | null;
+  /** True: the key follows whatever its holder holds; `scopes` is then empty. Absent on an older jinbe. */
+  all_permissions?: boolean;
 }
 
 /** Answered once: the secret, and the key as an MCP client sends it (`stk_mcp_<client_id>.<secret>`). */
@@ -33,13 +41,6 @@ export interface PersonalKeySecretView extends PersonalKeyView {
   client_secret: string;
   key: string;
 }
-
-/** Whether members may create personal keys acting in an organization. */
-export interface ApiKeyPolicy {
-  personal_keys: 'allowed' | 'forbidden';
-}
-
-const org = (id: string) => `/organizations/${encodeURIComponent(id)}`;
 
 export const accountsApi = {
   // Kratos merges `traits` over the stored ones (jinbe reads the identity first), so only the
@@ -74,26 +75,22 @@ export const accountsApi = {
   apiKeyScopes: (orgId: string): Promise<ScopeEntry[]> =>
     request<{ scopes: unknown }>(`/organizations/${encodeURIComponent(orgId)}/api-keys/scopes`).then(r => normalizeCatalog(r.scopes)),
 
-  // What a personal key may carry: the caller's own permissions in that org, site routes and jinbe's
-  // platform permissions ("platform" group). Distinct from the org machine-key catalog above.
-  myApiKeyScopes: (orgId: string): Promise<ScopeEntry[]> =>
-    request<{ scopes: unknown }>(`/me/api-keys/scopes?organization_id=${encodeURIComponent(orgId)}`).then(r => normalizeCatalog(r.scopes)),
-
   revokeApiKey: (orgId: string, clientId: string) =>
     request<void>(`/organizations/${encodeURIComponent(orgId)}/api-keys/${encodeURIComponent(clientId)}`, {
       method: 'DELETE',
     }),
 
-  // Personal keys and the org policy answer 404 on a jinbe without DELEGATED_TOKENS_ENABLED: the
-  // feature is off there, which the screens say calmly rather than as a failure.
-  apiKeyPolicy: (orgId: string) => request<ApiKeyPolicy>(`${org(orgId)}/api-key-policy`),
-
-  setApiKeyPolicy: (orgId: string, body: ApiKeyPolicy) =>
-    request<ApiKeyPolicy>(`${org(orgId)}/api-key-policy`, { method: 'PUT', body: JSON.stringify(body) }),
-
+  // Personal keys answer 404 on a jinbe without DELEGATED_TOKENS_ENABLED: the feature is off there,
+  // which the screens say calmly rather than as a failure.
   listMyApiKeys: () => request<{ data: PersonalKeyView[]; total: number }>('/me/api-keys'),
 
-  createMyApiKey: (body: { label: string; organization_id: string; scopes: string[]; expires_in_days: number }) =>
+  // The permissions a personal key may be narrowed to: what the caller holds on the platform, each
+  // with the resource it belongs to.
+  myApiKeyScopes: (): Promise<PlatformScope[]> =>
+    request<{ scopes: unknown }>('/me/api-keys/scopes').then(r => normalizePlatformScopes(r.scopes)),
+
+  // No `scopes`: the key carries all of the holder's permissions, as they are at each call.
+  createMyApiKey: (body: { label: string; scopes?: string[]; expires_in_days: number }) =>
     request<PersonalKeySecretView>('/me/api-keys', { method: 'POST', body: JSON.stringify(body) }),
 
   revokeMyApiKey: (clientId: string) =>
