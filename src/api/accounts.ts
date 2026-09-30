@@ -90,7 +90,7 @@ export const accountsApi = {
     request<{ scopes: unknown }>('/me/api-keys/scopes').then(r => normalizePlatformScopes(r.scopes)),
 
   // No `scopes`: the key carries all of the holder's permissions, as they are at each call.
-  createMyApiKey: (body: { label: string; scopes?: string[]; expires_in_days: number }) =>
+  createMyApiKey: (body: { label: string; scopes?: string[]; expires_in_days: number; allow_step_up_actions?: boolean }) =>
     request<PersonalKeySecretView>('/me/api-keys', { method: 'POST', body: JSON.stringify(body) }),
 
   revokeMyApiKey: (clientId: string) =>

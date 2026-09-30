@@ -138,7 +138,7 @@ describe('Connections & keys', () => {
     type(document.querySelector('input[placeholder="e.g. Assistant on my laptop"]'), 'Laptop');
     click(inDrawer(/^Create key$/));
     await settle();
-    expect(api.createMyApiKey).toHaveBeenCalledWith({ label: 'Laptop', expires_in_days: 30 });
+    expect(api.createMyApiKey).toHaveBeenCalledWith({ label: 'Laptop', expires_in_days: 30, allow_step_up_actions: true });
     expect((document.querySelector('.drawer .copy-field input') as HTMLInputElement).value).toBe('stk_mcp_c2.s');
     expect(document.querySelector('.drawer')!.textContent).toContain('with all your permissions');
     expect(document.querySelector('.drawer')!.textContent).toContain("export example_MCP_KEY='stk_mcp_c2.s'");
@@ -166,7 +166,7 @@ describe('Connections & keys', () => {
     click(users);
     click(inDrawer(/^Create key$/));
     await settle();
-    expect(api.createMyApiKey).toHaveBeenCalledWith({ label: 'Reader', scopes: ['users:read'], expires_in_days: 30 });
+    expect(api.createMyApiKey).toHaveBeenCalledWith({ label: 'Reader', scopes: ['users:read'], expires_in_days: 30, allow_step_up_actions: true });
     expect(document.querySelector('.drawer')!.textContent).toContain('with the permissions you chose');
   });
 

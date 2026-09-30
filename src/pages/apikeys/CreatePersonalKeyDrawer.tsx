@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../contexts/AppContext';
 import { accountsApi, type PersonalKeySecretView } from '../../api/accounts';
 import { useMcpStatus } from '../../api/hooks';
-import { Button, ChecklistGroups, Drawer, EmptyHint, Field, FormGrid, Input, RadioGroup, Select, type ChecklistGroup } from '../../components/ui';
+import { Button, Checkbox, ChecklistGroups, Drawer, EmptyHint, Field, FormGrid, Input, RadioGroup, Select, type ChecklistGroup } from '../../components/ui';
 import { statusOf, toastFor } from '../../lib/apiError';
+import { stepUpAndAskToRedo } from '../../lib/resume';
 import { PERSONAL_EXPIRY_CHOICES, PERSONAL_EXPIRY_DEFAULT, scopeGroupLabel, scopeHint, sortScopes, type PlatformScope } from '../../lib/apiKeys';
 import { personalExpiryChoices } from '../../lib/mcpSettings';
 import { SecretDrawer } from './SecretDrawer';
@@ -50,6 +51,9 @@ export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () =>
   const [mode, setMode] = useState<'all' | 'chosen'>('all');
   const catalogue = useQuery({ queryKey: ['my-api-keys', 'scopes'], queryFn: () => accountsApi.myApiKeyScopes(), enabled: mode === 'chosen', staleTime: 60_000, retry: false });
   const [picked, setPicked] = useState<string[]>([]);
+  // Publishing, changing an email and granting groups need a recent second factor; a key may stand on
+  // the one proven now, at creation, for 30 days — unless this is unticked.
+  const [stepUpActions, setStepUpActions] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<PersonalKeySecretView | null>(null);
@@ -61,10 +65,16 @@ export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () =>
     if (!ready) return;
     setBusy(true);
     try {
-      const res = await accountsApi.createMyApiKey({ label: label.trim(), ...(mode === 'chosen' ? { scopes } : {}), expires_in_days: expiresIn });
+      const res = await accountsApi.createMyApiKey({ label: label.trim(), ...(mode === 'chosen' ? { scopes } : {}), expires_in_days: expiresIn, allow_step_up_actions: stepUpActions });
       setCreated(res);
       onCreated();
     } catch (err) {
+      // A key acts as you for up to 30 days: creating one needs a second factor from the last 15 minutes.
+      if ((err as { code?: string } | null)?.code === 'reauth_required') {
+        pushToast('Confirm your second factor to create a key', { err: true, sub: 'Nothing was created. You will be sent to confirm your second factor, then back here to create the key again.' });
+        stepUpAndAskToRedo('Create the key again: your second factor is confirmed for the next 15 minutes.');
+        return;
+      }
       if (outsideMcpGroups(err)) {
         setError('AI assistants are not enabled for your groups. A platform administrator chooses which groups may use them.');
         return;
@@ -128,6 +138,9 @@ export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () =>
             />
           </Field>
           {mode === 'chosen' && <Field label="Chosen permissions" required>{chooser()}</Field>}
+          <Field label="Protected actions" hint="Publishing a site, changing someone's email and granting groups normally need a fresh second factor. The one you confirm to create this key stands in for them, until the key expires.">
+            <Checkbox checked={stepUpActions} onChange={setStepUpActions} label="Allow this key to do protected actions" hint="Untick for a key that can never publish, change an email or grant a group." />
+          </Field>
           <Field label="Expires" hint={`Personal keys always expire, ${maxDays ?? PERSONAL_EXPIRY_DEFAULT} days at most. Revoking one stops it at once.`}>
             <Select value={expiresIn} onChange={(e) => setExpiresIn(Number(e.target.value))}>
               {expiryChoices.map((d) => <option key={d} value={d}>{d === 1 ? 'In 1 day' : `In ${d} days`}</option>)}
