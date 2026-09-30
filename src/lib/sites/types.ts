@@ -173,7 +173,17 @@ export interface Preview {
   checks: Check[];
   risk: Risk;
   words: string[];
+  /** Security findings (jinbe wave18); absent on a server without them. */
+  findings?: Finding[];
+  /** What publishing this needs: no error finding, and every confirm code acknowledged. */
+  publish?: { blocked: boolean; acknowledge: string[] };
 }
+
+/**
+ * A security finding on what would be published. `error` must be fixed; `confirm` needs a person to
+ * acknowledge its code (one acknowledgement covers every finding with that code); `warn` is said.
+ */
+export interface Finding { code: string; level: 'error' | 'warn' | 'confirm'; message: string; fix: string; path?: string }
 
 export interface FieldChange { path: string; before: unknown; after: unknown }
 export interface ArtefactDiff { kind: string; id: string; before: unknown; after: unknown; fields: FieldChange[] }

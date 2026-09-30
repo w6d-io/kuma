@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Badge, Button, Card, ConfirmDialog, DiffView, EmptyState, Field, I, Input, Segmented, Select, SkeletonRows, Table, Th } from '../../../components/ui';
 import { sitesApi, useVersions, useInvalidateSite } from '../../../api/sites';
-import type { Site } from '../../../lib/sites/types';
+import type { Finding, Site } from '../../../lib/sites/types';
+import { FindingsDialog } from '../Findings';
 import type { SiteEditor } from '../useSiteEditor';
 import type { Go } from '../SiteDetail';
 import { QueryError } from '../parts';
@@ -17,7 +18,8 @@ import { useResume } from '../../../lib/resume';
  * back: the latest saved one is published as it is, an older unpublished one the rollback way.
  */
 
-type Pick = { to: number; note: string; live: number | null };
+/** `acknowledge`: the finding codes accepted in the findings dialog, kept across the step-up. */
+type Pick = { to: number; note: string; live: number | null; acknowledge?: string[] };
 
 const LABELS: Record<string, string> = {
   displayName: 'Display name', address: 'Address', upstream: 'Runs at', exposure: 'Exposure', gates: 'Gates', routes: 'Routes',
@@ -38,6 +40,7 @@ export function HistoryTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOn
   const [filter, setFilter] = useState<'all' | 'rollback'>('all');
   const [target, setTarget] = useState<number | null>(null);
   const [note, setNote] = useState('');
+  const [held, setHeld] = useState<{ findings: Finding[]; pick: Pick } | null>(null);
   const list = [...(versions.data ?? [])].reverse();
   const live = ed.detail.data?.applied?.version;
   const latest = ed.detail.data?.version;
@@ -49,11 +52,12 @@ export function HistoryTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOn
   const a = useQuery({ queryKey: ['sites', 'version', ed.name, v], queryFn: () => sitesApi.version(ed.name, v!), enabled: !!v });
   const b = useQuery({ queryKey: ['sites', 'version', ed.name, compare], queryFn: () => sitesApi.version(ed.name, compare!), enabled: !!compare && compare !== v });
 
-  async function restore({ to, note: why }: Pick) {
+  async function restore(pick: Pick) {
+    const { to, note: why, acknowledge } = pick;
     const publishing = to === latest && ahead(to);
-    const after = { resume: `site-history:${ed.name}`, data: { to, note: why, live: live ?? null } satisfies Pick };
+    const after = { resume: `site-history:${ed.name}`, data: { to, note: why, live: live ?? null, acknowledge } satisfies Pick };
     const out = publishing
-      ? await run('Publish', () => sitesApi.apply(ed.name, to), `v${to} is being published`, after)
+      ? await run('Publish', () => sitesApi.apply(ed.name, to, acknowledge), `v${to} is being published`, after, (findings) => setHeld({ findings, pick }))
       : await run(ahead(to) ? 'Publish' : 'Rollback', () => sitesApi.rollback(ed.name, to, why || undefined), ahead(to) ? `v${to}’s content is being published as a new version` : `Rolled back: v${to}’s content is live as a new version`, after);
     setTarget(null);
     if (out) { ed.reset(); invalidate(ed.name); go('status'); }
@@ -139,6 +143,12 @@ export function HistoryTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOn
         busy={busy === 'Rollback' || busy === 'Publish'}
         onCancel={() => setTarget(null)}
         onConfirm={() => restore({ to: target!, note, live: live ?? null })}
+      />
+      <FindingsDialog
+        findings={held?.findings ?? null}
+        what={held ? `v${held.pick.to}` : ''}
+        onClose={() => setHeld(null)}
+        onRetry={async (acknowledge) => { const pick = held!.pick; setHeld(null); await restore({ ...pick, acknowledge }); }}
       />
     </div>
   );
