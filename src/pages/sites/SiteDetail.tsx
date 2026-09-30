@@ -14,6 +14,7 @@ import { StatusTab } from './tabs/StatusTab';
 import { HistoryTab } from './tabs/HistoryTab';
 import { SettingsTab } from './tabs/SettingsTab';
 import { ReviewTab } from './tabs/ReviewTab';
+import { VerifyTab } from './tabs/VerifyTab';
 import { PendingRequests } from './PendingRequests';
 import { useInvalidateSite } from '../../api/sites';
 import { EditAddressDialog } from './EditAddress';
@@ -63,6 +64,7 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
     ...(ed.system ? [] : [{ value: 'login' as const, label: 'Login' }]),
     { value: 'status', label: 'Status' },
     { value: 'history', label: 'History' },
+    { value: 'verify', label: 'Verify' },
     ...(ed.system ? [] : [{ value: 'settings' as const, label: 'Settings' }]),
     ...((ed.hasDraft || tab === 'review') && !readOnly ? [{ value: 'review' as const, label: 'Review & apply' }] : []),
   ];
@@ -80,6 +82,7 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
         </span>}
         actions={<>
           <Button size="md" icon={I.route} kbd="t" onClick={() => go('routes', { test: 'GET /' })}>Test a URL</Button>
+          {d?.applied && <Button size="md" icon={I.shield} onClick={() => go('verify')}>Verify</Button>}
           {s.address?.host && <Button size="md" trailing={I.arrowOut} onClick={() => window.open(`https://${s.address!.host}${s.address!.pathPrefix ?? ''}/`, '_blank', 'noopener')}>Open site</Button>}
         </>}
       />
@@ -117,6 +120,7 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
         {tab === 'access' && <AccessTab ed={ed} readOnly={readOnly} query={query} go={go} />}
         {tab === 'login' && !ed.system && <LoginTab ed={ed} readOnly={readOnly} />}
         {tab === 'status' && <StatusTab ed={ed} />}
+        {tab === 'verify' && <VerifyTab ed={ed} go={go} />}
         {tab === 'history' && <HistoryTab ed={ed} readOnly={readOnly || !perms.canApply} query={query} go={go} />}
         {tab === 'settings' && !ed.system && <SettingsTab ed={ed} readOnly={readOnly} canApply={perms.canApply} onEditAddress={() => setEditAddress(true)} />}
         {tab === 'review' && !readOnly && <ReviewTab ed={ed} canApply={perms.canApply} go={go} query={query} />}

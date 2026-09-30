@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { notAvailable, type SiteError } from '../../api/sites';
+import { findingsOf, notAvailable, type SiteError } from '../../api/sites';
+import type { Finding } from '../../lib/sites/types';
 import { stepUpAndAskToRedo, stepUpAndResume } from '../../lib/resume';
 import { EDGE_BLOCKED, edgeBlocked } from '../../lib/apiError';
 
@@ -21,6 +22,7 @@ export function describeSiteError(err: unknown): string {
     case 'checks_failed': return `Checks refused it: ${e.message}`;
     case 'invalid_site': return 'This version cannot be saved as it is — see the checks.';
     case 'rules_pending': return e.message;
+    case 'unconfirmed_findings': return 'Not published: fix the security errors and acknowledge the findings, then publish again.';
     case 'system_site': return 'System sites are managed by the platform chart.';
   }
   if (e.status === 503) return 'Checks are unavailable (gatekit or Kubernetes did not answer), so nothing was changed.';
@@ -40,10 +42,14 @@ export const publishAction = (name: string) => `site-apply:${name}`;
 
 export type AfterStepUp = { resume: string; data: unknown; confirmAgain?: boolean } | { redo: string };
 
+/**
+ * `onFindings`: a publish refused for security findings nobody acknowledged (422
+ * unconfirmed_findings) goes to the screen's findings dialog instead of a toast.
+ */
 export function useSiteAction() {
   const { pushToast } = useApp();
   const [busy, setBusy] = useState<string | null>(null);
-  const run = useCallback(async <T,>(label: string, fn: () => Promise<T>, success?: string, after?: AfterStepUp): Promise<T | undefined> => {
+  const run = useCallback(async <T,>(label: string, fn: () => Promise<T>, success?: string, after?: AfterStepUp, onFindings?: (findings: Finding[]) => void): Promise<T | undefined> => {
     setBusy(label);
     try {
       const out = await fn();
@@ -52,6 +58,8 @@ export function useSiteAction() {
     } catch (err) {
       const e = err as SiteError;
       const auto = !!after && 'resume' in after;
+      const findings = onFindings && findingsOf(err);
+      if (findings) { onFindings(findings); return undefined; }
       if (e.code === 'reauth_required' && (after && 'resume' in after ? stepUpAndResume(after.resume, after.data) : stepUpAndAskToRedo(after?.redo ?? `press ${label} again.`))) {
         pushToast('Confirm it’s you', {
           err: true,

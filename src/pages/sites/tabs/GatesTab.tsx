@@ -10,16 +10,20 @@ import type { SiteEditor } from '../useSiteEditor';
 import type { Go } from '../SiteDetail';
 import { CheckList, LockedCallout, MethodChips } from '../parts';
 import { checkLines } from '../../../lib/sites/format';
+import { SIGN_IN_CODES, gateChecks, gatePath, mergeChecks } from '../../../lib/sites/gateChecks';
+import { customAnswers, type CustomAnswer, type Question } from '../../../lib/sites/gateWords';
 import { GateAdvanced } from './GateAdvanced';
 import { GateExpert } from './GateExpert';
 
 /**
  * Gates (site-ux.md §7): how callers prove who they are. Cards for every gate; the selected one as
  * four questions (Basic), every handler field (Advanced), or raw JSON and the match pattern
- * (Expert). A gate with anything beyond a preset says "Customized" even in Basic.
+ * (Expert). A gate with anything beyond a preset says "Customized" even in Basic, and says what it
+ * is: the handlers in words, what they cost, and the closest preset one click away.
  */
 
 type Level = 'basic' | 'advanced' | 'expert';
+
 
 export function GatesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnly: boolean; query: Record<string, string>; go: Go }) {
   const site = ed.site;
@@ -44,7 +48,12 @@ export function GatesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnly
     select(g.id);
   };
   const removeGate = (id: string) => ed.update((s) => ({ ...s, gates: s.gates.filter((g) => g.id !== id) }));
-  const gateChecks = ed.preview.state === 'ok' ? ed.preview.preview.checks.filter((c) => c.path?.startsWith('gates')) : [];
+  const serverChecks = ed.preview.state === 'ok' ? ed.preview.preview.checks.filter((c) => c.path?.startsWith('gates')) : [];
+  // Advanced lists the local checks itself, beside the chain; Basic says the sign-in ones in its note.
+  const index = site.gates.findIndex((g) => g.id === selectedId);
+  const local = gate && level !== 'advanced' ? gateChecks(gate).map((c) => ({ ...c, path: gatePath(index, c.code) })) : [];
+  // Basic says this gate's sign-in problems in its "Customized" note.
+  const checks = mergeChecks(serverChecks, local).filter((c) => level !== 'basic' || !(SIGN_IN_CODES.has(c.code) && c.path === gatePath(index, c.code)));
 
   return (
     <div className="stack gap-16">
@@ -70,10 +79,10 @@ export function GatesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnly
           sub={<span className="mono">{gate.id}</span>}
           actions={<Segmented label="Detail level" value={level} onChange={(l) => select(gate.id, l)} options={[{ value: 'basic', label: 'Basic' }, { value: 'advanced', label: 'Advanced' }, { value: 'expert', label: 'Expert' }]} />}
         >
-          {level === 'basic' && <GateBasic gate={gate} site={site} enabled={enabled} readOnly={readOnly} onChange={setGate} onSite={setSite} onLocked={setLocked} />}
+          {level === 'basic' && <GateBasic gate={gate} site={site} enabled={enabled} readOnly={readOnly} onChange={setGate} onSite={setSite} onLocked={setLocked} onAdvanced={() => select(gate.id, 'advanced')} />}
           {level === 'advanced' && <GateAdvanced gate={gate} site={site} enabled={enabled} readOnly={readOnly} onChange={setGate} onLocked={setLocked} />}
           {level === 'expert' && <GateExpert gate={gate} preview={ed.preview} readOnly={readOnly} onChange={setGate} />}
-          {gateChecks.length > 0 && <CheckList className="mt-12" lines={checkLines(gateChecks)} />}
+          {checks.length > 0 && <CheckList className="mt-12" lines={checkLines(checks)} />}
           {!readOnly && site.gates.length > 1 && (
             <div className="row justify-end mt-12">
               <Button
@@ -99,9 +108,37 @@ export function GatesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnly
   );
 }
 
-function GateBasic({ gate, site, enabled, readOnly, onChange, onSite, onLocked }: {
+const ADVANCED_PART: Record<Question, string> = { who: 'sign-in methods', pass: 'authorizer', gets: 'mutators', fails: 'error handlers' };
+
+/**
+ * A question answered outside the presets: what is configured in words, what it costs, and the
+ * closest preset. The choices under it are then offered as replacements, never as an empty pick.
+ */
+function CustomNote({ q, answer, readOnly, onPreset, onAdvanced }: {
+  q: Question; answer: CustomAnswer; readOnly: boolean; onPreset: (value: string) => void; onAdvanced: () => void;
+}) {
+  const w = answer.warning;
+  return (
+    <Callout
+      tone={w?.level === 'error' ? 'danger' : w ? 'warning' : 'info'}
+      icon={w ? I.alert : I.info}
+      title={<span className="row gap-8 items-center wrap"><Badge tone="info" mono={false}>Customized</Badge><span>{answer.words}</span></span>}
+      actions={<>
+        {!readOnly && <Button size="sm" variant="primary" onClick={() => onPreset(answer.closest.value)}>Use preset: {answer.closest.label}</Button>}
+        <Button size="sm" variant="ghost" onClick={onAdvanced}>Edit in Advanced</Button>
+      </>}
+    >
+      <div className="small">
+        {w && <p className="m-0">{w.text}</p>}
+        <p className="m-0 muted">None of the choices below matches exactly ({ADVANCED_PART[q]} set by hand or over the API). Picking one replaces it.</p>
+      </div>
+    </Callout>
+  );
+}
+
+function GateBasic({ gate, site, enabled, readOnly, onChange, onSite, onLocked, onAdvanced }: {
   gate: Gate; site: Site; enabled: typeof SANDBOX_ENABLED; readOnly: boolean;
-  onChange: (g: Gate) => void; onSite: (fn: (s: Site) => Site) => void; onLocked: (h: string) => void;
+  onChange: (g: Gate) => void; onSite: (fn: (s: Site) => Site) => void; onLocked: (h: string) => void; onAdvanced: () => void;
 }) {
   const p = presetsOf(gate);
   const lockHint = (missing: string[]) => missing.length
@@ -112,18 +149,22 @@ function GateBasic({ gate, site, enabled, readOnly, onChange, onSite, onLocked }
     return { value: k, label: WHO_LABEL[k], hint: lockHint(missing), disabled: readOnly || missing.length > 0 };
   });
   const noSubject = p.who === 'anyone';
-  const custom = (q: string) => <Badge tone="info" mono={false}>Customized — see Advanced ({q})</Badge>;
+  const answers = customAnswers(gate);
+  const custom = (q: Question) => {
+    const a = answers[q];
+    return a && <CustomNote q={q} answer={a} readOnly={readOnly} onPreset={(v) => onChange(withPreset(gate, q, v))} onAdvanced={onAdvanced} />;
+  };
 
   return (
     <div className="site-questions">
       <section>
         <h4>1 Who is calling?</h4>
-        {p.who === 'custom' && custom('sign-in methods')}
+        {custom('who')}
         <RadioGroup label="Who is calling?" name={`who-${gate.id}`} value={p.who === 'custom' ? ('' as WhoPreset) : p.who} disabled={readOnly} onChange={(v) => onChange(withPreset(gate, 'who', v))} options={whoOpts} />
       </section>
       <section>
         <h4>2 Who may pass?</h4>
-        {p.pass === 'custom' && custom('authorizer')}
+        {custom('pass')}
         <RadioGroup<PassPreset> label="Who may pass?" name={`pass-${gate.id}`} value={p.pass === 'custom' ? ('' as PassPreset) : p.pass} disabled={readOnly} onChange={(v) => onChange(withPreset(gate, 'pass', v))} options={[
           { value: 'policy', label: PASS_LABEL.policy, disabled: noSubject || !enabled.authorizers.includes('remote_json'), hint: noSubject ? 'Anyone has no identity to check.' : undefined },
           { value: 'everyone', label: noSubject ? 'Everyone' : PASS_LABEL.everyone },
@@ -132,7 +173,7 @@ function GateBasic({ gate, site, enabled, readOnly, onChange, onSite, onLocked }
       </section>
       <section>
         <h4>3 What the service gets</h4>
-        {p.gets === 'custom' && custom('mutators')}
+        {custom('gets')}
         <RadioGroup<GetsPreset> label="What the service gets" name={`gets-${gate.id}`} value={p.gets === 'custom' ? ('' as GetsPreset) : p.gets} disabled={readOnly} onChange={(v) => onChange(withPreset(gate, 'gets', v))} options={(Object.keys(GETS) as GetsPreset[]).map((k) => {
           const missing = missingHandlers(GETS[k], enabled.mutators);
           return { value: k, label: GETS_LABEL[k], hint: lockHint(missing) ?? (k === 'nothing' && !noSubject ? 'Warning: the service may trust spoofed X-User-* headers.' : undefined), disabled: missing.length > 0 };
@@ -140,7 +181,7 @@ function GateBasic({ gate, site, enabled, readOnly, onChange, onSite, onLocked }
       </section>
       <section>
         <h4>4 When access fails</h4>
-        {p.fails === 'custom' && custom('error handlers')}
+        {custom('fails')}
         <RadioGroup<FailsPreset> label="When access fails" name={`fails-${gate.id}`} value={p.fails === 'custom' ? ('' as FailsPreset) : p.fails} disabled={readOnly} onChange={(v) => onChange(withPreset(gate, 'fails', v))} options={(['website', 'api', 'platform'] as const).map((k) => ({ value: k, label: FAILS_LABEL[k] }))} />
       </section>
       <section>

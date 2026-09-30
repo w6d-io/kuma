@@ -2,15 +2,18 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Callout, Card, CodeView, Field, I, Segmented, Textarea, Timeline } from '../../../components/ui';
 import { AdvancedDisclosure } from '../../../components/ui/Primitives';
-import { sitesApi, checksOf, useInvalidateSite, useSitesPlatform, useSiteStatus, notAvailable } from '../../../api/sites';
+import { sitesApi, checksOf, findingsOf, useInvalidateSite, useSitesPlatform, useSiteStatus, notAvailable } from '../../../api/sites';
 import { checkCounts, riskLine, summarizeArtefact } from '../../../lib/sites/diffWords';
 import { applyFinished, derivedStages, fromProgress } from '../../../lib/sites/stages';
 import { summarySentence } from '../../../lib/sites/templates';
-import type { ApplyResult, Check } from '../../../lib/sites/types';
+import type { ApplyResult, Check, Finding } from '../../../lib/sites/types';
+import { findingsBlocker, mergeFindings } from '../../../lib/sites/verify';
+import { FindingsList } from '../Findings';
 import type { SiteEditor } from '../useSiteEditor';
 import type { Go } from '../SiteDetail';
 import { CheckList, RiskBadge } from '../parts';
 import { checkLines } from '../../../lib/sites/format';
+import { mergeChecks, siteGateChecks } from '../../../lib/sites/gateChecks';
 import { describeSiteError, publishAction, useSiteAction } from '../useAction';
 import { useApp } from '../../../contexts/AppContext';
 import { stepUpAndResume, useResume } from '../../../lib/resume';
@@ -23,6 +26,9 @@ import { stepUpAndResume, useResume } from '../../../lib/resume';
  * Saving and publishing are two calls, and only the second needs a recent second factor. A version
  * saved but refused at publish is said as such ("v17 saved, not live yet") with its own Publish, and
  * after the step-up the publish of that version runs again by itself, once.
+ *
+ * The server's security findings are the confirmation step of every publish: errors block, and each
+ * finding to accept is ticked by its code, which the publish (or the apply request) then carries.
  */
 
 export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; canApply: boolean; go: Go; query?: Record<string, string> }) {
@@ -36,7 +42,8 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
   const [applying, setApplying] = useState(false);
   const [result, setResult] = useState<ApplyResult | null>(null);
   // `version`: saved, and refused at publish — the draft is gone into it, only the publish is left.
-  const [failure, setFailure] = useState<{ message: string; checks: Check[]; version?: number } | null>(null);
+  const [failure, setFailure] = useState<{ message: string; checks: Check[]; version?: number; findings?: Finding[] } | null>(null);
+  const [acked, setAcked] = useState<Set<string>>(new Set());
   const [resumed, setResumed] = useState<number | null>(null);
   const siteKey = site ? JSON.stringify(site) : '';
   const diff = useQuery({ queryKey: ['sites', 'diff', ed.name, siteKey], queryFn: () => sitesApi.diff(ed.name, site!), enabled: !!site && !result, retry: false });
@@ -56,10 +63,11 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
 
   // Back from the step-up a refused publish sent the operator to: publish that version, once, if
   // it is still the latest saved one and still not live. Anything else is said, not guessed at.
-  useResume<{ version: number }>(canApply ? publishAction(ed.name) : null, !!d, ({ version }) => {
+  useResume<{ version: number; acknowledge?: string[] }>(canApply ? publishAction(ed.name) : null, !!d, ({ version, acknowledge }) => {
     if (d && d.version === version && d.applied?.version !== version) {
       setResumed(version);
-      void publish(version);
+      if (acknowledge) setAcked(new Set(acknowledge));
+      void publish(version, acknowledge);
     } else if (d?.applied?.version !== version) {
       pushToast(`v${version} was not published`, { err: true, sub: `Somebody saved v${d?.version} since. Review it and publish again.`, ttl: 8000 });
     }
@@ -70,23 +78,26 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
   const production = !!platform.data?.production;
   const first = !ed.detail.data?.applied;
   const preview = ed.preview.state === 'ok' ? ed.preview.preview : null;
-  const checks = preview?.checks ?? [];
+  // The gate checks run here too: a gate nobody can sign in through never reaches the server.
+  const checks = site ? mergeChecks(preview?.checks ?? [], siteGateChecks(site)) : preview?.checks ?? [];
   const { errors, warnings } = checkCounts(checks);
   const risk = diff.data?.risk ?? preview?.risk;
-  const blocked = errors > 0 || ed.preview.state !== 'ok' || (production && !note.trim());
+  const findings = mergeFindings(preview?.findings ?? [], failure?.findings ?? []);
+  const findingsBlock = findingsBlocker(findings, acked);
+  const blocked = errors > 0 || ed.preview.state !== 'ok' || !!findingsBlock || (production && !note.trim());
 
-  async function publish(version: number) {
+  async function publish(version: number, acknowledge = [...acked]) {
     setApplying(true);
     setFailure(null);
     try {
-      const out = await sitesApi.apply(ed.name, version);
+      const out = await sitesApi.apply(ed.name, version, acknowledge);
       setResult(out);
       invalidate(ed.name);
     } catch (err) {
-      if ((err as { code?: string }).code === 'reauth_required' && stepUpAndResume(publishAction(ed.name), { version })) {
+      if ((err as { code?: string }).code === 'reauth_required' && stepUpAndResume(publishAction(ed.name), { version, acknowledge })) {
         pushToast('Confirm it’s you', { err: true, sub: `v${version} is saved but not live yet. Taking you to prove your second factor; back here it is published by itself.`, ttl: 4000 });
       }
-      setFailure({ message: describeSiteError(err), checks: checksOf(err), version });
+      setFailure({ message: describeSiteError(err), checks: checksOf(err), version, findings: findingsOf(err) ?? undefined });
       invalidate(ed.name);
     } finally {
       setApplying(false);
@@ -140,6 +151,12 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
         </Card>
       )}
 
+      {!result && findings.length > 0 && (
+        <Card title="Security findings" sub={findingsBlock ?? 'Acknowledged — ready to publish'}>
+          <FindingsList findings={findings} acknowledged={acked} onChange={setAcked} disabled={applying} />
+        </Card>
+      )}
+
       {!result && (
         <Card title="What will change" actions={<Segmented label="Show" value={mode} onChange={setMode} options={[{ value: 'words', label: 'In words' }, { value: 'raw', label: 'Raw JSON' }]} />}>
           {diff.error ? <Callout tone="warning" icon={I.alert}>{describeSiteError(diff.error)}</Callout> : !diff.data ? <p className="small muted m-0">Comparing with what is live…</p>
@@ -166,7 +183,7 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
 
       {!result && !applying && !failure && notLive != null && (
         <Callout tone="warning" icon={I.alert} title={`v${notLive} saved, not live yet`}
-          actions={canApply && <Button size="sm" variant="primary" onClick={() => void publish(notLive)}>Publish v{notLive}</Button>}>
+          actions={canApply && <Button size="sm" variant="primary" disabled={!!findingsBlock} onClick={() => void publish(notLive)}>Publish v{notLive}</Button>}>
           <div className="small">The gateway serves {d?.applied ? `v${d.applied.version}` : 'nothing for this site yet'}. Publishing makes v{notLive} live.</div>
         </Callout>
       )}
@@ -179,7 +196,7 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
           {failure?.checks.length ? <CheckList className="mt-8" lines={checkLines(failure.checks)} /> : null}
           {failure?.version != null && (
             <Callout tone="warning" icon={I.alert} title={`v${failure.version} saved, not live yet`} className="mt-12"
-              actions={canApply && <Button size="sm" variant="primary" loading={applying} onClick={() => void publish(failure.version!)}>Publish v{failure.version}</Button>}>
+              actions={canApply && <Button size="sm" variant="primary" disabled={!!findingsBlock} loading={applying} onClick={() => void publish(failure.version!)}>Publish v{failure.version}</Button>}>
               <div className="small">The gateway still serves {d?.applied ? `v${d.applied.version}` : 'nothing for this site'}. {failure.message}</div>
             </Callout>
           )}
@@ -188,6 +205,7 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
               <span className="small muted">You can leave this page.</span>
               <Button size="sm" onClick={() => go('routes', { test: 'GET /' })}>Test a URL</Button>
               <Button size="sm" onClick={() => go('status')}>Show conditions</Button>
+              <Button size="sm" icon={I.shield} onClick={() => go('verify')}>Verify</Button>
               {result.version > 1 && canApply && (
                 <Button size="sm" variant="danger" loading={busy === 'Rollback'} onClick={async () => {
                   const out = await run('Rollback', () => sitesApi.rollback(ed.name, result.version - 1), `Rolled back to v${result.version - 1}`);
@@ -207,11 +225,11 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
           <div className="row gap-8 justify-end mt-12 wrap">
             <Button onClick={() => void ed.saveNow()} loading={ed.saving === 'saving'}>Save draft</Button>
             {!canApply && (
-              <Button variant="primary" loading={busy === 'Request'} onClick={() => void run('Request', () => sitesApi.requestApply(ed.name, { version: ed.detail.data?.version ?? 0, note: note || undefined }), 'Sent to a super admin for review')}>Request apply</Button>
+              <Button variant="primary" disabled={!!findingsBlock} loading={busy === 'Request'} onClick={() => void run('Request', () => sitesApi.requestApply(ed.name, { version: ed.detail.data?.version ?? 0, note: note || undefined, acknowledge: [...acked] }), 'Sent to a super admin for review')}>Request apply</Button>
             )}
             {canApply && (
               notLive != null ? (
-                <Button variant={production ? 'danger' : 'primary'} loading={applying} onClick={() => void publish(notLive)}>
+                <Button variant={production ? 'danger' : 'primary'} disabled={!!findingsBlock} loading={applying} onClick={() => void publish(notLive)}>
                   Publish v{notLive}
                 </Button>
               ) : (
@@ -221,8 +239,8 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
               )
             )}
           </div>
-          {canApply && blocked && ed.preview.state === 'ok' && (
-            <p className="small text-danger mt-8 mb-0">{errors > 0 ? `${errors} blocking check${errors === 1 ? '' : 's'} above must be fixed first.` : 'Add a note first.'}</p>
+          {blocked && ed.preview.state === 'ok' && (canApply || findingsBlock) && (
+            <p className="small text-danger mt-8 mb-0">{errors > 0 ? `${errors} blocking check${errors === 1 ? '' : 's'} above must be fixed first.` : findingsBlock ?? 'Add a note first.'}</p>
           )}
         </Card>
       )}

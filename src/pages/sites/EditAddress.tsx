@@ -133,6 +133,12 @@ export function EditAddressDialog({ ed, open, onClose, canApply, onApplied }: {
         if (stepUpAndResume(publishAction(ed.name), { version: savedVersion })) {
           pushToast('Confirm it’s you', { err: true, sub: `v${savedVersion} (the new address) is saved but not live yet. Taking you to prove your second factor; back here it is published by itself.`, ttl: 4000 });
         }
+      } else if ((err as SiteError).code === 'unconfirmed_findings' && savedVersion != null) {
+        // Saved, not live: Review lists the findings of that version to fix or acknowledge.
+        onClose();
+        goSites(sitesHref({ view: 'site', name: ed.name, tab: 'review' }));
+        pushToast(`v${savedVersion} saved, not live yet`, { err: true, sub: 'The new address has security findings to acknowledge first. They are listed here.', ttl: 6000 });
+        return;
       } else if ((err as SiteError).code === 'reauth_required') {
         await run('Apply', () => Promise.reject(err));
       }

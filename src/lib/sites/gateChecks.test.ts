@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { gateChecks, moveHandler, explicitErrors, patternShape } from './gateChecks';
+import { gateChecks, moveHandler, explicitErrors, patternShape, siteGateChecks, mergeChecks } from './gateChecks';
 import type { Gate } from './types';
 
 const g = (over: Partial<Gate>): Gate => ({ id: 'b', label: 'B', authenticators: [{ handler: 'cookie_session' }], authorizer: 'policy', mutators: [{ handler: 'header' }], errors: 'website', ...over });
@@ -21,8 +21,27 @@ describe('gateChecks', () => {
     const c = gateChecks(g({ authenticators: [{ handler: 'cookie_session', config: { additional_headers: { Authorization: 'Bearer abcdefgh' } } }] }));
     expect(c[0]).toMatchObject({ level: 'error', code: 'secret_in_rule' });
   });
+  it('a gate nobody can sign in through is an error', () => {
+    expect(gateChecks(g({ authenticators: [] }))[0]).toMatchObject({ level: 'error', code: 'gate_without_authenticator' });
+  });
+  it('a session token read from Authorization warns unless introspection runs first', () => {
+    const bare = { handler: 'bearer_token' };
+    expect(gateChecks(g({ authenticators: [{ handler: 'cookie_session' }, bare] }))).toEqual([expect.objectContaining({ level: 'warn', code: 'bare_bearer_token' })]);
+    expect(gateChecks(g({ authenticators: [bare, { handler: 'oauth2_introspection' }] }))).toEqual([expect.objectContaining({ level: 'error', code: 'bearer_before_oauth2' })]);
+    expect(codes(g({ authenticators: [{ handler: 'oauth2_introspection' }, bare] }))).not.toContain('bare_bearer_token');
+    expect(codes(g({ authenticators: [{ handler: 'bearer_token', config: { token_from: { header: 'X-Session-Token' } } }] }))).toEqual([]);
+  });
   it('jwt scopes need a strategy', () => {
     expect(codes(g({ authenticators: [{ handler: 'jwt', config: { required_scope: ['a'] } }] }))).toContain('jwt_scope');
+  });
+});
+
+describe('siteGateChecks', () => {
+  it('names the gate when there are several, and does not repeat a server check', () => {
+    const site = { gates: [g({ id: 'a', label: 'A', authenticators: [] }), g({})] } as never;
+    const local = siteGateChecks(site);
+    expect(local).toEqual([expect.objectContaining({ code: 'gate_without_authenticator', path: 'gates.0.authenticators', message: expect.stringMatching(/^A: /) })]);
+    expect(mergeChecks([{ level: 'error', code: 'gate_without_authenticator', message: 'x', path: 'gates.0.authenticators' }], local)).toHaveLength(1);
   });
 });
 

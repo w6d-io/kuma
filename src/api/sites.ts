@@ -3,12 +3,13 @@ import { request } from './client';
 import { bearerToken } from '../auth/session';
 import { isNotAvailable } from './orgAccess';
 import type {
-  ApplyProgress, ApplyRequest, ApplyResult, BlastRadius, Check, DriftItem, DualRun, HostCheck,
+  ApplyProgress, ApplyRequest, ApplyResult, BlastRadius, Check, DriftItem, Finding, DualRun, HostCheck,
   MatchResult, MigrationStatus, ParityReport, Preview, RenderResult, Site, SiteDetail, SiteDiff, SiteDraft,
   SiteK8sStatus, SiteSummary, SiteVersion, Zone, MigrationGroup, HttpMethod,
   GatewayInfo, ZoneDetail, ZoneGatewayRef, ZoneIngress,
 } from '../lib/sites/types';
 import { SANDBOX_ENABLED, type HandlerCatalog } from '../lib/sites/presets';
+import type { VerifyReport } from '../lib/sites/verify';
 
 /**
  * /api/admin/sites (site-ux.md §14.2). The endpoints jinbe serves today (list, detail, drafts,
@@ -45,7 +46,13 @@ export async function withHeaders<T>(path: string, init: RequestInit, extra: Rec
   return request<T>(path, { ...init, headers: { 'Content-Type': contentType, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra } });
 }
 
-export interface SiteError extends Error { status?: number; code?: string; details?: { checks?: Check[]; issues?: unknown } }
+export interface SiteError extends Error { status?: number; code?: string; details?: { checks?: Check[]; issues?: unknown; findings?: Finding[] } }
+
+/** The findings a refused publish carries (422 unconfirmed_findings: only the unresolved ones). */
+export function findingsOf(err: unknown): Finding[] | null {
+  const e = err as SiteError | null;
+  return e?.code === 'unconfirmed_findings' ? e.details?.findings ?? [] : null;
+}
 
 /** The checks an error carries (422 invalid_site, 409 checks_failed). */
 export function checksOf(err: unknown): Check[] {
@@ -80,7 +87,9 @@ export const sitesApi = {
       method: 'PUT',
       body: json({ site, ...(opts.note ? { note: opts.note } : {}) }),
     }, opts.etag ? { 'If-Match': `"${opts.etag}"` } : {}),
-  apply: (name: string, version: number) => request<ApplyResult>(`${BASE}/${enc(name)}/apply`, { method: 'POST', body: json({ version }) }),
+  /** `acknowledge`: the confirm finding codes a person accepted (422 unconfirmed_findings without them). */
+  apply: (name: string, version: number, acknowledge?: string[]) =>
+    request<ApplyResult>(`${BASE}/${enc(name)}/apply`, { method: 'POST', body: json({ version, ...(acknowledge?.length ? { acknowledge } : {}) }) }),
   applyProgress: (name: string, applyId: string) => request<ApplyProgress>(`${BASE}/${enc(name)}/applies/${enc(applyId)}`),
 
   versions: (name: string) => request<SiteVersion[]>(`${BASE}/${enc(name)}/versions`),
@@ -101,11 +110,15 @@ export const sitesApi = {
   status: (name: string) => request<SiteK8sStatus>(`${BASE}/${enc(name)}/status`),
   drift: (name: string) => request<{ items: DriftItem[] }>(`${BASE}/${enc(name)}/drift`),
   acceptDrift: (name: string) => request<SiteDraft>(`${BASE}/${enc(name)}/drift/accept`, { method: 'POST' }),
-  requestApply: (name: string, body: { version: number; note?: string }) =>
+  requestApply: (name: string, body: { version: number; note?: string; acknowledge?: string[] }) =>
     request<ApplyRequest>(`${BASE}/${enc(name)}/requests`, { method: 'POST', body: json(body) }),
   requests: (q: { state?: string; site?: string } = {}) => request<ApplyRequest[]>(`${BASE}/requests${Object.keys(q).length ? `?${new URLSearchParams(q as Record<string, string>)}` : ''}`),
-  approveRequest: (id: string) => request<ApplyRequest>(`${BASE}/requests/${enc(id)}/approve`, { method: 'POST' }),
+  approveRequest: (id: string, acknowledge?: string[]) =>
+    request<ApplyRequest>(`${BASE}/requests/${enc(id)}/approve`, { method: 'POST', ...(acknowledge?.length ? { body: json({ acknowledge }) } : {}) }),
   rejectRequest: (id: string, reason?: string) => request<ApplyRequest>(`${BASE}/requests/${enc(id)}/reject`, { method: 'POST', body: json(reason ? { reason } : {}) }),
+  /** Rollout, anonymous probes, access matrix and curl lines for what is live. One run per site per 30 s. */
+  verify: (name: string, opts: { waf?: boolean } = {}) =>
+    request<VerifyReport>(`${BASE}/${enc(name)}/verify`, { method: 'POST', body: json(opts.waf ? { waf: true } : {}) }),
   deleteLogo: (name: string) => request<void>(`${BASE}/${enc(name)}/logo`, { method: 'DELETE' }),
   uploadLogo: (name: string, file: Blob) =>
     withHeaders<{ logo: string }>(`${BASE}/${enc(name)}/logo`, { method: 'PUT', body: file }, {}, file.type),
