@@ -1,10 +1,15 @@
 import { useState } from 'react';
-import { Button, Card, Checkbox, Drawer, EmptyHint, Field, FormGrid, Input, Switch, cx } from '../../components/ui';
+import { Button, Card, Checkbox, Drawer, EmptyHint, Field, FormGrid, Input, Switch, TwoFactorBadge, cx } from '../../components/ui';
+import { useGroupSecondFactors } from '../../api/twoFactor';
 import { makeToastErr, type PushToast } from './toastErr';
 import { useCreateOrgUser } from '../../api/hooks';
 
-/** Checkbox list limited to the caller's assignable groups (never the full catalog). */
+/**
+ * Checkbox list limited to the caller's assignable groups (never the full catalog). A new account has
+ * no second factor yet, so a group whose members must use one is shown but cannot be ticked.
+ */
 function GroupPicker({ assignable, checked, toggle }: { assignable: string[]; checked: string[]; toggle: (g: string) => void }) {
+  const secondFactorOf = useGroupSecondFactors();
   if (assignable.length === 0) {
     return <EmptyHint>No groups you may assign here — the user keeps base access.</EmptyHint>;
   }
@@ -12,13 +17,15 @@ function GroupPicker({ assignable, checked, toggle }: { assignable: string[]; ch
     <Card>
       {assignable.map((g) => {
         const on = checked.includes(g);
+        const needs2fa = !on && !!secondFactorOf(g)?.required;
         return (
           <Checkbox
             key={g}
             className={cx('orgs-pick', on && 'on')}
             checked={on}
-            onChange={() => toggle(g)}
-            label={<span className="fw-medium text-base">{g}</span>}
+            disabled={needs2fa}
+            onChange={() => { if (!needs2fa) toggle(g); }}
+            label={<span className="row wrap gap-4 fw-medium text-base">{g}{needs2fa && <TwoFactorBadge kind="needs-enrol" title="A new account has no second factor yet. Add them to this group once they have enrolled one." />}</span>}
           />
         );
       })}

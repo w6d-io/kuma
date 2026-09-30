@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useStats } from '../../api/hooks';
 import { useRbacUsers } from '../../api/rbacWrites';
-import { Badge, Button, ButtonBase, Card, EmptyRow, I, Input, PageHeader, Table, Toolbar } from '../../components/ui';
+import { Badge, Button, ButtonBase, Card, EmptyRow, I, Input, PageHeader, Table, Toolbar, TwoFactorBadge } from '../../components/ui';
+import { useGroupSecondFactors } from '../../api/twoFactor';
 import { isEverything, isOrgGrantable, membersOf } from '../../lib/rbacEdit';
 import { ReadOnlyNote } from '../access/shared';
 import { useCanEditAccess } from '../access/access';
@@ -18,6 +19,7 @@ export function GroupsPage() {
   const canEdit = useCanEditAccess();
   const users = useRbacUsers();
   const { data: stats } = useStats();
+  const secondFactorOf = useGroupSecondFactors();
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState('');
 
@@ -55,6 +57,7 @@ export function GroupsPage() {
                       <td className="nowrap" data-label="Group">
                         <ButtonBase className="rb-row-link mono fw-medium" onClick={e => { e.stopPropagation(); setPage('groups', g); }}>{g}</ButtonBase>
                         {state.groupsMeta[g]?.system && <Badge tone="warning" icon={I.lock} className="ml-4">system</Badge>}
+                        {secondFactorOf(g)?.required && <span className="ml-4"><TwoFactorBadge kind="required" /></span>}
                       </td>
                       <td data-label="Gives">
                         {sites.length === 0 ? <span className="small muted">no role</span> : (

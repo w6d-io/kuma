@@ -1,4 +1,6 @@
-import { Badge, Checkbox, cx } from '../../components/ui';
+import { Badge, Checkbox, TwoFactorBadge, cx } from '../../components/ui';
+import { useGroupSecondFactors } from '../../api/twoFactor';
+import { blockedForEnrolment } from '../../lib/twoFactor';
 import { I } from '../../components/ui/Icons';
 
 /**
@@ -19,21 +21,24 @@ export function SiteGroupRows({ checked, toggle, targetMfa, offered, mayAssign, 
   describe: (group: string) => string;
 }) {
   const rows = [...new Set([...offered, ...checked])].sort();
+  const secondFactorOf = useGroupSecondFactors();
   return (
     <>
       {rows.map((g) => {
         const on = checked.includes(g);
         const known = offered.includes(g);
         const privileged = isPrivileged(g);
-        // MFA gate (frontend mirror of jinbe's backend refusal): a privileged group cannot be picked
-        // for a target user without a second factor.
-        const blockedByMfa = privileged && targetMfa === false && !on;
+        // 2FA gate (a mirror of jinbe's refusal): a group whose members must use two-step sign-in
+        // cannot be picked for somebody who never enrolled. A jinbe that does not describe its groups'
+        // rule falls back to the old test, privileged groups.
+        const rule = secondFactorOf(g);
+        const blockedByMfa = !on && (rule ? blockedForEnrolment(rule, targetMfa) : privileged && targetMfa === false);
         const blockedByActor = !mayAssign && !on;
         const blocked = blockedByMfa || blockedByActor;
         const title = blockedByActor
           ? 'Assigning a group needs admin write access.'
           : blockedByMfa
-          ? `Group '${g}' grants admin privileges. Target user must enroll a second factor (TOTP / security key / backup codes) before assignment.`
+          ? `Members of '${g}' must use two-step sign-in. This person must enrol a second factor (authenticator app, security key or backup codes) before being added.`
           : !known
           ? `Group '${g}' is held but no longer exists, so it grants nothing. It can be removed.`
           : undefined;
@@ -48,8 +53,9 @@ export function SiteGroupRows({ checked, toggle, targetMfa, offered, mayAssign, 
                 <span className="row wrap gap-4 fw-medium text-base">
                   {g}
                   {privileged && <Badge tone="warning" title="Gives everything on a system site"><span className="chip-ico">{I.lock}</span>platform admin</Badge>}
+                  {rule?.required && <TwoFactorBadge kind="required" />}
                   {!known && <Badge tone="danger">unknown group</Badge>}
-                  {blockedByMfa && !blockedByActor && <Badge tone="danger">MFA required</Badge>}
+                  {blockedByMfa && !blockedByActor && <TwoFactorBadge kind="needs-enrol" />}
                 </span>
               }
               hint={known ? describe(g) : undefined}

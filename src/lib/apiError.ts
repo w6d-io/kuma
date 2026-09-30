@@ -6,6 +6,8 @@
  * as a permission problem somebody would go and ask about. jinbe keeps the two apart on purpose
  * (see its require-admin middleware): 403 is a decision, 503 is an outage.
  */
+import { secondFactorRefusalSentence } from './twoFactor';
+
 export type ApiErrorKind = 'forbidden' | 'blocked' | 'unreachable' | 'unconfigured' | 'expired' | 'not-found' | 'failed';
 
 export interface ApiErrorView {
@@ -168,11 +170,26 @@ export function describeApiError(err: unknown, ctx: { groups?: string[] } = {}):
   const status = statusOf(err);
   // An account that must use two-step sign-in, below aal2 (jinbe second-factor/gate.ts). The client
   // is already sending the person to the sign-in site's two-step gate (api/client.ts).
-  if ((err as { code?: unknown } | null | undefined)?.code === 'second_factor_required') {
+  const code = (err as { code?: unknown } | null | undefined)?.code;
+  // Which second-factor rule refused, when jinbe names it (second-factor/requirements.ts): the groups
+  // that make it mandatory, the permission that needs a recent one, the site that asks for it.
+  const rule = secondFactorRefusalSentence(err);
+  if (code === 'second_factor_required') {
     return {
       kind: 'expired',
       title: 'Two-step sign-in required',
-      detail: 'Your account has to use two-step sign-in. You are being taken to set it up or confirm it, then back here.',
+      detail: rule
+        ? `${rule} You are being taken to set it up or confirm it, then back here.`
+        : 'Your account has to use two-step sign-in. You are being taken to set it up or confirm it, then back here.',
+      retryable: false,
+    };
+  }
+  if (rule) return { kind: 'forbidden', title: 'Two-step sign-in needed', detail: rule, retryable: false };
+  if (code === 'mfa_required') {
+    return {
+      kind: 'forbidden',
+      title: 'Second factor not enrolled',
+      detail: 'This person must enrol a second factor before being added to a group whose members must use two-step sign-in.',
       retryable: false,
     };
   }

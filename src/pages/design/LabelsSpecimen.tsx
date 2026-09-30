@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Badge, I, TagList } from '../../components/ui';
+import { Badge, I, TagList, TwoFactorBadge } from '../../components/ui';
 import { Method } from '../../components/ui/Primitives';
 import { Specimen } from './Specimen';
 
@@ -25,6 +25,12 @@ const ROLES: { role: string; pattern: string; use: string; example: ReactNode }[
     pattern: 'Check or cross + weighted words, one size up (className="verdict").',
     use: 'A decision the screen exists to show: ALLOWED, DENIED.',
     example: <><Badge tone="success" icon={I.check} className="verdict">ALLOWED</Badge><Badge tone="danger" icon={I.close} className="verdict">DENIED</Badge></>,
+  },
+  {
+    role: 'Two-step sign-in',
+    pattern: 'One component (TwoFactorBadge): the shield, a status tone and the words; the rule in full on hover.',
+    use: 'A group whose members must use 2FA, a permission needing a recent factor, a site’s own bar, a person not enrolled yet.',
+    example: <><TwoFactorBadge kind="required" /><TwoFactorBadge kind="recent" /><TwoFactorBadge kind="site" site={{ scope: 'writes', routes: [] }} /><TwoFactorBadge kind="needs-enrol" /></>,
   },
   {
     role: 'Tag',

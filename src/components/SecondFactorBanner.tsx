@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSecondFactorStatus } from '../api/hooks';
+import { useOwnSecondFactor } from '../api/twoFactor';
 import { I } from './ui';
 import { TWO_STEP_EVENT, twoStepHere } from '../lib/stepUp';
 import { ENROL_TITLE, secondFactorPrompt } from '../lib/secondFactor';
@@ -13,6 +14,8 @@ import { ENROL_TITLE, secondFactorPrompt } from '../lib/secondFactor';
  */
 export function SecondFactorBanner() {
   const { data } = useSecondFactorStatus();
+  // Why, when jinbe says: the groups that make it mandatory.
+  const because = useOwnSecondFactor().data?.requiredBecause ?? [];
   const [leaving, setLeaving] = useState<string | null>(null);
   useEffect(() => {
     const on = (e: Event) => setLeaving((e as CustomEvent<{ to: string }>).detail?.to ?? '');
@@ -26,7 +29,7 @@ export function SecondFactorBanner() {
     return (
       <div className="viewer-banner two-step-banner" role="alert">
         <span aria-hidden="true">{I.shield}</span>
-        <span className="flex-1 min-w-0">{ENROL_TITLE}</span>
+        <span className="flex-1 min-w-0">{because.length ? `Two-step sign-in is required for you as a member of ${because.join(', ')} — set it up now` : ENROL_TITLE}</span>
         {href && <a className="two-step-banner-link" href={href}>Set it up now →</a>}
       </div>
     );

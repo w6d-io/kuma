@@ -6,6 +6,7 @@
  * jinbe serves today plus the §14.2 ones still being built (status, drift, requests, migration);
  * those are optional everywhere so an older server reads as "not there yet", not as a crash.
  */
+import type { SiteSecondFactor } from '../twoFactor';
 
 export const HTTP_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const;
 export type HttpMethod = (typeof HTTP_METHODS)[number];
@@ -114,6 +115,8 @@ export interface SiteSummary {
   protection?: ProtectionStatus | null;
   /** Paused automatically when its TTL passes; null for a permanent site, absent on older servers. */
   ephemeral?: EphemeralView | null;
+  /** Its own two-step sign-in bar (the saved version), absent on older servers. */
+  secondFactor?: SiteSecondFactor;
 }
 
 /** An ephemeral site's expiry (jinbe sites/lifecycle-store.ts ephemeralView). Expired: paused, not deleted. */
@@ -160,6 +163,7 @@ export interface SiteDetail {
   applied: { version: number; at: string; by: string; rules: string[] } | null;
   system?: boolean;
   ephemeral?: EphemeralView | null;
+  secondFactor?: SiteSecondFactor;
 }
 
 export interface SiteDraft {

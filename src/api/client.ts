@@ -4,6 +4,7 @@
 import type { AccessReview } from './types';
 import { bearerToken } from '../auth/session';
 import { bounceToTwoStep } from '../lib/stepUp';
+import type { GroupSecondFactor } from '../lib/twoFactor';
 
 const _rawBase: string = (window as any).__API_BASE__ ?? '';
 const BASE = (_rawBase.startsWith('${') ? '' : _rawBase).replace(/\/$/, '') || '/api';
@@ -731,6 +732,8 @@ export interface JinbeGroup {
   /** True when this group is bootstrap-protected (cannot be deleted, may need super_admin to mutate). */
   system?: boolean;
   description?: string;
+  /** Whether members must use two-step sign-in (lib/twoFactor.ts). Absent on an older jinbe. */
+  secondFactor?: GroupSecondFactor;
 }
 
 export interface JinbeService {

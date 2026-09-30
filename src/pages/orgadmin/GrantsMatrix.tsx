@@ -3,7 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { KratosIdentity } from '../../api/client';
 import { orgAccessApi, refusedOf, type AssignableGroup, type OrgGrants, type RefusedGroup } from '../../api/orgAccess';
 import { changedMembers, columnsFor, sameGroups, toggleGrant } from '../../lib/orgGrants';
-import { Avatar, Badge, Button, Checkbox, EmptyHint, EmptyRow, LoadingRows, Table, Th } from '../../components/ui';
+import { Avatar, Badge, Button, Checkbox, EmptyHint, EmptyRow, LoadingRows, Table, Th, TwoFactorBadge } from '../../components/ui';
+import { useGroupSecondFactors } from '../../api/twoFactor';
 import { makeToastErr, type PushToast } from './toastErr';
 
 const siteSummary = (g: AssignableGroup | undefined) =>
@@ -61,6 +62,7 @@ export function GrantsMatrix({ org, orgName, members, loading, saved, assignable
     }
   };
 
+  const secondFactorOf = useGroupSecondFactors();
   const cols = columns.length + 3;
   return (
     <Table>
@@ -69,7 +71,7 @@ export function GrantsMatrix({ org, orgName, members, loading, saved, assignable
             <th>Person</th>
             {columns.map((c) => (
               <Th key={c.name} align="center" title={c.grantable ? siteSummary(byName.get(c.name)) : 'Held here, but not a group you may grant'}>
-                {c.name}{!c.grantable && <span className="muted"> · not yours</span>}
+                {c.name}{!c.grantable && <span className="muted"> · not yours</span>}{secondFactorOf(c.name)?.required && <> <TwoFactorBadge kind="required" /></>}
               </Th>
             ))}
             <th />
