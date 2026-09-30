@@ -42,13 +42,41 @@ export interface PersonalKeySecretView extends PersonalKeyView {
   key: string;
 }
 
+/** What POST /admin/users/:id/email answers: the change stands whether or not the link went out. */
+export interface EmailChange {
+  id: string;
+  email: string;
+  verified: boolean;
+  verificationSent: boolean;
+  /** `verification_link_unavailable` (Kratos verifies by code only) or `send_failed`. */
+  verificationError?: string;
+  oldAddressNotice?: { delivered: boolean; recorded: boolean; channel?: string };
+}
+
 export const accountsApi = {
   // Kratos merges `traits` over the stored ones (jinbe reads the identity first), so only the
-  // changed fields are sent. Groups are pinned server-side and cannot change through this call.
-  updateProfile: (id: string, traits: { name?: string; email?: string }) =>
+  // changed fields are sent. Groups are pinned server-side and cannot change through this call, and
+  // neither can the address (422 use_email_endpoint): that is changeEmail.
+  updateProfile: (id: string, traits: { name?: string }) =>
     request<KratosIdentity>(`/admin/users/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify({ traits }),
+    }),
+
+  // The sign-in address: its own call (users:update_email, a second factor proven in the last 15
+  // minutes). The new address starts unverified and is sent a link; the old one is owed a notice,
+  // which jinbe records in the audit trail rather than mails.
+  changeEmail: (id: string, email: string) =>
+    request<EmailChange>(`/admin/users/${encodeURIComponent(id)}/email`, {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  // Kratos mails the verification link itself; nothing comes back but that it went.
+  resendVerification: (id: string, address?: string) =>
+    request<{ sent: boolean }>(`/admin/users/${encodeURIComponent(id)}/verification`, {
+      method: 'POST',
+      body: JSON.stringify(address ? { address } : {}),
     }),
 
   listSessions: (id: string) =>

@@ -6,6 +6,8 @@ import { I } from '../../components/ui/Icons';
 import { Avatar, Badge, Button, Callout, Card, Drawer, Field, FormGrid, Input, Switch, Tabs } from '../../components/ui';
 import { useApplyChange } from '../../hooks/useApplyChange';
 import { formatHash } from '../../lib/route';
+import { useResume } from '../../lib/resume';
+import { emailResumeAction, type EmailResume } from '../../lib/userAddress';
 import { permits } from '../../policy/model';
 import { SiteGroupRows } from './SiteGroupRows';
 import { UserAccessTab } from './UserAccessTab';
@@ -36,6 +38,7 @@ export function UserDrawer() {
   const user = userDrawer?.user;
   const [groups, setGroups] = useState(user?.groups || []);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("groups");
+  const [resumedEmail, setResumedEmail] = useState<string | undefined>();
 
   // create state
   const [newEmail, setNewEmail] = useState("");
@@ -52,7 +55,16 @@ export function UserDrawer() {
   useEffect(() => {
     setDrawerTab("groups");
     setNewEmail(""); setNewName(""); setNewGroups([]); setSendInvite(true);
+    setResumedEmail(undefined);
   }, [userDrawer?.mode, user?.id]);
+
+  // Back from confirming a second factor for an address change: the Edit tab, with the address
+  // proposed again. Declared after the reset above so it wins on the first render.
+  useResume<EmailResume>(user && userDrawer?.mode === 'edit' ? emailResumeAction(user.id) : null, !!user, (data) => {
+    if (typeof data?.email !== 'string') return;
+    setDrawerTab('profile');
+    setResumedEmail(data.email);
+  });
 
   if (!userDrawer) return null;
 
@@ -186,7 +198,14 @@ export function UserDrawer() {
               />
             </>
           )}
-          {drawerTab === "profile" && <UserProfileTab user={user} />}
+          {drawerTab === "profile" && (
+            <UserProfileTab
+              user={user}
+              resumedEmail={resumedEmail}
+              // The header and the address bar read the row the drawer opened on: keep it the person's.
+              onEmailChanged={(r) => setUserDrawer({ ...userDrawer, user: { ...user, email: r.email } })}
+            />
+          )}
           {drawerTab === "signin" && <UserSignInTab user={user} />}
           {drawerTab === "sessions" && <UserSessionsTab user={user} />}
           {drawerTab === "activity" && <UserTrail user={user} />}

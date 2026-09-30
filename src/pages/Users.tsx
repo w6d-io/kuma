@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useUsers, useGroupsMap, useUserSearch, useStats } from '../api/hooks';
 import { I } from '../components/ui/Icons';
-import { Avatar, Badge, Button, Card, EmptyRow, Input, PageHeader, Select, Table, Toolbar, ToolbarSpacer } from '../components/ui';
+import { Avatar, Badge, Button, Card, Checkbox, EmptyRow, Input, PageHeader, Select, Table, Th, Toolbar, ToolbarSpacer } from '../components/ui';
 import { Pagination, usePagination } from '../components/ui/Pagination';
 import { SkeletonRows } from '../components/ui/Skeleton';
 import { kratosToUser, searchedToUser } from '../api/transforms';
@@ -14,6 +14,8 @@ import { ApiErrorState } from '../components/ApiErrorState';
 import { useDebounced } from '../hooks/useDebounced';
 import { isKratosId } from '../lib/personFind';
 import { formatHash } from '../lib/route';
+import { InviteDialog, SelectionBar, type Selection } from './users/UsersBulk';
+import { useBulkPermissions } from '../hooks/useBulkPermissions';
 // The drawer lives beside its tabs; re-exported so the shell keeps one import for the people screens.
 export { UserDrawer } from './users/UserDrawer';
 
@@ -24,6 +26,11 @@ export function UsersPage() {
   // until the person it targets is on screen, because the drawer opens on a row, not on an email.
   const [resuming, setResuming] = useState<PendingChange | null>(() => takePendingChange());
   const [groupFilter, setGroupFilter] = useState("all");
+  // Ticked people, kept across pages and searches until cleared: a bulk action names them by id.
+  const [selected, setSelected] = useState<Selection>(() => new Map());
+  const [inviting, setInviting] = useState(false);
+  const mayBulk = useBulkPermissions();
+  const selectable = mayBulk.verify || mayBulk.addToGroups;
   const dq = useDebounced(q.trim());
 
   // Search = server-side substring match over email + name (cached in-memory,
@@ -57,6 +64,13 @@ export function UsersPage() {
   const paged = filtered.slice(pg.from, pg.to);
 
   const loading = searching ? searchQ.isLoading : browseQ.usersLoading;
+  const cols = selectable ? 7 : 6;
+  const allOnPage = paged.length > 0 && paged.every(u => selected.has(u.id));
+  const toggle = (users: User[], on: boolean) => setSelected(prev => {
+    const next = new Map(prev);
+    for (const u of users) { if (on) next.set(u.id, u.email); else next.delete(u.id); }
+    return next;
+  });
   const total = stats?.total ?? browseQ.count;
 
   // Search for the person the interrupted change targets — page one need not hold them — then
@@ -101,6 +115,7 @@ export function UsersPage() {
         actions={
           <>
             <Button icon={I.shield} onClick={() => setGrant({})}>Grant access</Button>
+            {mayBulk.invite && <Button icon={I.users} onClick={() => setInviting(true)}>Invite people</Button>}
             <Button variant="primary" icon={I.plus} onClick={() => setUserDrawer({ mode: "create" })}>Create user</Button>
           </>
         }
@@ -115,11 +130,25 @@ export function UsersPage() {
           <ToolbarSpacer />
           <span className="toolbar-note">{searching ? `${filtered.length} shown` : `${filtered.length} / ${total}`}</span>
         </Toolbar>
+        {selectable && selected.size > 0 && <SelectionBar selected={selected} onClear={() => setSelected(new Map())} />}
         <Table aria-busy={loading || undefined}>
-          <thead><tr><th>Identity</th><th>Groups</th><th>Organizations</th><th>2FA</th><th>Last seen</th><th></th></tr></thead>
+          <thead><tr>
+            {selectable && (
+              <Th kind="check">
+                <Checkbox className="bare" checked={allOnPage} indeterminate={!allOnPage && paged.some(u => selected.has(u.id))}
+                  onChange={v => toggle(paged, v)} label={<span className="sr-only">Select everybody on this page</span>} />
+              </Th>
+            )}
+            <th>Identity</th><th>Groups</th><th>Organizations</th><th>2FA</th><th>Last seen</th><th></th></tr></thead>
           <tbody>
             {paged.map(u => (
               <tr key={u.id} className="row-click" onClick={() => setUserDrawer({ mode: "edit", user: u })}>
+                {selectable && (
+                  // Ticking is not opening: the click stays in the cell.
+                  <td className="check" onClick={e => e.stopPropagation()}>
+                    <Checkbox className="bare" checked={selected.has(u.id)} onChange={v => toggle([u], v)} label={<span className="sr-only">Select {u.email}</span>} />
+                  </td>
+                )}
                 <td>
                   <div className="row gap-12">
                     <Avatar name={u.name} />
@@ -166,9 +195,9 @@ export function UsersPage() {
                 <td className="people-chev-col text-right"><span className="text-disabled">{I.chev}</span></td>
               </tr>
             ))}
-            {loading && paged.length === 0 && <SkeletonRows rows={8} cols={6} />}
+            {loading && paged.length === 0 && <SkeletonRows rows={8} cols={cols} />}
             {!loading && filtered.length === 0 && (
-              <EmptyRow colSpan={6}>{searching ? `No users match "${dq}".` : "No users."}</EmptyRow>
+              <EmptyRow colSpan={cols}>{searching ? `No users match "${dq}".` : "No users."}</EmptyRow>
             )}
           </tbody>
         </Table>
@@ -186,6 +215,7 @@ export function UsersPage() {
           </div>
         )}
       </Card>
+      {mayBulk.invite && <InviteDialog open={inviting} onClose={() => setInviting(false)} />}
     </>
   );
 }

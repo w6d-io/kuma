@@ -740,7 +740,13 @@ export interface WhoamiResponse {
   error: string | null;
   groups: string[];
   roles: string[];
-  permissions: string[];  /**
+  permissions: string[];
+  /**
+   * The catalogue permissions `permissions` amount to, as jinbe expands them (legacy aliases, `*`).
+   * Absent on an older jinbe: see policy/model.ts mayUse.
+   */
+  effective_permissions?: string[];
+  /**
    * Where the rules are enforced from — `service` (this console is the source) or `gitops` (Rule
    * resources and labelled ConfigMaps, synced from a repository). Absent on an older service, which
    * reads as `service`: see policy/source.ts.
@@ -797,6 +803,8 @@ export interface KratosIdentity {
    * could say, and the fallback applies.
    */
   organizations?: string[];
+  /** Kratos' own record of each address and whether its owner confirmed it. Absent on an older jinbe. */
+  verifiable_addresses?: { value: string; verified: boolean; via?: string; status?: string }[];
   created_at: string;
   updated_at: string;
 }
