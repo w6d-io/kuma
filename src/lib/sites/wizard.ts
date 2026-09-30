@@ -22,6 +22,8 @@ export interface WizardState {
   orgsOn: boolean;
   orgs: string[];
   orgGrantable: boolean;
+  /** Ephemeral: paused this many seconds after the first save; null or absent for a permanent site. */
+  ttl?: number | null;
 }
 
 export const INITIAL: WizardState = {

@@ -8,7 +8,7 @@ import { statusOf, toastFor } from '../../lib/apiError';
 import { protectedWindow, remainingLabel } from '../../lib/apiKeys';
 import { ExpiryCell, LastUsedCell } from './parts';
 
-export const MY_MCP_CONNECTIONS = ['my-mcp-connections'] as const;
+const MY_MCP_CONNECTIONS = ['my-mcp-connections'] as const;
 
 /**
  * Signed-in apps (Connections & keys): the AI assistants and other MCP clients the person signed in

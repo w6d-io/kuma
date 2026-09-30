@@ -7,6 +7,8 @@ import type { SiteSummary } from '../../lib/sites/types';
 import { QueryError, StatusBadge, WafBadge } from './parts';
 import { timeAgo } from '../../lib/sites/format';
 import { useSitePerms } from './usePerms';
+import { EphemeralBadge } from './Lifecycle';
+import { DeletionsWaiting } from './Deletions';
 
 /**
  * The Sites list (site-ux.md §5.1): every site with its state in words, the built-in system sites
@@ -67,6 +69,7 @@ export function SitesList({ query }: { query: Record<string, string> }) {
       {!perms.canDraft && perms.canRead && (
         <Callout tone="info" icon={I.info} className="mb-12">You can look around. Changing sites needs a platform admin.</Callout>
       )}
+      <DeletionsWaiting />
       {migrating && (
         <Callout
           tone="warning"
@@ -133,7 +136,7 @@ export function SitesList({ query }: { query: Record<string, string> }) {
                     <WafBadge p={s.protection} />
                   </td>
                   <td className="small">{s.system ? 'System site' : s.kind ?? '—'}</td>
-                  <td><span className="row gap-8 wrap"><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}</span></td>
+                  <td><span className="row gap-8 wrap"><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}{s.ephemeral && <EphemeralBadge e={s.ephemeral} />}</span></td>
                   <td className="small tabular">{s.status === 'draft' && !s.appliedVersion ? 'draft' : `v${s.appliedVersion ?? s.version}`}</td>
                 </tr>
               ))}
@@ -143,7 +146,7 @@ export function SitesList({ query }: { query: Record<string, string> }) {
             {shown.map((s) => (
               <li key={s.name}>
                 <ButtonBase className="site-card" onClick={() => open(s)}>
-                  <span className="row gap-8 items-baseline wrap"><span className="fw-medium">{s.displayName}</span><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}</span>
+                  <span className="row gap-8 items-baseline wrap"><span className="fw-medium">{s.displayName}</span><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}{s.ephemeral && <EphemeralBadge e={s.ephemeral} />}</span>
                   <span className="row gap-8 items-baseline wrap"><span className="mono small break-all">{s.host}</span><WafBadge p={s.protection} /></span>
                   <span className="small muted">{subline(s)}</span>
                 </ButtonBase>

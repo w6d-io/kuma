@@ -3,7 +3,7 @@ import { request } from './client';
 import { bearerToken } from '../auth/session';
 import { isNotAvailable } from './orgAccess';
 import type {
-  ApplyProgress, ApplyRequest, ApplyResult, BlastRadius, Check, DriftItem, Finding, DualRun, HostCheck,
+  ApplyProgress, ApplyRequest, ApplyResult, BlastRadius, Check, DeletionRequest, DriftItem, EphemeralLimits, EphemeralView, Finding, DualRun, HostCheck,
   MatchResult, MigrationStatus, ParityReport, Preview, RenderResult, Site, SiteDetail, SiteDiff, SiteDraft,
   SiteK8sStatus, SiteSummary, SiteVersion, Zone, MigrationGroup, HttpMethod,
   GatewayInfo, ZoneDetail, ZoneGatewayRef, ZoneIngress,
@@ -29,7 +29,7 @@ const json = (body: unknown) => JSON.stringify(body);
  * for the planned static paths under /sites (`/platform`, `/migration`, `/requests`, `/deleted`) —
  * the `/:name` route answering that no site has that name.
  */
-const PLANNED_STATIC = /^Site not found: (platform|migration|requests|deleted)$/;
+const PLANNED_STATIC = /^Site not found: (platform|migration|requests|deleted|deletion-requests)$/;
 export function notAvailable(err: unknown): boolean {
   if (isNotAvailable(err)) return true;
   const e = err as { status?: number; message?: unknown } | null;
@@ -82,10 +82,11 @@ export const sitesApi = {
 
   preview: (site: Site) => request<Preview>(`${BASE}/preview`, { method: 'POST', body: json({ site }) }),
   diff: (name: string, site?: Site) => request<SiteDiff>(`${BASE}/${enc(name)}/diff`, { method: 'POST', body: json(site ? { site } : {}) }),
-  save: (name: string, site: Site, opts: { note?: string; etag?: string } = {}) =>
-    withHeaders<{ name: string; version: number; etag: string; savedAt: string }>(`${BASE}/${enc(name)}`, {
+  /** `ephemeral`: paused automatically `ttl` seconds after this save; left out, the lifetime is unchanged. */
+  save: (name: string, site: Site, opts: { note?: string; etag?: string; ephemeral?: { ttl?: number } } = {}) =>
+    withHeaders<{ name: string; version: number; etag: string; savedAt: string; ephemeral?: EphemeralView | null }>(`${BASE}/${enc(name)}`, {
       method: 'PUT',
-      body: json({ site, ...(opts.note ? { note: opts.note } : {}) }),
+      body: json({ site, ...(opts.note ? { note: opts.note } : {}), ...(opts.ephemeral ? { ephemeral: opts.ephemeral } : {}) }),
     }, opts.etag ? { 'If-Match': `"${opts.etag}"` } : {}),
   /** `acknowledge`: the confirm finding codes a person accepted (422 unconfirmed_findings without them). */
   apply: (name: string, version: number, acknowledge?: string[]) =>
@@ -119,6 +120,20 @@ export const sitesApi = {
   /** Rollout, anonymous probes, access matrix and curl lines for what is live. One run per site per 30 s. */
   verify: (name: string, opts: { waf?: boolean } = {}) =>
     request<VerifyReport>(`${BASE}/${enc(name)}/verify`, { method: 'POST', body: json(opts.waf ? { waf: true } : {}) }),
+  // Lifecycle (wave 19): extending an ephemeral site, and deletion requests decided by somebody else.
+  /** Expiry becomes now + `ttl` seconds (its own TTL when left out). An expired site stays paused. */
+  extend: (name: string, ttl?: number) =>
+    request<{ name: string; state?: string; ephemeral: EphemeralView; hint?: string }>(`${BASE}/${enc(name)}/ttl`, { method: 'POST', body: json(ttl ? { ttl } : {}) }),
+  requestDeletion: (name: string, reason?: string) =>
+    request<DeletionRequest>(`${BASE}/${enc(name)}/deletion-requests`, { method: 'POST', body: json(reason ? { reason } : {}) }),
+  deletionRequests: (q: { state?: DeletionRequest['state']; site?: string } = {}) =>
+    request<DeletionRequest[]>(`${BASE}/deletion-requests${Object.keys(q).length ? `?${new URLSearchParams(q as Record<string, string>)}` : ''}`),
+  /** The inbox: pending, oldest first, each with `requestedByYou`. */
+  pendingDeletions: () => request<DeletionRequest[]>(`${BASE}/deletion-requests/pending`),
+  approveDeletion: (id: string) =>
+    request<{ request: DeletionRequest; name?: string; deleted?: boolean }>(`${BASE}/deletion-requests/${enc(id)}/approve`, { method: 'POST' }),
+  rejectDeletion: (id: string, reason?: string) =>
+    request<DeletionRequest>(`${BASE}/deletion-requests/${enc(id)}/reject`, { method: 'POST', body: json(reason ? { reason } : {}) }),
   deleteLogo: (name: string) => request<void>(`${BASE}/${enc(name)}/logo`, { method: 'DELETE' }),
   uploadLogo: (name: string, file: Blob) =>
     withHeaders<{ logo: string }>(`${BASE}/${enc(name)}/logo`, { method: 'PUT', body: file }, {}, file.type),
@@ -144,6 +159,7 @@ export const siteKeys = {
   status: (name: string) => ['sites', 'status', name] as const,
   zones: () => ['sites', 'zones'] as const,
   gateways: () => ['sites', 'gateways'] as const,
+  deletions: () => ['sites', 'deletions'] as const,
 };
 
 /** 404s are answers here (no draft, not built yet), not failures to retry. */
@@ -225,6 +241,8 @@ export interface SitesPlatform {
   production: boolean;
   fourEyes?: 'off' | 'high-risk' | 'all';
   rulesLoadExpectedSec?: number;
+  /** The TTLs an ephemeral site may have; absent on a jinbe without ephemeral sites. */
+  ephemeral?: EphemeralLimits;
   enabled: HandlerCatalog;
   /** Where the answer came from: the planned `/sites/platform`, the gateway's handler catalog, or the sandbox defaults. */
   source: 'platform' | 'catalog' | 'default';
@@ -242,9 +260,9 @@ export function useSitesPlatform() {
     retry: false,
     queryFn: async (): Promise<SitesPlatform> => {
       try {
-        const p = await request<{ env?: string; production?: boolean; fourEyes?: SitesPlatform['fourEyes']; rulesLoadExpectedSec?: number; handlers?: { enabled?: Partial<HandlerCatalog> } }>(`${BASE}/platform`);
+        const p = await request<{ env?: string; production?: boolean; fourEyes?: SitesPlatform['fourEyes']; rulesLoadExpectedSec?: number; ephemeral?: EphemeralLimits; handlers?: { enabled?: Partial<HandlerCatalog> } }>(`${BASE}/platform`);
         const e = p.handlers?.enabled;
-        return { env: p.env, production: !!p.production, fourEyes: p.fourEyes, rulesLoadExpectedSec: p.rulesLoadExpectedSec, enabled: { ...SANDBOX_ENABLED, ...e }, source: 'platform' };
+        return { env: p.env, production: !!p.production, fourEyes: p.fourEyes, rulesLoadExpectedSec: p.rulesLoadExpectedSec, ephemeral: p.ephemeral, enabled: { ...SANDBOX_ENABLED, ...e }, source: 'platform' };
       } catch { /* not built yet */ }
       try {
         const c = await request<{ authenticators: Array<{ handler: string }>; authorizers: Array<{ handler: string }>; mutators: Array<{ handler: string }>; errorHandlers: Array<{ handler: string }> }>('/admin/rbac/oathkeeper/handlers');

@@ -11,6 +11,8 @@ import { useResume } from '../../../lib/resume';
 import { BrandFields } from './BrandFields';
 import { useBrand } from './brand';
 import { BrandPreview } from './LoginPreview';
+import { DeletionRequestsCard } from '../Deletions';
+import { useSitePerms } from '../usePerms';
 
 /**
  * Settings (site-ux.md §10.4–10.6): name, brand, address (Edit address: checked before it is saved) and
@@ -24,6 +26,7 @@ export function SettingsTab({ ed, readOnly, canApply, onEditAddress }: { ed: Sit
   const invalidate = useInvalidateSite();
   const { run, busy } = useSiteAction();
   const { branding, shown } = useBrand(ed);
+  const { canDelete } = useSitePerms();
   const [confirm, setConfirm] = useState<'pause' | 'resume' | 'delete' | null>(null);
   const blast = useQuery({ queryKey: ['sites', 'blast', ed.name], queryFn: () => sitesApi.blastRadius(ed.name), enabled: confirm === 'delete', retry: false });
   const savedState = ed.saved?.state ?? ed.site?.state;
@@ -32,7 +35,7 @@ export function SettingsTab({ ed, readOnly, canApply, onEditAddress }: { ed: Sit
   useResume<{ pausing: boolean }>(canApply ? `site-pause:${ed.name}` : null, !!ed.detail.data, ({ pausing }) => {
     if ((savedState === 'paused') !== pausing) void pauseOrResume(pausing);
   });
-  useResume<true>(canApply ? `site-delete:${ed.name}` : null, !!ed.detail.data, () => setConfirm('delete'));
+  useResume<true>(canDelete ? `site-delete:${ed.name}` : null, !!ed.detail.data, () => setConfirm('delete'));
 
   async function pauseOrResume(pausing: boolean) {
     const name = ed.site?.displayName ?? ed.name;
@@ -102,11 +105,13 @@ export function SettingsTab({ ed, readOnly, canApply, onEditAddress }: { ed: Sit
         </Card>
       )}
 
-      {canApply && (
+      {canDelete && (
         <Card title="Delete" sub="Removes the gateway rules first, then the permissions. A snapshot is kept for 30 days.">
           <Button variant="danger" icon={I.trash} onClick={() => setConfirm('delete')}>Delete site…</Button>
         </Card>
       )}
+
+      {ed.detail.data && <DeletionRequestsCard name={ed.name} displayName={site.displayName} />}
 
       <ConfirmDialog
         open={confirm === 'pause' || confirm === 'resume'}
