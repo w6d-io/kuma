@@ -1,5 +1,5 @@
 import { secretLooking } from './validate';
-import { BARE_BEARER, NOBODY_SIGNS_IN, bareBearerLosesTokens } from './gateWords';
+import { BARE_BEARER, BEARER_BEFORE_OAUTH2, NOBODY_SIGNS_IN, bareBearer } from './gateWords';
 import type { Check, Gate, Handler, Site } from './types';
 
 /**
@@ -17,8 +17,11 @@ function scan(value: unknown, at: string, out: Check[]) {
 export function gateChecks(gate: Gate): Check[] {
   const out: Check[] = [];
   const authn = gate.authenticators.map((h) => h.handler);
-  if (authn.length === 0) out.push({ level: 'error', code: 'no_authenticator', message: NOBODY_SIGNS_IN });
-  if (bareBearerLosesTokens(gate.authenticators)) out.push({ level: 'warn', code: 'bearer_takes_authorization', message: BARE_BEARER });
+  // Same codes as jinbe's publish findings, so the two lists say one thing once.
+  if (authn.length === 0) out.push({ level: 'error', code: 'gate_without_authenticator', message: NOBODY_SIGNS_IN });
+  const bare = bareBearer(gate.authenticators);
+  if (bare === 'bearer_before_oauth2') out.push({ level: 'error', code: bare, message: BEARER_BEFORE_OAUTH2 });
+  if (bare === 'bare_bearer_token') out.push({ level: 'warn', code: bare, message: BARE_BEARER });
   const noop = authn.indexOf('noop');
   if (noop >= 0 && noop !== authn.length - 1) out.push({ level: 'error', code: 'noop_not_last', message: '“Anyone (no check)” must be the last sign-in method, or the only one.' });
   if (authn.length === 1 && authn[0] === 'noop' && gate.authorizer === 'policy') {
@@ -48,8 +51,12 @@ export function gateChecks(gate: Gate): Check[] {
 
 /** Every gate's checks, placed at the gate (Review blocks on their errors like the server's). */
 export function siteGateChecks(site: Site): Check[] {
-  return site.gates.flatMap((g) => gateChecks(g).map((c) => ({ ...c, message: site.gates.length > 1 ? `${g.label}: ${c.message}` : c.message, path: `gates.${g.id}` })));
+  return site.gates.flatMap((g, i) => gateChecks(g).map((c) => ({ ...c, message: site.gates.length > 1 ? `${g.label}: ${c.message}` : c.message, path: gatePath(i, c.code) })));
 }
+
+/** Where jinbe places a gate check: the sign-in ones at the gate's authenticators. */
+export const SIGN_IN_CODES = new Set(['gate_without_authenticator', 'bearer_before_oauth2', 'bare_bearer_token']);
+export const gatePath = (index: number, code: string) => `gates.${index}${SIGN_IN_CODES.has(code) ? '.authenticators' : ''}`;
 
 /** Local checks beside the server's, without saying the same thing twice. */
 export function mergeChecks(server: readonly Check[], local: readonly Check[]): Check[] {

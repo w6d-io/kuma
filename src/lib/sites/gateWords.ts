@@ -63,18 +63,20 @@ function errorWord(h: Handler): string {
 
 /**
  * A Kratos session token read from Authorization (bearer_token without token_from) takes every
- * bearer token: an OAuth2 / API token there goes to Kratos and is refused, unless introspection
- * runs first.
+ * bearer token: an OAuth2 / API token there goes to Kratos and is refused. With introspection after
+ * it, introspection never runs — jinbe refuses that (bearer_before_oauth2); without introspection
+ * it is said (bare_bearer_token). Introspection first is left to the order check.
  */
-export function bareBearerLosesTokens(authenticators: Handler[]): boolean {
+export function bareBearer(authenticators: Handler[]): 'bearer_before_oauth2' | 'bare_bearer_token' | null {
   const bare = authenticators.findIndex((h) => h.handler === 'bearer_token' && !h.config?.token_from);
-  if (bare < 0) return false;
+  if (bare < 0) return null;
   const intro = authenticators.findIndex((h) => h.handler === 'oauth2_introspection');
-  return intro < 0 || intro > bare;
+  return intro < 0 ? 'bare_bearer_token' : intro > bare ? 'bearer_before_oauth2' : null;
 }
 
 export const NOBODY_SIGNS_IN = 'Nobody can sign in through this gate — add a sign-in method or pick one below.';
 export const BARE_BEARER = 'A session token read from Authorization takes every bearer token: OAuth2 / API tokens are sent to Kratos and rejected. Read the session token from X-Session-Token instead.';
+export const BEARER_BEFORE_OAUTH2 = 'The session token is read from Authorization before OAuth2 introspection, so introspection never runs: OAuth2 / API tokens are rejected. Read the session token from X-Session-Token, or put introspection first.';
 
 /** Overlap of handler names (Jaccard): the preset that keeps most of what is there. */
 function nearest<K extends string>(table: Record<K, Handler[]>, handlers: Handler[]): K {
@@ -96,7 +98,8 @@ export function describeWho(gate: Gate): CustomAnswer {
   return {
     words: a.length ? a.map(authnWord).join(' · ') : 'No sign-in method',
     warning: a.length === 0 ? { level: 'error', text: NOBODY_SIGNS_IN }
-      : bareBearerLosesTokens(a) ? { level: 'warn', text: BARE_BEARER }
+      : bareBearer(a) === 'bearer_before_oauth2' ? { level: 'error', text: BEARER_BEFORE_OAUTH2 }
+      : bareBearer(a) ? { level: 'warn', text: BARE_BEARER }
       : undefined,
     closest: { value: closest, label: WHO_LABEL[closest as WhoPreset] },
   };

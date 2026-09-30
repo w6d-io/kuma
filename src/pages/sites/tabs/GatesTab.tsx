@@ -10,7 +10,7 @@ import type { SiteEditor } from '../useSiteEditor';
 import type { Go } from '../SiteDetail';
 import { CheckList, LockedCallout, MethodChips } from '../parts';
 import { checkLines } from '../../../lib/sites/format';
-import { gateChecks, mergeChecks } from '../../../lib/sites/gateChecks';
+import { SIGN_IN_CODES, gateChecks, gatePath, mergeChecks } from '../../../lib/sites/gateChecks';
 import { customAnswers, type CustomAnswer, type Question } from '../../../lib/sites/gateWords';
 import { GateAdvanced } from './GateAdvanced';
 import { GateExpert } from './GateExpert';
@@ -24,8 +24,6 @@ import { GateExpert } from './GateExpert';
 
 type Level = 'basic' | 'advanced' | 'expert';
 
-/** Local checks the Basic "Customized" note already says in its own words. */
-const IN_NOTE = new Set(['no_authenticator', 'bearer_takes_authorization']);
 
 export function GatesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnly: boolean; query: Record<string, string>; go: Go }) {
   const site = ed.site;
@@ -52,8 +50,10 @@ export function GatesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnly
   const removeGate = (id: string) => ed.update((s) => ({ ...s, gates: s.gates.filter((g) => g.id !== id) }));
   const serverChecks = ed.preview.state === 'ok' ? ed.preview.preview.checks.filter((c) => c.path?.startsWith('gates')) : [];
   // Advanced lists the local checks itself, beside the chain; Basic says the sign-in ones in its note.
-  const local = gate && level !== 'advanced' ? gateChecks(gate).filter((c) => level !== 'basic' || !IN_NOTE.has(c.code)) : [];
-  const checks = mergeChecks(serverChecks, local.map((c) => ({ ...c, path: `gates.${gate!.id}` })));
+  const index = site.gates.findIndex((g) => g.id === selectedId);
+  const local = gate && level !== 'advanced' ? gateChecks(gate).map((c) => ({ ...c, path: gatePath(index, c.code) })) : [];
+  // Basic says this gate's sign-in problems in its "Customized" note.
+  const checks = mergeChecks(serverChecks, local).filter((c) => level !== 'basic' || !(SIGN_IN_CODES.has(c.code) && c.path === gatePath(index, c.code)));
 
   return (
     <div className="stack gap-16">
