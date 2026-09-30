@@ -23,10 +23,10 @@ describe('zone exposure', () => {
   });
 
   it('says "Protected by WAF" only behind a protected Gateway with no Ingress left', () => {
-    expect(protectionOf({ ingress: 'per-site' }, [eg()])).toMatchObject({ tone: 'danger', label: 'No WAF' });
-    expect(protectionOf({ ingress: 'per-site', gateway: 'envoy-gateway-system/eg' }, [eg()])).toMatchObject({ tone: 'warning', label: 'WAF bypassable' });
-    expect(protectionOf({ ingress: 'none', gateway: 'envoy-gateway-system/eg' }, [eg()])).toMatchObject({ tone: 'success', label: 'Protected by WAF' });
-    expect(protectionOf({ ingress: 'none', gateway: 'envoy-gateway-system/eg' }, [eg(false)])).toMatchObject({ tone: 'danger', label: 'Gateway not protected' });
+    expect(protectionOf({ ingress: 'per-site' }, [eg()])).toMatchObject({ tone: 'danger', label: 'Unprotected' });
+    expect(protectionOf({ ingress: 'per-site', gateway: 'envoy-gateway-system/eg' }, [eg()])).toMatchObject({ tone: 'danger', label: 'Unprotected' });
+    expect(protectionOf({ ingress: 'none', gateway: 'envoy-gateway-system/eg' }, [eg()])).toMatchObject({ tone: 'success', label: 'Protected' });
+    expect(protectionOf({ ingress: 'none', gateway: 'envoy-gateway-system/eg' }, [eg(false)])).toMatchObject({ tone: 'danger', label: 'Unprotected' });
     expect(protectionOf({ ingress: 'none', gateway: 'other/gw' }, [eg()])).toMatchObject({ tone: 'neutral', label: 'Unknown' });
   });
 
@@ -48,10 +48,10 @@ describe('zone exposure', () => {
 describe('WAF by default', () => {
   it('jinbe\'s protection state wins, in words', () => {
     const p = { state: 'none' as const, reason: 'ingress_bypass' as const, gateway: 'envoy-gateway-system/eg', waf: 'envoy-gateway-system/waf-coraza', ipReputation: null, message: 'the nginx Ingress still answers' };
-    expect(protectionOf({ ingress: 'none', gateway: 'envoy-gateway-system/eg', protection: p }, [eg()])).toMatchObject({ tone: 'warning', label: 'WAF bypassable' });
-    expect(fromStatus({ ...p, state: 'waf', reason: 'gateway' })).toMatchObject({ tone: 'success', label: 'Protected by WAF' });
-    expect(fromStatus({ ...p, reason: 'no_gateway' })).toMatchObject({ tone: 'danger', label: 'No WAF' });
-    expect(fromStatus({ ...p, reason: 'gateway_not_protected' })).toMatchObject({ tone: 'danger', label: 'Gateway not protected' });
+    expect(protectionOf({ ingress: 'none', gateway: 'envoy-gateway-system/eg', protection: p }, [eg()])).toMatchObject({ tone: 'danger', label: 'Unprotected' });
+    expect(fromStatus({ ...p, state: 'waf', reason: 'gateway' })).toMatchObject({ tone: 'success', label: 'Protected' });
+    expect(fromStatus({ ...p, reason: 'no_gateway' })).toMatchObject({ tone: 'danger', label: 'Unprotected' });
+    expect(fromStatus({ ...p, reason: 'gateway_not_protected' })).toMatchObject({ tone: 'danger', label: 'Unprotected' });
   });
 
   it('the default Gateway is a protected one that can serve the domain', () => {

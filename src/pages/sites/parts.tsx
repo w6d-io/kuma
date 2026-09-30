@@ -134,7 +134,7 @@ export function QueryError({ error, what, className }: { error: unknown; what: s
   return <Callout tone="danger" icon={I.alert} title={v.title} className={className}>{v.detail}</Callout>;
 }
 
-/** "No WAF" / "WAF bypassable" on a site that is not behind the WAF; nothing when it is or nobody knows. */
+/** "Unprotected" on a site that is not behind the WAF (the tooltip says why); nothing when it is or nobody knows. */
 export function WafBadge({ p }: { p?: ProtectionStatus | null }) {
   if (!p || p.state === 'waf') return null;
   const v = fromStatus(p);

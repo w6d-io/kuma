@@ -76,7 +76,7 @@ describe('Settings · Zones', () => {
     await settle();
     expect(text()).toContain('*.dev.example.com');
     expect(text()).toContain('nginx + Envoy (migrating)');
-    expect(text()).toContain('WAF bypassable');
+    expect(text()).toContain('Unprotected');
   });
 
   it('dropping the Ingress: DNS not yet on the Gateway is shown per host, and can be confirmed', async () => {
@@ -97,14 +97,14 @@ describe('Settings · Zones', () => {
     await settle();
     expect(calls.filter((c) => c.method === 'PATCH').at(-1)?.body).toEqual({ ingress: 'none', confirm: true });
     expect(button('Drop the Ingress anyway')).toBeNull();
-    expect(text()).toContain('Protected by WAF');
+    expect(text()).toContain('Protected');
   });
 
   it('offers no create or edit to somebody who may only read', async () => {
     h.permissions = ['admin:read'];
     mount();
     await settle();
-    expect(text()).toContain('WAF bypassable');
+    expect(text()).toContain('Unprotected');
     expect(button('Edit exposure')).toBeNull();
     expect(button('Create zone')).toBeNull();
   });

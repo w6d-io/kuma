@@ -27,25 +27,25 @@ export const ENTRY_LABEL = { ingress: 'nginx', gateway: 'Envoy Gateway', both: '
 /** jinbe's protection state in words and a tone (zones and sites alike). */
 export function fromStatus(p: ProtectionStatus): ProtectionState {
   switch (p.reason) {
-    case 'gateway': return { tone: 'success', label: 'Protected by WAF', detail: p.message };
-    case 'ingress_bypass': return { tone: 'warning', label: 'WAF bypassable', detail: p.message };
+    case 'gateway': return { tone: 'success', label: 'Protected', detail: p.message };
+    case 'ingress_bypass': return { tone: 'danger', label: 'Unprotected', detail: p.message || 'The Gateway protects its routes, but the nginx Ingress still answers: move DNS to the Gateway, then drop the Ingress.' };
     case 'gateway_unknown': return { tone: 'neutral', label: 'Unknown', detail: p.message };
-    case 'gateway_not_protected': return { tone: 'danger', label: 'Gateway not protected', detail: p.message };
-    default: return { tone: 'danger', label: 'No WAF', detail: p.message };
+    case 'gateway_not_protected': return { tone: 'danger', label: 'Unprotected', detail: p.message };
+    default: return { tone: 'danger', label: 'Unprotected', detail: p.message };
   }
 }
 
 export function protectionOf(z: Pick<Zone, 'ingress' | 'gateway' | 'protection'>, gateways: readonly GatewayInfo[] | undefined): ProtectionState {
   if (z.protection) return fromStatus(z.protection);
   const entry = entryOf(z);
-  if (entry === 'ingress') return { tone: 'danger', label: 'No WAF', detail: 'Served by nginx: no WAF, no IP bans. Attach the zone to a Gateway.' };
+  if (entry === 'ingress') return { tone: 'danger', label: 'Unprotected', detail: 'Served by nginx: no WAF, no IP bans. Attach the zone to a Gateway.' };
   const gw = gateways?.find((g) => g.key === z.gateway);
   if (!gw) return { tone: 'neutral', label: 'Unknown', detail: `Gateway ${z.gateway} is not one this console can inspect.` };
-  if (!gw.protection.protected) return { tone: 'danger', label: 'Gateway not protected', detail: gw.protection.summary };
+  if (!gw.protection.protected) return { tone: 'danger', label: 'Unprotected', detail: gw.protection.summary };
   if (entry === 'both') {
-    return { tone: 'warning', label: 'WAF bypassable', detail: 'The Gateway protects its routes, but the nginx Ingress still answers: move DNS to the Gateway, then drop the Ingress.' };
+    return { tone: 'danger', label: 'Unprotected', detail: 'The Gateway protects its routes, but the nginx Ingress still answers: move DNS to the Gateway, then drop the Ingress.' };
   }
-  return { tone: 'success', label: 'Protected by WAF', detail: gw.protection.summary };
+  return { tone: 'success', label: 'Protected', detail: gw.protection.summary };
 }
 
 /** The Gateway listener serving `*.<domain>` with its own certificate (what TLS `default` needs). */
