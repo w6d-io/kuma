@@ -12,6 +12,9 @@ const api = vi.hoisted(() => ({
   createMyApiKey: vi.fn(),
   revokeMyApiKey: vi.fn(),
   myApiKeyScopes: vi.fn(),
+  listMcpConnections: vi.fn(),
+  revokeMcpConnection: vi.fn(),
+  revokeAllMcpConnections: vi.fn(),
   toast: vi.fn(),
   status: { data: undefined as unknown },
 }));
@@ -35,7 +38,9 @@ const button = (label: RegExp) => [...document.querySelectorAll('button')].find(
 const text = () => document.body.textContent ?? '';
 
 beforeEach(() => {
-  [api.listMyApiKeys, api.createMyApiKey, api.revokeMyApiKey, api.myApiKeyScopes, api.toast].forEach((f) => f.mockReset());
+  [api.listMyApiKeys, api.createMyApiKey, api.revokeMyApiKey, api.myApiKeyScopes, api.toast,
+    api.listMcpConnections, api.revokeMcpConnection, api.revokeAllMcpConnections].forEach((f) => f.mockReset());
+  api.listMcpConnections.mockRejectedValue(err(404));
   api.status.data = undefined;
   api.listMyApiKeys.mockResolvedValue({ data: [], total: 0 });
   api.myApiKeyScopes.mockResolvedValue([
@@ -184,5 +189,69 @@ describe('Connections & keys', () => {
     expect(document.querySelector('.field-error')!.textContent).toContain('not enabled for your groups');
     expect(api.toast).not.toHaveBeenCalled();
     expect(inDrawer(/^Create key$/).disabled).toBe(true);
+  });
+
+  describe('signed-in apps', () => {
+    const hour = 3_600_000;
+    const at = (ms: number) => new Date(Date.now() + ms).toISOString();
+    const apps = [
+      { client_id: 'c1', client_name: 'Claude Code', redirect_host: 'localhost:53682', granted_at: at(-2 * hour), grant_expires_at: at(20 * 24 * hour),
+        scope_mode: 'all', scopes: [], step_up_actions: true, step_up_until: at(3 * hour + 60_000), last_used_at: at(-60_000) },
+      { client_id: 'c2', client_name: null, redirect_host: null, granted_at: at(-hour), grant_expires_at: at(2 * 24 * hour),
+        scope_mode: 'chosen', scopes: ['users:read', 'audit:read'], step_up_actions: false, step_up_until: null, last_used_at: null },
+    ];
+    const inModal = (label: RegExp) => [...document.querySelectorAll('.modal-foot button')].find((b) => label.test(b.textContent?.trim() ?? '')) as HTMLButtonElement;
+    const row = (name: RegExp) => [...document.querySelectorAll('table[aria-label="Signed-in apps"] tbody tr')].find((r) => name.test(r.textContent ?? ''))!;
+
+    it('is not shown on a jinbe without browser sign-in', async () => {
+      mount();
+      await settle();
+      expect(text()).not.toContain('Signed-in apps');
+      expect(document.querySelector('[role=alert]')).toBeNull();
+    });
+
+    it('lists each app with what it acts with, its protected-actions window and its dates', async () => {
+      api.listMcpConnections.mockResolvedValue({ data: apps });
+      mount();
+      await settle();
+      const claude = row(/Claude Code/).textContent!;
+      expect(claude).toContain('name not verified');
+      expect(claude).toContain('localhost:53682');
+      expect(claude).toContain('All my permissions');
+      expect(claude).toContain('3 h left');
+      expect(claude).toContain('1 min ago');
+      const other = row(/Unnamed app/).textContent!;
+      expect(other).toContain('users:read');
+      expect(other).toContain('Off');
+      expect(other).toContain('Never');
+    });
+
+    it('disconnects one app after a confirmation, and all of them at once', async () => {
+      api.listMcpConnections.mockResolvedValue({ data: apps });
+      api.revokeMcpConnection.mockResolvedValue(undefined);
+      api.revokeAllMcpConnections.mockResolvedValue(undefined);
+      mount();
+      await settle();
+      click(document.querySelector('[aria-label="Disconnect Claude Code"]'));
+      expect(text()).toContain('Disconnect Claude Code?');
+      click(inModal(/^Disconnect$/));
+      await settle();
+      expect(api.revokeMcpConnection).toHaveBeenCalledWith('c1');
+      expect(api.toast).toHaveBeenCalledWith('Disconnected Claude Code', expect.anything());
+
+      click(button(/^Disconnect all$/));
+      expect(text()).toContain('Disconnect all 2 apps?');
+      click(inModal(/^Disconnect all$/));
+      await settle();
+      expect(api.revokeAllMcpConnections).toHaveBeenCalledTimes(1);
+    });
+
+    it('says when there is none, and how an app signs in', async () => {
+      api.listMcpConnections.mockResolvedValue({ data: [] });
+      mount();
+      await settle();
+      expect(text()).toContain('No app signed in');
+      expect(button(/^Disconnect all$/)).toBeUndefined();
+    });
   });
 });

@@ -42,6 +42,28 @@ export interface PersonalKeySecretView extends PersonalKeyView {
   key: string;
 }
 
+/**
+ * An app signed in with a browser (OAuth consent): an MCP client — Claude Code, an editor — that
+ * acts as its person until it is disconnected or its grant expires. Hydra keeps the consent; jinbe
+ * lists it (GET /me/mcp/connections). `scope_mode: 'all'` follows whatever the person holds at each
+ * call, `scopes` is then empty; `step_up_until`: until when it may do the protected actions (publish,
+ * change an address, grant a group) on the second factor proven at sign-in, null when not allowed.
+ */
+export interface McpConnectionView {
+  client_id: string;
+  /** What the app called itself when it registered — not verified by anybody. */
+  client_name: string | null;
+  /** Where the sign-in sent its answer, e.g. `localhost:53682`. */
+  redirect_host: string | null;
+  granted_at: string | null;
+  grant_expires_at?: string | null;
+  scope_mode: 'all' | 'chosen';
+  scopes: string[];
+  step_up_actions?: boolean;
+  step_up_until?: string | null;
+  last_used_at?: string | null;
+}
+
 /** What POST /admin/users/:id/email answers: the change stands whether or not the link went out. */
 export interface EmailChange {
   id: string;
@@ -123,4 +145,13 @@ export const accountsApi = {
 
   revokeMyApiKey: (clientId: string) =>
     request<void>(`/me/api-keys/${encodeURIComponent(clientId)}`, { method: 'DELETE' }),
+
+  // Apps signed in with a browser. 404 on a jinbe without browser sign-in: the list is not shown.
+  listMcpConnections: () => request<{ data: McpConnectionView[] }>('/me/mcp/connections'),
+
+  // Disconnecting ends the consent and every token issued under it; the app is refused from its next call.
+  revokeMcpConnection: (clientId: string) =>
+    request<void>(`/me/mcp/connections/${encodeURIComponent(clientId)}`, { method: 'DELETE' }),
+
+  revokeAllMcpConnections: () => request<void>('/me/mcp/connections', { method: 'DELETE' }),
 };

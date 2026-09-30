@@ -14,6 +14,10 @@ export interface McpDraft {
   maxDays: number;
   scope: 'all' | 'selected';
   groups: string[];
+  /** Allow sign-in with a browser; null when this jinbe has no such setting. */
+  browserSignIn: boolean | null;
+  /** The stored `oauth` block, so fields the form does not edit go back unchanged. */
+  oauth?: McpSettings['oauth'];
 }
 
 export function toMcpDraft(s: McpSettings): McpDraft {
@@ -23,6 +27,8 @@ export function toMcpDraft(s: McpSettings): McpDraft {
     maxDays: s.personalKeys.maxDays,
     scope: s.allowedGroups === 'all' ? 'all' : 'selected',
     groups: s.allowedGroups === 'all' ? [] : [...s.allowedGroups],
+    browserSignIn: s.oauth ? s.oauth.enabled ?? s.enabled : null,
+    ...(s.oauth ? { oauth: s.oauth } : {}),
   };
 }
 
@@ -33,6 +39,8 @@ export function fromMcpDraft(d: McpDraft): McpSettings {
     serverUrl: url || null,
     personalKeys: { maxDays: d.maxDays },
     allowedGroups: d.scope === 'all' ? 'all' : [...new Set(d.groups)].sort(),
+    // Never sent to a jinbe that has no such setting: its schema is strict.
+    ...(d.browserSignIn !== null ? { oauth: { ...d.oauth, enabled: d.browserSignIn } } : {}),
   };
 }
 

@@ -559,6 +559,11 @@ export interface McpSettings {
   personalKeys: { maxDays: number };
   /** 'all', or the names of the groups whose members may use it. */
   allowedGroups: 'all' | string[];
+  /**
+   * Sign-in with a browser (OAuth): an assistant opens the sign-in page instead of taking a key. On by
+   * default once AI assistants are. Absent on a jinbe without it; other fields jinbe adds are kept.
+   */
+  oauth?: { enabled: boolean; [k: string]: unknown };
 }
 export interface McpSettingsView {
   settings: McpSettings;

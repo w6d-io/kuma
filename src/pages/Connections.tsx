@@ -12,6 +12,7 @@ import { CreatePersonalKeyDrawer } from './apikeys/CreatePersonalKeyDrawer';
 import { McpHelp } from './apikeys/McpHelp';
 import { McpKeyFacts, McpTroubleshooting } from './apikeys/McpGuide';
 import { CreatorCell, ExpiryCell } from './apikeys/parts';
+import { SignedInApps } from './apikeys/SignedInApps';
 
 /**
  * Connections & keys (`#/connections`): the signed-in person's own keys, for an AI assistant or any
@@ -21,6 +22,7 @@ import { CreatorCell, ExpiryCell } from './apikeys/parts';
  * assistants to some groups and the person is in none of them, the page says so. On a platform without
  * personal keys (404) the page says so calmly — "turned off by an administrator" when the deployment
  * allows them but Settings → AI assistants is off (GET /mcp/status) — and the rail does not list it.
+ * Above the keys, the apps signed in with a browser instead of a key (SignedInApps).
  */
 /** A key that follows its holder's permissions: said by jinbe, or read off a key with no permission of its own. */
 function allPermissions(k: PersonalKeyView): boolean {
@@ -38,7 +40,7 @@ export function ConnectionsPage() {
   const header = (
     <PageHeader
       title="Connections & keys"
-      sub="Keys you create for yourself, so an AI assistant or another MCP client can act as you"
+      sub="Apps you signed in and keys you created, so an AI assistant or another MCP client can act as you"
       actions={!q.isError && status.data?.off !== 'administrator' && <Button variant="primary" icon={I.plus} onClick={() => setCreating(true)}>Create key</Button>}
     />
   );
@@ -88,6 +90,7 @@ export function ConnectionsPage() {
             <div className="small">An administrator limited AI assistants to some groups, and you are in none of them. Your keys are kept but refused until you are.</div>
           </Callout>
         )}
+        <SignedInApps />
         {q.isError ? (
           <ApiErrorState what="your keys" error={q.error} onRetry={() => q.refetch()} />
         ) : (

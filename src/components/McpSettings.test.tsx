@@ -106,4 +106,26 @@ describe('lib/mcpSettings', () => {
     expect(personalExpiryChoices(10)).toEqual([1, 7, 10]);
     expect(personalExpiryChoices(1)).toEqual([1]);
   });
+
+  it('offers browser sign-in only on a jinbe that has it, and saves it with the fields it does not edit', () => {
+    h.data = view();
+    const older = render(<McpSettings />);
+    expect(older.container.querySelector('[aria-label="Allow sign-in with a browser"]')).toBeNull();
+    cleanup();
+
+    h.data = view({ oauth: { enabled: true, maxDays: 30 } });
+    const { container } = render(<McpSettings />);
+    const sw = container.querySelector<HTMLElement>('[aria-label="Allow sign-in with a browser"]')!;
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    click(sw);
+    expect(container.textContent).toContain('Assistants need a personal key');
+    click(byText(container, 'button', /^Save$/));
+    expect(h.mutate).toHaveBeenCalledWith(settings({ oauth: { enabled: false, maxDays: 30 } }), expect.anything());
+  });
+
+  it('never sends a browser sign-in setting to a jinbe without one', () => {
+    const d = toMcpDraft(settings() as never);
+    expect(d.browserSignIn).toBeNull();
+    expect('oauth' in fromMcpDraft({ ...d, enabled: false })).toBe(false);
+  });
 });

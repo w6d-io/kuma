@@ -96,6 +96,20 @@ export function McpSettings() {
         <Switch on={draft.enabled} onChange={(v) => patch({ enabled: v })} label="Allow AI assistants" disabled={save.isPending} />
       </div>
 
+      {draft.browserSignIn !== null && (
+        <div className="settings-row">
+          <div className="flex-1 min-w-0">
+            <div className="fw-medium text-base">Allow sign-in with a browser</div>
+            <div className="small muted">
+              {draft.browserSignIn
+                ? 'An assistant added without a key opens the sign-in page; the person signs in with a second factor and chooses what it may do. They see it under Signed-in apps and can disconnect it.'
+                : 'Assistants need a personal key. Apps already signed in with a browser are refused until this is turned back on.'}
+            </div>
+          </div>
+          <Switch on={draft.browserSignIn} onChange={(v) => patch({ browserSignIn: v })} label="Allow sign-in with a browser" disabled={save.isPending || !draft.enabled} />
+        </div>
+      )}
+
       <Field
         label="MCP server address"
         hint="Shown to people on Connections & keys, with the client configuration to paste. Empty: the console's own setting, if it has one."
