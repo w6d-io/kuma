@@ -9,10 +9,26 @@
 export interface GroupSecondFactor {
   /** Members must sign in with a second factor on every permission-carrying route, and enrol before being added. */
   required: boolean;
-  /** The administrator's switch, or the default (super_admins) when none was saved. */
-  source?: 'setting' | 'default' | null;
-  /** Confers a platform-wide role: whoever is added must have enrolled a second factor. */
+  /**
+   * `group_setting`: stored (a super admin's choice, or the default pinned at boot); `default`: not
+   * stored yet, computed from the group's roles. (`setting` is what an earlier jinbe said.)
+   */
+  source?: 'group_setting' | 'default' | 'setting' | null;
+  /** Nobody joins before enrolling a second factor. Equals `required` on a jinbe with the per-group switch. */
   enrolBeforeJoining?: boolean;
+  /** What the default would be: on for a group that can change anything or holds `*`. */
+  defaultRequired?: boolean;
+}
+
+/** The catalogue permission that changes a group's switch; only a super admin holds it in practice. */
+export const GROUP_2FA_PERMISSION = 'groups.mfa:write';
+
+/**
+ * Whether the session may flip "Members must use 2FA": `groups.mfa:write` as jinbe expanded it on
+ * /whoami, or `*`. Deliberately not the coarse admin:write fallback — no staff role holds it.
+ */
+export function mayChangeGroup2fa(session: { permissions?: readonly string[]; effective_permissions?: readonly string[] } | undefined): boolean {
+  return !!session?.effective_permissions?.includes(GROUP_2FA_PERMISSION) || !!session?.permissions?.includes('*');
 }
 
 /** A catalogue permission's step-up (catalog permissions[].stepUpRule). */

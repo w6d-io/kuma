@@ -8,8 +8,7 @@ import { useSecondFactorGroups, useSession, useSetSecondFactorGroups } from '../
 import { Switch, TwoFactorBadge } from '../../components/ui';
 import { toastFor } from '../../lib/apiError';
 import { stepUpAndResume, useResume } from '../../lib/resume';
-import { permits } from '../../policy/model';
-import type { GroupSecondFactor as Rule } from '../../lib/twoFactor';
+import { mayChangeGroup2fa, type GroupSecondFactor as Rule } from '../../lib/twoFactor';
 
 /**
  * "Members must use 2FA", on one group (owner decision, wave 19): members enrol a second factor
@@ -26,7 +25,7 @@ export function GroupSecondFactor({ name, rule }: { name: string; rule: Rule | u
   const saveList = useSetSecondFactorGroups();
   const [pending, setPending] = useState(false);
   const [shown, setShown] = useState<boolean | null>(null);
-  const superAdmin = permits(session?.permissions, '*');
+  const superAdmin = mayChangeGroup2fa(session);
   const listed = setting.data?.groups;
   const on = shown ?? (rule ? rule.required : !!listed?.includes(name));
 
@@ -78,7 +77,8 @@ export function GroupSecondFactor({ name, rule }: { name: string; rule: Rule | u
         <div className="small muted">
           Covers both: a person must have enrolled a second factor before being added, and members sign in with it on every app.
           {!superAdmin && ' Only a super admin can change it.'}
-          {rule?.source === 'default' && on && ' On by default: no administrator has set the list yet.'}
+          {rule?.source === 'default' && ' Not set yet: it follows the default for its roles.'}
+          {rule?.defaultRequired !== undefined && ` Default for this group: ${rule.defaultRequired ? 'on' : 'off'}.`}
         </div>
       </div>
       <Switch on={on} onChange={(v) => void apply(v)} label="Members must use 2FA" disabled={!superAdmin || (!rule && !listed) || pending} />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockedForEnrolment, ownStatus, secondFactorRefusalSentence, siteScopeLabel, stepUpTitle, type UserSecondFactor } from './twoFactor';
+import { blockedForEnrolment, mayChangeGroup2fa, ownStatus, secondFactorRefusalSentence, siteScopeLabel, stepUpTitle, type UserSecondFactor } from './twoFactor';
 import { describeApiError } from './apiError';
 
 const me = (over: Partial<UserSecondFactor> = {}): UserSecondFactor => ({
@@ -59,5 +59,13 @@ describe('two-step sign-in rules, in words', () => {
     const stepUp = refusal(422, { error: 'step_up_unavailable', permission: 'groups:write', secondFactor: { rule: 'step_up', maxAgeMin: 15 } });
     expect(describeApiError(stepUp)).toMatchObject({ title: 'Two-step sign-in needed', detail: expect.stringContaining('groups:write needs a second factor') });
     expect(describeApiError(refusal(422, { error: 'mfa_required' })).title).toBe('Second factor not enrolled');
+  });
+
+  it('lets only groups.mfa:write (or *) flip a group’s switch, never the admin:write fallback', () => {
+    expect(mayChangeGroup2fa({ permissions: ['*'] })).toBe(true);
+    expect(mayChangeGroup2fa({ permissions: ['admin:write'], effective_permissions: ['groups.mfa:write'] })).toBe(true);
+    expect(mayChangeGroup2fa({ permissions: ['admin:write'], effective_permissions: ['groups:write'] })).toBe(false);
+    expect(mayChangeGroup2fa({ permissions: ['admin:write'] })).toBe(false);
+    expect(mayChangeGroup2fa(undefined)).toBe(false);
   });
 });
