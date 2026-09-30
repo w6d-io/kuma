@@ -12,8 +12,6 @@ import { CheckList, type CheckLine } from '../parts';
  * address under a zone with the live host check, where it runs inside the cluster, and the name.
  */
 
-type Probe = Awaited<ReturnType<typeof sitesApi.probe>>;
-
 function hostLines(c: HostCheck | null, error: string | null): CheckLine[] {
   if (error) return [{ level: 'warn', text: error }];
   if (!c) return [];
@@ -31,8 +29,6 @@ function hostLines(c: HostCheck | null, error: string | null): CheckLine[] {
 export function AddressStep({ s, patch, zones, problems }: { s: WizardState; patch: (p: Partial<WizardState>) => void; zones: Zone[]; problems: string[] }) {
   const [check, setCheck] = useState<HostCheck | null>(null);
   const [checkError, setCheckError] = useState<string | null>(null);
-  const [probe, setProbe] = useState<Probe | null>(null);
-  const [probeState, setProbeState] = useState<'idle' | 'running' | 'unavailable' | 'failed'>('idle');
   const host = s.label && s.zone ? `${s.label}.${s.zone}` : '';
   const pasted = detectPaste(s.paste, zones.map((z) => z.suffix));
 
@@ -51,22 +47,6 @@ export function AddressStep({ s, patch, zones, problems }: { s: WizardState; pat
     return () => clearTimeout(t);
   }, [host, s.label, s.pathPrefix, s.name]);
 
-  // Upstream probe (§4.1) — SSRF-fenced on the server; optional.
-  useEffect(() => {
-    if (serviceProblem(s.service) || namespaceProblem(s.namespace) || portProblem(s.port)) { setProbe(null); setProbeState('idle'); return; }
-    const t = setTimeout(async () => {
-      setProbeState('running');
-      try {
-        setProbe(await sitesApi.probe(`http://${s.service}.${s.namespace}:${s.port}`));
-        setProbeState('idle');
-      } catch (err) {
-        setProbe(null);
-        setProbeState(notAvailable(err) ? 'unavailable' : 'failed');
-      }
-    }, 500);
-    return () => clearTimeout(t);
-  }, [s.service, s.namespace, s.port]);
-
   // What was last understood, so leaving the field does not undo edits made below it since.
   const applied = useRef<string | null>(null);
   function applyPaste(text: string) {
@@ -84,16 +64,6 @@ export function AddressStep({ s, patch, zones, problems }: { s: WizardState; pat
     if (nameFrom && !s.nameTouched) Object.assign(next, { name: nameFrom, displayName: nameFrom.charAt(0).toUpperCase() + nameFrom.slice(1) });
     patch(next);
   }
-
-  const probeLines: CheckLine[] = probeState === 'running' ? [{ level: 'pending', text: 'Checking it answers…' }]
-    : probeState === 'unavailable' ? [{ level: 'info', text: 'Reachability check not available on this server yet — the site answers 502 until the service is up; you can still continue.' }]
-    : probeState === 'failed' ? [{ level: 'warn', text: 'Could not check it answers. You can still continue.' }]
-    : probe ? [
-      probe.denied ? { level: 'error', text: `This address is platform-internal and can't be published (${probe.denied}).` }
-        : probe.reachable ? { level: 'ok', text: `Reachable · ${probe.status} in ${probe.latencyMs} ms${probe.kind === 'html' ? ' · looks like a web app (HTML)' : probe.kind === 'json' ? ' · looks like an API (JSON)' : ''}` }
-        : { level: 'warn', text: 'Refused or timed out — the site will answer 502 until it is up; you can still continue.' },
-      ...(probe.openapi ? [{ level: 'ok' as const, text: `API description found at ${probe.openapi.url} · ${probe.openapi.operations} operations` }] : []),
-    ] : [];
 
   return (
     <div className="stack gap-16">
@@ -138,7 +108,6 @@ export function AddressStep({ s, patch, zones, problems }: { s: WizardState; pat
           <Field label="Namespace" span={2} error={s.namespace ? namespaceProblem(s.namespace) ?? undefined : undefined}><Input mono value={s.namespace} placeholder="payroll" onChange={(e) => patch({ namespace: e.target.value.toLowerCase().trim() })} /></Field>
           <Field label="Port" error={portProblem(s.port) ?? undefined}><Input mono inputMode="numeric" value={s.port} onChange={(e) => patch({ port: e.target.value.trim() })} /></Field>
         </FieldRow>
-        <CheckList lines={probeLines} />
       </fieldset>
 
       <FieldRow>

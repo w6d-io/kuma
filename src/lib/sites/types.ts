@@ -325,8 +325,6 @@ export interface SiteK8sStatus {
   }>;
 }
 
-export interface SiteEvent { at: string; type: 'Normal' | 'Warning'; reason: string; object?: string; message?: string; summary?: string }
-
 export type StageState = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
 export interface ApplyStage { id: string; label?: string; state: StageState; startedAt?: string; endedAt?: string; detail?: string }
 /** GET /:name/applies/:id (jinbe S-3). `code` on failure: site_invalid | rules_not_loaded | rollback_failed | not_ready. */
@@ -345,8 +343,6 @@ export interface ApplyRequest {
   risk?: Risk; needsSecondApprover?: boolean; requestedBy: string; requestedAt: string;
   decidedBy?: string; decidedAt?: string; reason?: string; applyId?: string; note?: string;
 }
-
-export interface LoginReadiness { withAccess: number; with2fa: number; without2fa: Array<{ email: string }> }
 
 export type MigrationState = 'not-started' | 'previewed' | 'dual-run' | 'cutting-over' | 'cut-over' | 'done' | 'rolled-back';
 

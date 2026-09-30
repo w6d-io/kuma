@@ -1,7 +1,7 @@
 /**
  * The wizard's single smart field (site-ux.md §4.1): paste a public URL, an internal address, an
  * OpenAPI link or a bare word, and we say what it was understood as. Client-side classification
- * only; the host check and the probe answer whether it works.
+ * only; the host check answers whether it works.
  */
 
 export type Pasted =

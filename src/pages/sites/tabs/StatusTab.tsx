@@ -12,7 +12,7 @@ import { useResume } from '../../../lib/resume';
 
 /**
  * Status (site-ux.md §9.2 "Show conditions", §10.2 drift): the Site object's conditions, its child
- * Rule / Ingress / Certificate objects with per-pod loading, recent events, and drift against what
+ * Rule / Ingress / Certificate objects with per-pod loading, and drift against what
  * kuma applied. All from endpoints being built (S-3); each part says so until it answers.
  */
 
@@ -43,7 +43,6 @@ function Protection({ p }: { p: ProtectionStatus }) {
 
 export function StatusTab({ ed }: { ed: SiteEditor }) {
   const status = useSiteStatus(ed.name, { poll: true });
-  const events = useQuery({ queryKey: ['sites', 'events', ed.name], queryFn: () => sitesApi.events(ed.name), retry: false, refetchInterval: (q) => (notAvailable(q.state.error) ? false : 10_000) });
   const drift = useQuery({ queryKey: ['sites', 'drift', ed.name], queryFn: () => sitesApi.drift(ed.name), retry: false, enabled: !ed.system });
   const perms = useSitePerms();
   const invalidate = useInvalidateSite();
@@ -121,15 +120,6 @@ export function StatusTab({ ed }: { ed: SiteEditor }) {
         </Card>
       )}
 
-      <Card title="Events" sub="Kubernetes events for the Site and its children, newest first.">
-        {events.error ? <QueryError error={events.error} what="events" /> : !events.data ? <EmptyHint>Loading…</EmptyHint> : events.data.length === 0 ? <EmptyHint>No events.</EmptyHint> : (
-          <ul className="site-list small">
-            {events.data.slice(0, 20).map((e, i) => (
-              <li key={i}><span className="mono muted">{new Date(e.at).toLocaleTimeString()}</span> <Badge tone={e.type === 'Warning' ? 'warning' : 'neutral'} mono={false}>{e.reason}</Badge> {e.summary ?? e.message}{e.object ? <span className="muted mono"> {e.object}</span> : null}</li>
-            ))}
-          </ul>
-        )}
-      </Card>
     </div>
   );
 }

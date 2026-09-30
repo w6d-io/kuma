@@ -25,7 +25,6 @@ export function SettingsTab({ ed, readOnly, canApply, onEditAddress }: { ed: Sit
   const { run, busy } = useSiteAction();
   const { branding, shown } = useBrand(ed);
   const [confirm, setConfirm] = useState<'pause' | 'resume' | 'delete' | null>(null);
-  const [clone, setClone] = useState<{ name: string; host: string } | null>(null);
   const blast = useQuery({ queryKey: ['sites', 'blast', ed.name], queryFn: () => sitesApi.blastRadius(ed.name), enabled: confirm === 'delete', retry: false });
   const savedState = ed.saved?.state ?? ed.site?.state;
   // Back from the step-up: a pause or resume runs again by itself while the site is still in the
@@ -47,8 +46,6 @@ export function SettingsTab({ ed, readOnly, canApply, onEditAddress }: { ed: Sit
   const set = (fn: (s: Site) => Site) => ed.update(fn);
   const paused = (ed.saved?.state ?? site.state) === 'paused';
   const applied = !!ed.detail.data?.applied;
-  const [label, ...zoneParts] = site.address.host.split('.');
-  const zone = zoneParts.join('.');
   const u = site.upstream;
   const br = blast.data;
 
@@ -98,22 +95,6 @@ export function SettingsTab({ ed, readOnly, canApply, onEditAddress }: { ed: Sit
           </Field>
         </FieldRow>
       </Card>
-
-      {!readOnly && (
-        <Card title="Clone" sub="Copies gates, routes, roles and login into a new draft — never live. People, organizations and host-bound overrides are not copied.">
-          {clone ? (
-            <FieldRow>
-              <Field label="New name"><Input mono value={clone.name} onChange={(e) => setClone({ ...clone, name: e.target.value.toLowerCase() })} /></Field>
-              <Field label="New host"><Input mono value={clone.host} onChange={(e) => setClone({ ...clone, host: e.target.value.toLowerCase() })} /></Field>
-              <Button variant="primary" loading={busy === 'Clone'} onClick={async () => {
-                const out = await run('Clone', () => sitesApi.clone(ed.name, clone), 'Cloned into a draft');
-                if (out) goSites(sitesHref({ view: 'site', name: clone.name, tab: 'review' }));
-              }}>Clone</Button>
-              <Button onClick={() => setClone(null)}>Cancel</Button>
-            </FieldRow>
-          ) : <Button icon={I.copy} onClick={() => setClone({ name: `${site.name}-copy`, host: `${label}-copy.${zone}` })}>Clone…</Button>}
-        </Card>
-      )}
 
       {canApply && applied && (
         <Card title={paused ? 'Paused' : 'Pause'} sub={paused ? 'Everyone gets “paused” until you resume.' : 'Everyone gets “paused” until you resume. Routes, roles and access are kept.'}>

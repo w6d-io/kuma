@@ -3,9 +3,9 @@ import { request } from './client';
 import { bearerToken } from '../auth/session';
 import { isNotAvailable } from './orgAccess';
 import type {
-  ApplyProgress, ApplyRequest, ApplyResult, BlastRadius, Check, DriftItem, DualRun, HostCheck, LoginReadiness,
+  ApplyProgress, ApplyRequest, ApplyResult, BlastRadius, Check, DriftItem, DualRun, HostCheck,
   MatchResult, MigrationStatus, ParityReport, Preview, RenderResult, Site, SiteDetail, SiteDiff, SiteDraft,
-  SiteEvent, SiteK8sStatus, SiteSummary, SiteVersion, Zone, MigrationGroup, HttpMethod,
+  SiteK8sStatus, SiteSummary, SiteVersion, Zone, MigrationGroup, HttpMethod,
   GatewayInfo, ZoneDetail, ZoneGatewayRef, ZoneIngress,
 } from '../lib/sites/types';
 import { SANDBOX_ENABLED, type HandlerCatalog } from '../lib/sites/presets';
@@ -13,7 +13,7 @@ import { SANDBOX_ENABLED, type HandlerCatalog } from '../lib/sites/presets';
 /**
  * /api/admin/sites (site-ux.md §14.2). The endpoints jinbe serves today (list, detail, drafts,
  * preview, diff, save, apply, versions, rollback, pause, resume, delete, blast radius, zones,
- * check-host, match, render) and the ones being built beside this screen (status + events, drift,
+ * check-host, match, render) and the ones being built beside this screen (status, drift,
  * requests, login publish, migration). A route jinbe does not have answers with the router's own
  * 404 ("Route GET … not found"), which `notAvailable` recognises so a screen can say "not
  * available yet" instead of failing.
@@ -67,8 +67,6 @@ export const sitesApi = {
   gateways: () => request<{ gateways: GatewayInfo[] }>(`${BASE}/gateways`),
   checkHost: (body: { host: string; pathPrefix?: string; site?: string }) =>
     request<HostCheck>(`${BASE}/check-host`, { method: 'POST', body: json(body) }),
-  probe: (url: string) => request<{ reachable: boolean; status?: number; latencyMs?: number; contentType?: string; kind?: string; openapi?: { url: string; operations: number; tags: number }; denied?: string }>(
-    `${BASE}/probe`, { method: 'POST', body: json({ url }) }),
 
   getDraft: (name: string) => request<SiteDraft>(`${BASE}/${enc(name)}/draft`),
   putDraft: (name: string, site: Partial<Site>, baseVersion?: number) =>
@@ -93,7 +91,6 @@ export const sitesApi = {
   resume: (name: string) => request<{ name: string; state: string }>(`${BASE}/${enc(name)}/resume`, { method: 'POST' }),
   blastRadius: (name: string) => request<BlastRadius>(`${BASE}/${enc(name)}/blast-radius`),
   remove: (name: string) => request<{ name: string; deleted: boolean }>(`${BASE}/${enc(name)}`, { method: 'DELETE' }),
-  clone: (name: string, body: { name: string; host: string }) => request<SiteDraft>(`${BASE}/${enc(name)}/clone`, { method: 'POST', body: json(body) }),
 
   match: (body: { method: HttpMethod; url: string; against: 'draft' | 'live'; site?: Site }) =>
     request<MatchResult>(`${BASE}/match`, { method: 'POST', body: json(body) }),
@@ -102,7 +99,6 @@ export const sitesApi = {
 
   // §14.2 NEW — built in parallel; screens show "not available yet" on the router's 404.
   status: (name: string) => request<SiteK8sStatus>(`${BASE}/${enc(name)}/status`),
-  events: (name: string) => request<SiteEvent[]>(`${BASE}/${enc(name)}/events`),
   drift: (name: string) => request<{ items: DriftItem[] }>(`${BASE}/${enc(name)}/drift`),
   acceptDrift: (name: string) => request<SiteDraft>(`${BASE}/${enc(name)}/drift/accept`, { method: 'POST' }),
   requestApply: (name: string, body: { version: number; note?: string }) =>
@@ -110,7 +106,6 @@ export const sitesApi = {
   requests: (q: { state?: string; site?: string } = {}) => request<ApplyRequest[]>(`${BASE}/requests${Object.keys(q).length ? `?${new URLSearchParams(q as Record<string, string>)}` : ''}`),
   approveRequest: (id: string) => request<ApplyRequest>(`${BASE}/requests/${enc(id)}/approve`, { method: 'POST' }),
   rejectRequest: (id: string, reason?: string) => request<ApplyRequest>(`${BASE}/requests/${enc(id)}/reject`, { method: 'POST', body: json(reason ? { reason } : {}) }),
-  loginReadiness: (name: string) => request<LoginReadiness>(`${BASE}/${enc(name)}/login/readiness`),
   deleteLogo: (name: string) => request<void>(`${BASE}/${enc(name)}/logo`, { method: 'DELETE' }),
   uploadLogo: (name: string, file: Blob) =>
     withHeaders<{ logo: string }>(`${BASE}/${enc(name)}/logo`, { method: 'PUT', body: file }, {}, file.type),
