@@ -22,3 +22,6 @@
 .btn.people-danger-outline { border-color: var(--color-danger); color: var(--color-danger); }
 
 /* The directory search keeps a usable width and pushes the filters to the next line on a phone. */
+
+/* A bulk preview or run: the item list scrolls inside the dialog, its counts and buttons stay put. */
+.people-bulk-items { max-height: calc(var(--space-6) * 8); overflow-y: auto; border: 1px solid var(--color-border); border-radius: var(--radius-md); }

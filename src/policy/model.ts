@@ -85,6 +85,20 @@ export function permits(held: readonly string[] | undefined, required: string): 
 }
 
 /**
+ * Whether the caller may use a catalogue permission (`users:verify`, `groups.members:write`): what
+ * jinbe expanded it to on /whoami (`effective_permissions`, legacy aliases and `*` included), or —
+ * on a jinbe that does not say — the permission itself or the coarse `admin:write` it refines.
+ * Only decides what to show: jinbe decides the call.
+ */
+export function mayUse(
+  session: { permissions?: readonly string[]; effective_permissions?: readonly string[] } | undefined,
+  permission: string,
+): boolean {
+  if (session?.effective_permissions) return session.effective_permissions.includes(permission);
+  return permits(session?.permissions, 'admin:write') || permits(session?.permissions, permission);
+}
+
+/**
  * What jinbe's privileged mutations check today — handing out a group, setting an organisation's
  * admin roster, restoring a bundle.
  *

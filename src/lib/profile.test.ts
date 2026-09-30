@@ -1,23 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { profileChange, profileError } from './profile';
+import { emailError, profileChange } from './profile';
 
-const cur = { name: 'Ada', email: 'ada@example.com' };
+const cur = { name: 'Ada' };
 
 describe('profileChange', () => {
   it('is null when nothing changed', () => {
-    expect(profileChange(cur, { name: ' Ada ', email: 'ADA@example.com' })).toBeNull();
+    expect(profileChange(cur, { name: ' Ada ' })).toBeNull();
   });
 
-  it('sends only the field that changed', () => {
-    expect(profileChange(cur, { name: 'Ada L.', email: cur.email })).toEqual({ traits: { name: 'Ada L.' } });
-    expect(profileChange(cur, { name: cur.name, email: 'ada@new.io' })).toEqual({ traits: { email: 'ada@new.io' } });
+  it('sends the name alone — never an address', () => {
+    expect(profileChange(cur, { name: 'Ada L.' })).toEqual({ traits: { name: 'Ada L.' } });
+    expect(profileChange(cur, { name: 'Ada L.', email: 'ada@new.io' } as never)).toEqual({ traits: { name: 'Ada L.' } });
   });
 });
 
-describe('profileError', () => {
+describe('emailError', () => {
   it('refuses an empty or malformed email', () => {
-    expect(profileError({ name: '', email: '' })).toMatch(/required/);
-    expect(profileError({ name: '', email: 'nope' })).toMatch(/not an email/);
-    expect(profileError(cur)).toBeNull();
+    expect(emailError('')).toMatch(/required/);
+    expect(emailError('nope')).toMatch(/not an email/);
+    expect(emailError('ada@example.com')).toBeNull();
   });
 });
