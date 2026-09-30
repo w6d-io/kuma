@@ -1,9 +1,9 @@
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useEffect } from 'react';
 import { api, API_BASE } from './client';
-import type {AuditEventFilters, AuthConfigState, AuthMethodName, McpSettings, SignInProtection } from './client';
-import type { RolesMap, RouteMapsMap, AuditEvent, User } from './types';
-import { kratosToUser, jinbeGroupsToMap, jinbeRuleToUi, fetchAuditEvents, normalizeAuditEvents } from './transforms';
+import type { AuthConfigState, AuthMethodName, McpSettings, SignInProtection } from './client';
+import type { RolesMap, RouteMapsMap, User } from './types';
+import { kratosToUser, jinbeGroupsToMap } from './transforms';
 
 // Directory page size. 100 (not the old 1000) keeps each round trip — and the
 // per-identity RBAC enrichment jinbe does per row (PERF-2) — bounded, so the
@@ -18,10 +18,9 @@ const USERS_MAX_PAGES = 100;
 // between pages. Mutations invalidate ['users'] explicitly when it must refresh.
 const DIRECTORY_STALE_TIME = 5 * 60_000;
 
-// RBAC config (groups/services/roles/routes/rules) is effectively static within
+// RBAC config (groups/services/roles/routes) is effectively static within
 // a session and only changes through mutations we invalidate explicitly, so a
-// long staleTime avoids needless background refetches (PERF-5). Audit is a live
-// stream and keeps the shorter global default (30s from main.tsx).
+// long staleTime avoids needless background refetches (PERF-5).
 const CONFIG_STALE_TIME = 5 * 60_000;
 
 // Transforms (jinbe API shape → Kuma UI shape) live in ./transforms — the
@@ -425,67 +424,6 @@ export function useAllRoutes(serviceNames: string[]) {
   });
 }
 
-export function useAccessRules() {
-  return useQuery({
-    queryKey: ['access-rules'],
-    queryFn: async () => {
-      const rules = await api.getAccessRules();
-      return rules.map(jinbeRuleToUi);
-    },
-    staleTime: CONFIG_STALE_TIME,
-  });
-}
-
-// Enabled Oathkeeper handler catalog (authenticators/authorizers/mutators/error
-// handlers) + their field descriptors. Drives the Gateway tab's handler pickers
-// and guided config forms. Effectively static within a session (it mirrors the
-// gateway config), so it shares the long config staleTime.
-export function useOathkeeperHandlers() {
-  return useQuery({
-    queryKey: ['oathkeeper-handlers'],
-    queryFn: () => api.getOathkeeperHandlers(),
-    staleTime: CONFIG_STALE_TIME,
-  });
-}
-
-export function useAudit() {
-  return useQuery<AuditEvent[]>({
-    queryKey: ['audit'],
-    queryFn: () => fetchAuditEvents(api),
-  });
-}
-
-// Filtered audit slice (per-service / per-user trails, risk hero, Signals tab).
-// Keyed UNDER ['audit', …] so a realtime `security-signal` (which invalidates
-// the ['audit'] prefix) refetches these too. Fail-closed: react-query's isError
-// distinguishes a load failure from a genuinely empty slice (empty ≠ error).
-export function useAuditEvents(filters: AuditEventFilters, enabled = true) {
-  // Stable key: a sorted, JSON signature of the filter set.
-  const signature = JSON.stringify(
-    Object.fromEntries(Object.entries(filters).filter(([, v]) => v != null && v !== '').sort()),
-  );
-  return useQuery<AuditEvent[]>({
-    queryKey: ['audit', 'events', signature],
-    queryFn: async () => {
-      const raw = await api.getAuditEvents(filters);
-      return normalizeAuditEvents((raw.events || []).filter(e => e && Object.keys(e).length > 0));
-    },
-    enabled,
-    staleTime: 15_000,
-  });
-}
-
-// Windowed summary (Overview band + analysis). Server-derived from the shared
-// stream (contract A6). Kept under ['audit', …] for the same realtime bust.
-export function useAuditSummary(window = '24h') {
-  return useQuery({
-    queryKey: ['audit', 'summary', window],
-    queryFn: () => api.getAuditSummary(window),
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-  });
-}
-
 // Access review ("who can do anything"). SWR-cached server-side; on the client a
 // realtime 'change' invalidates ['access-review'] (see REALTIME_KEYS).
 export function useAccessReview() {
@@ -546,7 +484,7 @@ export function useUserSearch(q: string) {
 // user is looking at), so this is cheap even though the list is broad.
 const REALTIME_KEYS: readonly (readonly string[])[] = [
   ['stats'], ['users'], ['user-search'], ['groups'], ['groups-map'],
-  ['services'], ['all-roles'], ['all-routes'], ['access-rules'],
+  ['services'], ['all-roles'], ['all-routes'],
   ['org-users'], ['my-orgs'], ['org-service-map'], ['org-admin-map'], ['assignable-groups'], ['audit'],
   ['access-review'],
   // The Home's modules that a change moves; each refetches through its own endpoint, never the
@@ -606,7 +544,7 @@ export function useRealtime(enabled: boolean) {
 // hooks below cover config edits pages call directly + delegated org-admin.
 
 // These three edit RBAC config the composite store reads via aggregate keys
-// (['all-roles']/['all-routes']/['access-rules']). They use TanStack's native
+// (['all-roles']/['all-routes']). They use TanStack's native
 // onMutate/onError/onSettled optimism: snapshot → patch → rollback on error →
 // invalidate on settle (STORE-4). They invalidate BOTH the per-service key
 // (pages using the scoped hook directly) and the aggregate key (the store).
@@ -709,8 +647,6 @@ export function useOrgUsers(orgId: string, search?: string) {
   });
 }
 
-type OrgUsersCache = { data: { id: string; metadata_admin?: { groups?: string[] } }[]; total: number };
-
 export function useCreateOrgUser(orgId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -804,30 +740,3 @@ export function useDecideRecertItem(campaignId: string) {
   });
 }
 
-export function useSetOrgUserGroups(orgId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ userId, groups }: { userId: string; groups: string[] }) =>
-      api.setOrgUserGroups(orgId, userId, groups),
-    onMutate: async ({ userId, groups }) => {
-      const key = ['org-users', orgId];
-      await qc.cancelQueries({ queryKey: key });
-      const snapshot = qc.getQueriesData({ queryKey: key });
-      qc.setQueriesData<OrgUsersCache>({ queryKey: key }, (prev) =>
-        prev === undefined ? prev : {
-          ...prev,
-          data: prev.data.map((u) =>
-            u.id === userId
-              ? { ...u, metadata_admin: { ...u.metadata_admin, groups } }
-              : u,
-          ),
-        },
-      );
-      return { snapshot };
-    },
-    onError: (_e, _v, ctx) => {
-      for (const [key, data] of ctx?.snapshot ?? []) qc.setQueryData(key, data);
-    },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['org-users', orgId] }),
-  });
-}

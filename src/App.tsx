@@ -190,7 +190,7 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
 }
 
 function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
-  const { page, pipeline, theme, cycleTheme, persona, tweaks, isLive, isLoading, apiError, state, pushToast } = useApp();
+  const { page, pipeline, theme, cycleTheme, persona, tweaks, isLive, isLoading, apiError, pushToast } = useApp();
   const title = navItemFor(page)?.name || "Console";
 
   // Back from a step-up for an action the screen cannot run again by itself: say what to redo.
@@ -207,9 +207,9 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
       // with code=session_invalid — force re-auth so Kratos regenerates the
       // session instead of bouncing a "valid-looking" broken cookie forever.
       const stale = (apiError as any)?.details?.code === 'session_invalid';
-      redirectToLogin(state.meta.authDomain, { refresh: stale });
+      redirectToLogin({ refresh: stale });
     }
-  }, [apiError, state.meta.authDomain]);
+  }, [apiError]);
 
   return (
     <>
@@ -422,7 +422,7 @@ function BlockedPage() {
 }
 
 function AppShell() {
-  const { page, setPage, toasts, apiError, tweaks, state } = useApp();
+  const { page, setPage, toasts, apiError, tweaks } = useApp();
   const { data: session, isSuccess: sessionReady } = useSession();
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [tweaksOpen, setTweaksOpen] = useState(false);
@@ -434,8 +434,8 @@ function AppShell() {
   // set = a cookie WAS presented but rejected → refresh=true regenerates it.
   useEffect(() => {
     if (!sessionReady || !session || session.authenticated) return;
-    redirectToLogin(state.meta.authDomain, { refresh: !!session.error });
-  }, [sessionReady, session, state.meta.authDomain]);
+    redirectToLogin({ refresh: !!session.error });
+  }, [sessionReady, session]);
 
   // Real-time: subscribe to the server change stream (admins only) so the whole
   // console reflects changes sub-second without polling.

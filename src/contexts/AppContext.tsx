@@ -167,7 +167,7 @@ function usePipeline(pushToast: (msg: string, opts?: { sub?: string }) => void):
 // mutations invalidate only the keys they touch (STORE-3).
 const ALL_ENTITY_KEYS = [
   ['users'], ['groups'], ['groups-map'], ['services'],
-  ['all-roles'], ['all-routes'], ['access-rules'], ['audit'],
+  ['all-roles'], ['all-routes'], ['audit'],
 ] as const;
 
 // No page streams the whole user directory anymore. Every aggregate (Dashboard,

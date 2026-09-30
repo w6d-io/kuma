@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { useAccessReview, useAuditEvents } from '../api/hooks';
+import { useAccessReview } from '../api/hooks';
 import { SiteAccessTree } from './access/SiteAccessTree';
 import { ApiErrorState } from '../components/ApiErrorState';
-import { Avatar, Badge, Card, Drawer, EmptyHint, I, PageHeader, Table, type BadgeTone } from '../components/ui';
+import { Avatar, Badge, Card, Drawer, I, PageHeader, Table, type BadgeTone } from '../components/ui';
 import { timeAgo } from '../api/transforms';
-import { RiskBadge } from './audit/RiskBadge';
+import { UserTrail } from './users/UserTrail';
 import type { AccessReviewIdentity } from '../api/types';
 import { SkeletonPanel } from '../components/ui/Skeleton';
 
@@ -169,11 +169,8 @@ function AccessReviewDrawer({ identity, onClose }: {
   identity: AccessReviewIdentity | null;
   onClose: () => void;
 }) {
-  // "Are they using it" — recent actions by this actor (fail-closed: empty ≠ error).
-  const trailQ = useAuditEvents({ actor: identity?.email || '', limit: 8 }, !!identity);
   if (!identity) return null;
   const tm = tierMeta(identity.tier);
-  const trail = trailQ.data ?? [];
 
   return (
     <Drawer
@@ -241,30 +238,13 @@ function AccessReviewDrawer({ identity, onClose }: {
       {/* Are they using it */}
       <div>
         <label className="input-label">Are they using it</label>
-        <Card pad="sm">
-          <div className="small muted mb-12">
-            Last active <b className="text-default">{fmtLast(identity.lastActive)}</b>
-            {identity.lastPrivilegedAction && <> · last privileged action {fmtLast(identity.lastPrivilegedAction)}</>}
-            {identity.mfa === false && <> · <span className="text-danger">no second factor</span></>}
-          </div>
-          {trailQ.isError ? (
-            <span className="small text-danger">Couldn&apos;t load recent activity (load error, not "no activity").</span>
-          ) : trail.length === 0 ? (
-            <EmptyHint>{trailQ.isLoading ? 'Loading…' : 'No recorded actions in the retained window.'}</EmptyHint>
-          ) : (
-            <div className="col gap-4">
-              {trail.map(e => (
-                <div key={e.id} className="row gap-8">
-                  <span className="small muted mono nowrap ar-when">{e.when}</span>
-                  <span className="small mono flex-1 min-w-0 ar-trail">
-                    <b className="fw-semibold">{e.verb}</b> {e.changes?.summary || e.target}
-                  </span>
-                  <RiskBadge e={e} />
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+        <div className="small muted mb-12">
+          Last active <b className="text-default">{fmtLast(identity.lastActive)}</b>
+          {identity.lastPrivilegedAction && <> · last privileged action {fmtLast(identity.lastPrivilegedAction)}</>}
+          {identity.mfa === false && <> · <span className="text-danger">no second factor</span></>}
+        </div>
+        {/* What they did and what was done to them, from the audit log (by Kratos id). */}
+        <UserTrail userId={identity.id} />
       </div>
     </Drawer>
   );
