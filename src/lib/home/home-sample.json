@@ -73,7 +73,7 @@
           {
             "id": "opa",
             "state": "ok",
-            "summary": "1/1 engines on rev-abcd",
+            "summary": "reachable (OPAL-managed)",
             "link": {
               "page": "gateway",
               "anchor": "engines"

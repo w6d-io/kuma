@@ -26,7 +26,7 @@ export function DataSection() {
           <Meter value={292} of={412} label="Second factor" />
         </Specimen>
         <Specimen name="HealthItem" note="A square in the state's colour, neutral grey for unknown or not deployed; the words always there.">
-          <State label="ok"><HealthItem label="Policy engine" state="ok" summary="2/2 in sync" /></State>
+          <State label="ok"><HealthItem label="Policy engine" state="ok" summary="reachable (OPAL-managed)" /></State>
           <State label="degraded"><HealthItem label="Audit log" state="degraded" summary="archive 3 min behind" /></State>
           <State label="down"><HealthItem label="Policy sync" state="down" summary="34 min ago" /></State>
           <State label="not deployed"><HealthItem label="Gateway" state="not_deployed" summary="CRD absent" /></State>

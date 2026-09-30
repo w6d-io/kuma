@@ -41,7 +41,7 @@ export type HealthState = 'ok' | 'degraded' | 'down' | 'unknown' | 'not_deployed
 export interface HealthComponent {
   id: HealthId;
   state: HealthState;
-  /** Short, no PII: "2/2 engines in sync", "rollout settled", "soonest 77 d". */
+  /** Short, no PII: "reachable (OPAL-managed)", "rollout settled", "soonest 77 d". */
   summary: string;
   since?: string;
   link?: { page: string; params?: Record<string, string>; anchor?: string } | { grafana: string };
