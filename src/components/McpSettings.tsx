@@ -5,7 +5,7 @@ import type { McpSettings as McpSettingsDoc } from '../api/client';
 import { I, Badge, Button, Callout, Card, ChecklistGroups, Field, Input, Segmented, Select, Switch } from './ui';
 import { toastFor } from '../lib/apiError';
 import { stepUpAndResume, useResume } from '../lib/resume';
-import { MCP_MAX_DAYS, fromMcpDraft, mcpDraftProblems, sameMcp, toMcpDraft, type McpDraft } from '../lib/mcpSettings';
+import { MCP_MAX_DAYS, PROTECTED_HOUR_CHOICES, fromMcpDraft, mcpDraftProblems, sameMcp, toMcpDraft, type McpDraft } from '../lib/mcpSettings';
 
 const DAY_CHOICES = [1, 3, 7, 14, 30].filter((d) => d <= MCP_MAX_DAYS);
 
@@ -107,6 +107,23 @@ export function McpSettings() {
             </div>
           </div>
           <Switch on={draft.browserSignIn} onChange={(v) => patch({ browserSignIn: v })} label="Allow sign-in with a browser (OAuth)" disabled={save.isPending || !draft.enabled} />
+        </div>
+      )}
+
+      {draft.browserSignIn && (
+        <div className="row wrap gap-12">
+          <Field label="Longest sign-in" hint="After this, the app signs in again in the browser. Applies to new sign-ins.">
+            <Select value={draft.oauthMaxDays} onChange={(e) => patch({ oauthMaxDays: Number(e.target.value) })}>
+              {[...new Set([...DAY_CHOICES, draft.oauthMaxDays])].sort((a, b) => a - b).map((d) => <option key={d} value={d}>{d === 1 ? '1 day' : `${d} days`}</option>)}
+            </Select>
+          </Field>
+          <Field label="Protected actions after sign-in" hint="Publishing a site, changing an address, granting a group: allowed for this long on the second factor proven at sign-in.">
+            <Select value={draft.protectedHours} onChange={(e) => patch({ protectedHours: Number(e.target.value) })}>
+              {[...new Set([...PROTECTED_HOUR_CHOICES, draft.protectedHours])].sort((a, b) => a - b).map((h) => (
+                <option key={h} value={h}>{h === 0 ? 'Never' : h % 24 === 0 ? `${h / 24} day${h === 24 ? '' : 's'}` : `${h} hour${h === 1 ? '' : 's'}`}</option>
+              ))}
+            </Select>
+          </Field>
         </div>
       )}
 

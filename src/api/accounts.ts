@@ -153,9 +153,16 @@ export const accountsApi = {
   revokeMcpConnection: (clientId: string) =>
     request<void>(`/me/mcp/connections/${encodeURIComponent(clientId)}`, { method: 'DELETE' }),
 
-  // jinbe has no "disconnect all of mine" route: each is disconnected on its own. Rejects when any
-  // failed, after trying them all, so a partial failure is said rather than hidden.
+  // Every app you signed in, at once (session only). A jinbe without that route (404) gets each one
+  // disconnected on its own; that rejects when any failed, after trying them all, so a partial
+  // failure is said rather than hidden.
   revokeAllMcpConnections: async (clientIds: string[]) => {
+    try {
+      await request<void>('/me/mcp/connections', { method: 'DELETE' });
+      return;
+    } catch (err) {
+      if ((err as { status?: number }).status !== 404) throw err;
+    }
     const out = await Promise.allSettled(clientIds.map((id) => request<void>(`/me/mcp/connections/${encodeURIComponent(id)}`, { method: 'DELETE' })));
     const failed = out.find((r): r is PromiseRejectedResult => r.status === 'rejected');
     if (failed) throw failed.reason;

@@ -29,6 +29,12 @@ const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 /** Keeps the key out of files: in the shell (or a profile / secret manager that exports it). */
 export const exportKey = (key: string) => `export ${MCP_KEY_ENV}=${q(key)}`;
 
+/** Browser sign-in (OAuth): no header — the client finds the sign-in page from the server's 401. */
+export const claudeCodeOAuth = {
+  add: (url: string) => `claude mcp add --transport http --scope user ${MCP_SERVER_NAME} ${url}`,
+  login: `# inside a Claude Code session:\n/mcp\n# pick ${MCP_SERVER_NAME}, then Authenticate — your browser opens`,
+};
+
 export const claudeCode = {
   /** Just you, every project: stored in ~/.claude.json with the key expanded now. */
   user: (url: string) =>

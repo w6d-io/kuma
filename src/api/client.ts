@@ -564,7 +564,15 @@ export interface McpSettings {
    * Sign-in with a browser (OAuth): an assistant opens the sign-in page instead of taking a key. On by
    * default once AI assistants are. Absent on a jinbe without it; other fields jinbe adds are kept.
    */
-  oauth?: { enabled: boolean; [k: string]: unknown };
+  oauth?: {
+    enabled: boolean;
+    /** How long one sign-in lives, 1–30 days. */
+    maxDays?: number;
+    /** 'window': protected actions allowed for `protectedActionsHours` after the second factor proven at sign-in. */
+    protectedActions?: 'off' | 'window';
+    protectedActionsHours?: number;
+    [k: string]: unknown;
+  };
 }
 export interface McpSettingsView {
   settings: McpSettings;
@@ -582,6 +590,8 @@ export interface McpStatus {
   personalKeys: { maxDays: number } | null;
   /** Whether the caller's groups may use it; null when it is off (absent on an older jinbe). */
   allowed?: boolean | null;
+  /** Sign-in with a browser: false when MCP is off or no issuer is configured; absent on an older jinbe. */
+  oauth?: { enabled: boolean };
 }
 
 // Kratos self-service auth methods managed via /admin/auth/methods.

@@ -8,6 +8,11 @@ import type { McpSettings } from '../api/client';
 /** The owner's ceiling for a personal key (jinbe refuses more, whatever is set). */
 export const MCP_MAX_DAYS = 30;
 
+/** jinbe's defaults for browser sign-in (mcp/settings.ts): 30 days, protected actions for 12 hours. */
+export const OAUTH_DEFAULTS = { maxDays: 30, protectedActionsHours: 12 } as const;
+/** Choices for how long protected actions stay allowed after signing in; 0 = never. jinbe accepts 1–720 hours. */
+export const PROTECTED_HOUR_CHOICES = [0, 1, 4, 12, 24, 72, 168, 720];
+
 export interface McpDraft {
   enabled: boolean;
   serverUrl: string;
@@ -16,6 +21,10 @@ export interface McpDraft {
   groups: string[];
   /** Allow sign-in with a browser; null when this jinbe has no such setting. */
   browserSignIn: boolean | null;
+  /** How long one browser sign-in lives, in days. */
+  oauthMaxDays: number;
+  /** Hours protected actions stay allowed after signing in; 0 = never. */
+  protectedHours: number;
   /** The stored `oauth` block, so fields the form does not edit go back unchanged. */
   oauth?: McpSettings['oauth'];
 }
@@ -28,6 +37,8 @@ export function toMcpDraft(s: McpSettings): McpDraft {
     scope: s.allowedGroups === 'all' ? 'all' : 'selected',
     groups: s.allowedGroups === 'all' ? [] : [...s.allowedGroups],
     browserSignIn: s.oauth ? s.oauth.enabled ?? s.enabled : null,
+    oauthMaxDays: s.oauth?.maxDays ?? OAUTH_DEFAULTS.maxDays,
+    protectedHours: s.oauth?.protectedActions === 'off' ? 0 : s.oauth?.protectedActionsHours ?? OAUTH_DEFAULTS.protectedActionsHours,
     ...(s.oauth ? { oauth: s.oauth } : {}),
   };
 }
@@ -40,7 +51,16 @@ export function fromMcpDraft(d: McpDraft): McpSettings {
     personalKeys: { maxDays: d.maxDays },
     allowedGroups: d.scope === 'all' ? 'all' : [...new Set(d.groups)].sort(),
     // Never sent to a jinbe that has no such setting: its schema is strict.
-    ...(d.browserSignIn !== null ? { oauth: { ...d.oauth, enabled: d.browserSignIn } } : {}),
+    ...(d.browserSignIn !== null ? {
+      oauth: {
+        ...d.oauth,
+        enabled: d.browserSignIn,
+        maxDays: d.oauthMaxDays,
+        protectedActions: d.protectedHours > 0 ? 'window' as const : 'off' as const,
+        // Off keeps the stored hours, so turning it back on finds them.
+        protectedActionsHours: d.protectedHours > 0 ? d.protectedHours : d.oauth?.protectedActionsHours ?? OAUTH_DEFAULTS.protectedActionsHours,
+      },
+    } : {}),
   };
 }
 

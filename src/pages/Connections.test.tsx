@@ -191,6 +191,21 @@ describe('Connections & keys', () => {
     expect(inDrawer(/^Create key$/).disabled).toBe(true);
   });
 
+  it('puts browser sign-in first when it is on, keys after', async () => {
+    api.status.data = { enabled: true, serverUrl: 'https://mcp.example.com/mcp', off: null, personalKeys: { maxDays: 30 }, oauth: { enabled: true } };
+    mount();
+    await settle();
+    const t = text();
+    expect(t).toContain('Sign in with your browser (recommended)');
+    expect(t.indexOf('Sign in with your browser')).toBeLessThan(t.indexOf('Or use a personal key'));
+    expect(t).toContain('claude mcp add --transport http --scope user example https://mcp.example.com/mcp');
+    cleanup();
+    api.status.data = { enabled: true, serverUrl: null, off: null, personalKeys: { maxDays: 30 }, oauth: { enabled: false } };
+    mount();
+    await settle();
+    expect(text()).not.toContain('Sign in with your browser');
+  });
+
   describe('signed-in apps', () => {
     const hour = 3_600_000;
     const at = (ms: number) => new Date(Date.now() + ms).toISOString();

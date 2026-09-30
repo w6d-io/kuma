@@ -10,13 +10,15 @@ const h = vi.hoisted(() => ({
   session: { permissions: ['*'] as string[] },
   setting: { data: { groups: ['super_admins'], defaultGroups: ['super_admins'] } as { groups: string[] } | undefined, isError: false },
   mutate: vi.fn(),
+  setGroupRequired: vi.fn(),
   toast: vi.fn(),
 }));
-vi.mock('../../api/twoFactor', () => ({ useGroupSecondFactors: () => (g: string) => h.rules[g] }));
+vi.mock('../../api/twoFactor', () => ({ useGroupSecondFactors: () => (g: string) => h.rules[g], twoFactorApi: { setGroupRequired: h.setGroupRequired } }));
+vi.mock('../../api/client', () => ({ api: { getSecondFactorGroups: async () => h.setting.data } }));
 vi.mock('../../api/hooks', () => ({
   useSession: () => ({ data: h.session }),
   useSecondFactorGroups: () => h.setting,
-  useSetSecondFactorGroups: () => ({ mutate: h.mutate, isPending: false }),
+  useSetSecondFactorGroups: () => ({ mutateAsync: h.mutate, isPending: false }),
 }));
 vi.mock('../../contexts/AppContext', () => ({ useApp: () => ({ pushToast: h.toast }) }));
 vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
@@ -30,8 +32,10 @@ beforeEach(() => {
   h.rules = { ops: { required: true }, platform: { required: false, enrolBeforeJoining: true }, readers: { required: false } };
   h.session.permissions = ['*'];
   h.setting = { data: { groups: ['super_admins'] }, isError: false };
-  h.mutate.mockReset();
+  h.mutate.mockReset().mockResolvedValue(undefined);
+  h.setGroupRequired.mockReset().mockResolvedValue({ name: 'ops', secondFactor: { required: true } });
 });
+async function settle() { for (let i = 0; i < 4; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); }
 afterEach(cleanup);
 
 describe('group rows', () => {
@@ -60,20 +64,25 @@ describe('group rows', () => {
 describe('Members must use 2FA', () => {
   const sw = () => document.querySelector('[aria-label="Members must use 2FA"]') as HTMLButtonElement;
 
-  it('adds the group to the list for a super admin, and explains both halves of the rule', () => {
+  it('switches the group on through its own route for a super admin, and explains both halves of the rule', async () => {
     render(<GroupSecondFactor name="ops" rule={{ required: false }} />);
     expect(document.body.textContent).toContain('enrolled a second factor before being added');
     expect(sw().getAttribute('aria-checked')).toBe('false');
     click(sw());
-    expect(h.mutate).toHaveBeenCalledWith(['ops', 'super_admins'], expect.anything());
+    await settle();
+    expect(h.setGroupRequired).toHaveBeenCalledWith('ops', true);
+    expect(h.mutate).not.toHaveBeenCalled();
+    expect(sw().getAttribute('aria-checked')).toBe('true');
   });
 
-  it('removes it again', () => {
+  it('falls back to the settings list on a jinbe without the per-group route', async () => {
     h.setting = { data: { groups: ['ops', 'super_admins'] }, isError: false };
+    h.setGroupRequired.mockRejectedValue(Object.assign(new Error('Route PUT:/api/admin/rbac/groups/ops/second-factor not found'), { status: 404 }));
     render(<GroupSecondFactor name="ops" rule={{ required: true, source: 'setting' }} />);
     expect(sw().getAttribute('aria-checked')).toBe('true');
-    act(() => { sw().click(); });
-    expect(h.mutate).toHaveBeenCalledWith(['super_admins'], expect.anything());
+    click(sw());
+    await settle();
+    expect(h.mutate).toHaveBeenCalledWith(['super_admins']);
   });
 
   it('is read-only for anybody but a super admin', () => {
