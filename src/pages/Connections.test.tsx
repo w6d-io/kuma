@@ -243,7 +243,7 @@ describe('Connections & keys', () => {
       expect(text()).toContain('Disconnect all 2 apps?');
       click(inModal(/^Disconnect all$/));
       await settle();
-      expect(api.revokeAllMcpConnections).toHaveBeenCalledTimes(1);
+      expect(api.revokeAllMcpConnections).toHaveBeenCalledWith(['c1', 'c2']);
     });
 
     it('says when there is none, and how an app signs in', async () => {

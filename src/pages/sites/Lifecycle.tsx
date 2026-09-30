@@ -29,7 +29,7 @@ export function EphemeralBadge({ e }: { e: EphemeralView }) {
   const s = expiryState(e, now);
   return (
     <Badge tone={TONE[s.tone]} icon={I.clock} mono={false} title={s.detail}>
-      {s.tone === 'expired' ? 'Expired' : `Ephemeral · ${s.label}`}
+      {s.tone === 'expired' ? 'Expired (paused)' : `Ephemeral · ${s.label}`}
     </Badge>
   );
 }

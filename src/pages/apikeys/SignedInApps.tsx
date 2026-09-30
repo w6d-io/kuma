@@ -45,7 +45,7 @@ export function SignedInApps() {
     setBusy(true);
     try {
       if (target === 'all') {
-        await accountsApi.revokeAllMcpConnections();
+        await accountsApi.revokeAllMcpConnections(apps.map((a) => a.client_id));
         pushToast('Disconnected every signed-in app', { sub: 'Each is refused from its next call and has to sign in again.' });
       } else {
         await accountsApi.revokeMcpConnection(target.client_id);

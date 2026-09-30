@@ -147,11 +147,17 @@ export const accountsApi = {
     request<void>(`/me/api-keys/${encodeURIComponent(clientId)}`, { method: 'DELETE' }),
 
   // Apps signed in with a browser. 404 on a jinbe without browser sign-in: the list is not shown.
-  listMcpConnections: () => request<{ data: McpConnectionView[] }>('/me/mcp/connections'),
+  listMcpConnections: () => request<{ data: McpConnectionView[]; total?: number }>('/me/mcp/connections'),
 
   // Disconnecting ends the consent and every token issued under it; the app is refused from its next call.
   revokeMcpConnection: (clientId: string) =>
     request<void>(`/me/mcp/connections/${encodeURIComponent(clientId)}`, { method: 'DELETE' }),
 
-  revokeAllMcpConnections: () => request<void>('/me/mcp/connections', { method: 'DELETE' }),
+  // jinbe has no "disconnect all of mine" route: each is disconnected on its own. Rejects when any
+  // failed, after trying them all, so a partial failure is said rather than hidden.
+  revokeAllMcpConnections: async (clientIds: string[]) => {
+    const out = await Promise.allSettled(clientIds.map((id) => request<void>(`/me/mcp/connections/${encodeURIComponent(id)}`, { method: 'DELETE' })));
+    const failed = out.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (failed) throw failed.reason;
+  },
 };

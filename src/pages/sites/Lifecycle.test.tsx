@@ -28,7 +28,7 @@ describe('ephemeral sites', () => {
   it('counts down on the badge, and says expired once paused', () => {
     mount(<><EphemeralBadge e={e()} /><EphemeralBadge e={e({ expired: true })} /></>);
     expect(text()).toContain('Ephemeral · 2 h 1 min left');
-    expect(text()).toContain('Expired');
+    expect(text()).toContain('Expired (paused)');
   });
 
   it('extends by the TTL chosen, in seconds, starting from its own', async () => {

@@ -110,12 +110,12 @@ describe('lib/mcpSettings', () => {
   it('offers browser sign-in only on a jinbe that has it, and saves it with the fields it does not edit', () => {
     h.data = view();
     const older = render(<McpSettings />);
-    expect(older.container.querySelector('[aria-label="Allow sign-in with a browser"]')).toBeNull();
+    expect(older.container.querySelector('[aria-label="Allow sign-in with a browser (OAuth)"]')).toBeNull();
     cleanup();
 
     h.data = view({ oauth: { enabled: true, maxDays: 30 } });
     const { container } = render(<McpSettings />);
-    const sw = container.querySelector<HTMLElement>('[aria-label="Allow sign-in with a browser"]')!;
+    const sw = container.querySelector<HTMLElement>('[aria-label="Allow sign-in with a browser (OAuth)"]')!;
     expect(sw.getAttribute('aria-checked')).toBe('true');
     click(sw);
     expect(container.textContent).toContain('Assistants need a personal key');
