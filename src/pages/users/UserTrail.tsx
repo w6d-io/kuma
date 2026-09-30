@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import type { User } from '../../api/types';
 import { Badge, Button, ButtonBase, Card, EmptyHint, I, Segmented, cx } from '../../components/ui';
 import { eventPhrase, eventSummary, resultTone, severityTone, timeOf } from '../../lib/audit/format';
 import { splitTimeline, timelineWindow, type TimelineSegment } from '../../lib/audit/timeline';
@@ -18,15 +17,15 @@ const SEGMENTS: { value: TimelineSegment; label: string }[] = [
  * The drawer's Activity tab (AUD-12): one person's events by Kratos id — the
  * events they caused, the ones aimed at them, and their sign-ins — 30 days at a time.
  */
-export function UserTrail({ user }: { user: User }) {
+export function UserTrail({ userId }: { userId: string }) {
   const [now] = useState(() => Date.now());
   const [k, setK] = useState(0);
   const [seg, setSeg] = useState<TimelineSegment>('did');
   const [openId, setOpenId] = useState<string | null>(null);
   const range = useMemo(() => timelineWindow(k, now), [k, now]);
-  const q = useUserTimeline(user.id, range);
+  const q = useUserTimeline(userId, range);
   const all = useMemo(() => q.data?.pages.flatMap((p) => p.events) ?? [], [q.data]);
-  const split = useMemo(() => splitTimeline(all, user.id), [all, user.id]);
+  const split = useMemo(() => splitTimeline(all, userId), [all, userId]);
   const rows = split[seg];
   const platform = q.data?.pages[0]?.scope.platform ?? false;
   const day = (iso: string) => new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short' });

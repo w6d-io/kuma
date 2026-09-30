@@ -1,10 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
 import { Callout, Card, Checkbox, Field, FormGrid, I, Input, RadioGroup } from '../../../components/ui';
-import { sitesApi, notAvailable } from '../../../api/sites';
 import { helpUrlProblem, welcomeProblem } from '../../../lib/sites/validate';
 import { displayPath } from '../../../lib/sites/paths';
 import type { SiteEditor } from '../useSiteEditor';
-import { CheckList, type CheckLine } from '../parts';
 import { BrandFields } from './BrandFields';
 import { useBrand } from './brand';
 import { LoginPreview } from './LoginPreview';
@@ -19,22 +16,11 @@ import { LoginPreview } from './LoginPreview';
 
 export function LoginTab({ ed, readOnly }: { ed: SiteEditor; readOnly: boolean }) {
   const site = ed.site;
-  const readiness = useQuery({ queryKey: ['sites', 'login-readiness', ed.name], queryFn: () => sitesApi.loginReadiness(ed.name), retry: false, enabled: !!site });
   const { login, branding, setLogin, setBranding, shown } = useBrand(ed);
   if (!site) return <Callout tone="warning" icon={I.alert}>This draft is incomplete.</Callout>;
 
   const tf = login.twoFactor;
   const routes = site.routes.items;
-
-  const readyLines: CheckLine[] = [];
-  if (tf.scope !== 'none' || (tf.routes?.length ?? 0) > 0) {
-    if (readiness.data) {
-      const r = readiness.data;
-      readyLines.push({ level: r.without2fa.length ? 'warn' : 'ok', text: `${r.with2fa} of ${r.withAccess} people with access have 2FA set up.${r.without2fa.length ? ` ${r.without2fa.length} will be asked to set it up first.` : ''}` });
-    } else if (notAvailable(readiness.error)) {
-      readyLines.push({ level: 'info', text: 'How many people already have 2FA is not available on this server yet.' });
-    }
-  }
 
   return (
     <div className="stack gap-16">
@@ -69,7 +55,6 @@ export function LoginTab({ ed, readOnly }: { ed: SiteEditor; readOnly: boolean }
             { value: 'refused', label: 'OAuth2 clients are refused' },
           ]} />
           <p className="small m-0">What people see: “{shown.name} needs a second step” → they confirm with their app or passkey, or set one up first, then land back where they were.</p>
-          <CheckList lines={readyLines} />
         </div>
       </Card>
 

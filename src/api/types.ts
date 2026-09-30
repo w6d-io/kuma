@@ -1,6 +1,5 @@
 export interface Service {
   name: string;
-  upstreamUrl: string | null;
   description: string;
   createdAt: string;
   routes: number;
@@ -35,102 +34,6 @@ export interface RouteEntry {
   method: string;
   path: string;
   permission?: string;
-}
-
-export interface AccessRule {
-  id: string;
-  service: string;
-  match: {
-    url: string;
-    methods: string[];
-  };
-  authenticators: string[];
-  authorizer: string;
-  mutators: string[];
-  /** Error-handler names (flattened for the list/pipeline view; config on `raw`). */
-  errors?: string[];
-  upstream?: string;
-  stripPath?: string;
-  // The original jinbe rule, kept so an edit can overlay changed fields onto it
-  // (the update endpoint REPLACES the whole rule — reconstructing from the UI
-  // shape alone would drop authenticator/mutator/upstream config). Cast to
-  // JinbeAccessRule at the edit site.
-  raw?: unknown;
-}
-
-/**
- * Compact before→after diff envelope (Part A3). Emitted server-side from the
- * pre/post image of a write. `flags` are the AUTHORITATIVE risk markers ([P2-3])
- * — the client `riskOf` refines display only, it never gates `?risk=high`.
- * `summary` is a plain-language sentence describing the change.
- */
-export interface AuditChanges {
-  resource?: string;
-  id?: string;
-  /** Items added (e.g. new permissions / group members). */
-  added?: string[];
-  /** Items removed. */
-  removed?: string[];
-  /** Scalar field before→after pairs (metadata diffs are key-level, no values). */
-  fields?: Record<string, { from?: unknown; to?: unknown }>;
-  /** opened_to_public | auth_disabled | grants_super_admin | wildcard_permission | … */
-  flags?: string[];
-  summary?: string;
-}
-
-export interface AuditEvent {
-  id: string;
-  when: string;
-  ts?: string;
-  who: string;
-  actorName?: string;
-  /** access | change | auth | system — separates telemetry from the change record. */
-  kind?: string;
-  /** Kratos session id for Grafana/session correlation (contract D3). */
-  sessionId?: string;
-  category: string;
-  verb: string;
-  target: string;
-  /** Structured target id (uuid) + email, so self-grant (actor==target) and the
-   *  per-user "done-to" trail can match reliably (contract P1-4). */
-  targetId?: string;
-  targetEmail?: string;
-  status?: string;
-  service?: string;
-  ip?: string;
-  ua?: string;
-  reason?: string;
-  mfa?: boolean;
-  method?: string;
-  path?: string;
-  statusCode?: number;
-  responseTimeMs?: number;
-  /** Server-authoritative severity ('critical' | 'warn' | 'info' | 'none' …). */
-  severity?: string;
-  /** Before→after diff envelope for change events. */
-  changes?: AuditChanges;
-}
-
-// ─── Audit summary (Part C / A6 GET /audit/summary) ───
-export interface AuditSeriesPoint { t: string; total: number; failed?: number }
-export interface AuditTopItem { key: string; count: number }
-export interface AuditSummary {
-  /** Echo of the requested window (e.g. "24h", "7d") for honest labelling. */
-  window?: string;
-  total: number;
-  prevTotal?: number;
-  byKind?: Record<string, number>;
-  prevByKind?: Record<string, number>;
-  byCategory?: Record<string, { total: number; failed: number }>;
-  byResult?: Record<string, number>;
-  /** Fraction (0..1) OR percent — the UI normalizes defensively. */
-  failureRate?: number;
-  activeActors?: number;
-  prevActiveActors?: number;
-  series?: AuditSeriesPoint[];
-  topDenied?: AuditTopItem[];
-  topActors?: AuditTopItem[];
-  computedAt?: string;
 }
 
 // ─── Access review (Part B GET /admin/access-review) ───
@@ -190,13 +93,6 @@ export type RolesMap = Record<string, Record<string, string[]>>;
 export type RouteMapsMap = Record<string, RouteEntry[]>;
 
 export interface AppState {
-  meta: {
-    jinbeApi: string;
-    opalServer: string;
-    kratosAdmin: string;
-    lastSync: string;
-    authDomain?: string;
-  };
   services: Service[];
   roles: RolesMap;
   groups: GroupsMap;
@@ -211,8 +107,6 @@ export interface AppState {
    *  so a PUT built on a false-empty base would wipe it. */
   rolesErrored?: string[];
   routesErrored?: string[];
-  accessRules: AccessRule[];
-  audit: AuditEvent[];
 }
 
 // SINGLE source of truth for page ids: the type is DERIVED from this runtime
@@ -224,11 +118,9 @@ export const PAGE_IDS = ['dashboard', 'users', 'groups', 'audit', 'accessreview'
 export type PageId = (typeof PAGE_IDS)[number];
 
 export interface TweakDefaults {
-  persona: string;
   density: string;
   accent: string;
   monoFont: string;
-  showPipeline: boolean;
   showCounts: boolean;
   showMotion: boolean;
   navCollapsed: boolean;

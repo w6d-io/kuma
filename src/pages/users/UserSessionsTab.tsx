@@ -11,7 +11,7 @@ import type { User } from '../../api/types';
 
 /** Where this person is signed in, and a way to sign them out of one place or all of them. */
 export function UserSessionsTab({ user }: { user: User }) {
-  const { pushToast, persona } = useApp();
+  const { pushToast } = useApp();
   const qc = useQueryClient();
   const key = ['user-sessions', user.id];
   const q = useQuery({ queryKey: key, queryFn: () => accountsApi.listSessions(user.id), staleTime: 10_000 });
@@ -19,7 +19,6 @@ export function UserSessionsTab({ user }: { user: User }) {
   const [busy, setBusy] = useState(false);
 
   const revoke = async (target: { id: string | 'all'; label: string }) => {
-    if (persona === 'viewer') { pushToast('Read-only persona · change blocked', { err: true }); return; }
     setBusy(true);
     try {
       if (target.id === 'all') await accountsApi.revokeAllSessions(user.id);

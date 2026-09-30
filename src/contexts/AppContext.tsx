@@ -9,11 +9,9 @@ import { ConfirmDialog } from '../components/ui';
 import { applyTheme, nextTheme, storeTheme, storedTheme, type Theme } from '../theme';
 
 const TWEAK_DEFAULTS: TweakDefaults = {
-  persona: "admin",
   density: "comfortable",
   accent: "terracotta",
   monoFont: "jetbrains",
-  showPipeline: true,
   showCounts: true,
   showMotion: true,
   navCollapsed: false,
@@ -30,7 +28,6 @@ interface Toast {
 }
 
 interface PipelineState {
-  stage: string;
   run: (summary?: string) => void;
 }
 
@@ -93,8 +90,6 @@ interface AppContextType {
   theme: Theme;
   setTheme: (t: Theme) => void;
   cycleTheme: () => void;
-  persona: string;
-  setPersona: (p: string) => void;
   tweaks: TweakDefaults;
   setTweak: (key: string, val: unknown) => void;
   // Live API mutations
@@ -147,19 +142,12 @@ function useToasts() {
 const ENGINE_POLL_SECONDS = 40;
 
 function usePipeline(pushToast: (msg: string, opts?: { sub?: string }) => void): PipelineState {
-  const [stage, setStage] = useState("idle");
   const run = useCallback((summary?: string) => {
-    const seq = ["stored", "bundle", "engine"];
-    setStage(seq[0]);
-    seq.forEach((s, i) => setTimeout(() => setStage(s), (i + 1) * 240));
-    setTimeout(() => {
-      setStage("idle");
-      pushToast(`Applied · ${summary || "change"}`, {
-        sub: `Stored. The engines pick it up within ${ENGINE_POLL_SECONDS}s — test after that, not before.`,
-      });
-    }, (seq.length + 1) * 240);
+    pushToast(`Applied · ${summary || "change"}`, {
+      sub: `Stored. The engines pick it up within ${ENGINE_POLL_SECONDS}s — test after that, not before.`,
+    });
   }, [pushToast]);
-  return { stage, run };
+  return { run };
 }
 
 // Every entity key the composite store reads. `refetch()` (e.g. after a bundle
@@ -167,7 +155,7 @@ function usePipeline(pushToast: (msg: string, opts?: { sub?: string }) => void):
 // mutations invalidate only the keys they touch (STORE-3).
 const ALL_ENTITY_KEYS = [
   ['users'], ['groups'], ['groups-map'], ['services'],
-  ['all-roles'], ['all-routes'], ['access-rules'], ['audit'],
+  ['all-roles'], ['all-routes'], ['audit'],
 ] as const;
 
 // No page streams the whole user directory anymore. Every aggregate (Dashboard,
@@ -300,7 +288,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [auditFocus, setAuditFocus] = useState<AuditFocus | null>(null);
 
   const [theme, setThemeRaw] = useState<Theme>(storedTheme());
-  const [persona, setPersonaRaw] = useState(TWEAK_DEFAULTS.persona);
   const [tweaks, setTweaksRaw] = useState<TweakDefaults>(TWEAK_DEFAULTS);
 
   const { toasts, push: pushToast } = useToasts();
@@ -316,7 +303,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
   /** The rail's button: the same setting, reached in one click. */
   const cycleTheme = useCallback(() => setTheme(nextTheme(theme)), [theme, setTheme]);
-  const setPersona = (p: string) => { setPersonaRaw(p); setTweak("persona", p); };
 
   useEffect(() => {
     const html = document.documentElement;
@@ -396,7 +382,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     grant, setGrant,
     auditFocus, setAuditFocus,
     pushToast, toasts, pipeline,
-    theme, setTheme, cycleTheme, persona, setPersona,
+    theme, setTheme, cycleTheme,
     tweaks, setTweak,
     apiSetUserGroups, apiCreateUser, apiDeleteUser, apiSetUserState, apiSetUserMetadata, apiSetUserOrganization, apiSetUserOrganizations, apiSendRecoveryEmail,
   };

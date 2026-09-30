@@ -23,7 +23,7 @@ export function health(now: number): Health {
     components: [
       { id: 'gateway', state: 'ok', summary: 'rollout settled', since: ago(now, 3 * D) },
       { id: 'gateway_rules', state: 'ok', summary: 'served 2 s ago' },
-      { id: 'opa', state: 'ok', summary: '2/2 in sync' },
+      { id: 'opa', state: 'ok', summary: 'reachable (OPAL-managed)' },
       { id: 'opal_data', state: 'ok', summary: '4 min ago' },
       { id: 'kratos', state: 'ok', summary: 'ready' },
       { id: 'jinbe', state: 'ok', summary: 'ready' },

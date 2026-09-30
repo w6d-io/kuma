@@ -208,7 +208,7 @@ export function UserDrawer() {
           )}
           {drawerTab === "signin" && <UserSignInTab user={user} />}
           {drawerTab === "sessions" && <UserSessionsTab user={user} />}
-          {drawerTab === "activity" && <UserTrail user={user} />}
+          {drawerTab === "activity" && <UserTrail userId={user.id} />}
           {drawerTab === "danger" && <UserDangerTab key={user.id} user={user} onDeleted={() => setUserDrawer(null)} />}
         </>
       )}

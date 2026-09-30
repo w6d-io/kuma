@@ -6,23 +6,23 @@ import { signIn } from './session';
  * rejected (expired/revoked/corrupt), where a plain /login could see a
  * "still valid" session and bounce straight back, looping.
  */
-export function redirectToLogin(metaAuthDomain: string | undefined, opts?: { refresh?: boolean }) {
+export function redirectToLogin(opts?: { refresh?: boolean }) {
   // An authority, when the deployment named one: it answers with a token the API can verify on its
   // own, where the cookie below asks the API to look a session up. Tried first because a deployment
   // that configured an authority meant it; falls through when none is configured, which is what
   // every deployment did before this was a choice.
   void signIn().then((sent) => {
     if (sent) return;
-    redirectToCookieLogin(metaAuthDomain, opts);
+    redirectToCookieLogin(opts);
   });
 }
 
-function redirectToCookieLogin(metaAuthDomain: string | undefined, opts?: { refresh?: boolean }) {
-  const authDomain = metaAuthDomain || (window as any).__AUTH_DOMAIN__;
+function redirectToCookieLogin(opts?: { refresh?: boolean }) {
+  const authDomain = (window as any).__AUTH_DOMAIN__;
   if (!authDomain) {
-    // No runtime config and no API metadata — surface the misconfig instead of
-    // silently redirecting somewhere unexpected.
-    console.error('Kuma: AUTH_DOMAIN is not configured. Set the AUTH_DOMAIN env on the container, or have jinbe expose meta.authDomain.');
+    // No runtime config — surface the misconfig instead of silently redirecting
+    // somewhere unexpected.
+    console.error('Kuma: AUTH_DOMAIN is not configured. Set the AUTH_DOMAIN env on the container.');
     return;
   }
   const params = new URLSearchParams();

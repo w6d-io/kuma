@@ -17,12 +17,8 @@ import {
   useServices,
   useAllRoles,
   useAllRoutes,
-  useAccessRules,
-  useAudit,
 } from './hooks';
-import type { AccessRule, AppState, GroupsMap, GroupsMetaMap, RolesMap, Service } from './types';
-
-const EMPTY_META = { jinbeApi: '/api', opalServer: '', kratosAdmin: '', lastSync: '' };
+import type { AppState, GroupsMap, GroupsMetaMap, RolesMap, Service } from './types';
 
 export interface StoreResult {
   state: AppState;
@@ -60,7 +56,6 @@ export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreRes
 
   const groupsQ = useGroups();
   const servicesQ = useServices();
-  const rulesQ = useAccessRules();
 
   const serviceNames = useMemo(
     () => (servicesQ.data ?? []).map(s => s.name),
@@ -69,46 +64,11 @@ export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreRes
 
   const rolesQ = useAllRoles(serviceNames);
   const routesQ = useAllRoutes(serviceNames);
-  const auditQ = useAudit();
 
   const state = useMemo<AppState>(() => {
     const usersRaw = usersQ.users;
     const groupsRaw = groupsQ.data ?? [];
     const servicesRaw = servicesQ.data ?? [];
-    // Associate each gateway rule to a REGISTERED service by longest name match
-    // (exact, or "<name>-<variant>"; service names never contain "-"). This
-    // replaces the naive transform-time id.split('-')[0], which invents phantom
-    // services (e.g. "jinbe_kuma") and hides their rules. A rule that matches no
-    // registered service keeps its raw derived value so the UI can surface it as
-    // an unassigned/infrastructure rule rather than silently dropping it.
-    // Treat "-" and "_" as the same separator: gateway rule ids use "-"
-    // (stairwage-dsn) while the matching service names use "_" (stairwage_dsn).
-    const norm = (s: string) => s.replace(/[-_]/g, '.');
-    const svcNamesForAssoc = servicesRaw.map(s => s.name);
-    const registeredSet = new Set(svcNamesForAssoc);
-    const assocService = (r: AccessRule): string | null => {
-      // 1. An explicit service on the raw jinbe payload wins when it names a
-      //    registered service — the transform may already have surfaced it into
-      //    r.service. Respect any value that is itself a registered service so a
-      //    correct association is never overwritten by the weaker id heuristic.
-      const rawSvc = (r.raw as { service?: unknown } | undefined)?.service;
-      if (typeof rawSvc === 'string' && registeredSet.has(rawSvc)) return rawSvc;
-      if (registeredSet.has(r.service)) return r.service;
-      // 2. Longest normalized-prefix match on the rule id (exact, or
-      //    "<name>.<variant>"). Treats "-" and "_" as the same separator so a
-      //    "stairwage-dsn" rule id matches a "stairwage_dsn" service.
-      const nid = norm(r.id);
-      let best: string | null = null;
-      for (const n of svcNamesForAssoc) {
-        const nn = norm(n);
-        if ((nid === nn || nid.startsWith(nn + '.')) && (!best || n.length > best.length)) best = n;
-      }
-      return best;
-    };
-    const rules = (rulesQ.data ?? []).map(r => {
-      const assoc = assocService(r);
-      return assoc && assoc !== r.service ? { ...r, service: assoc } : r;
-    });
     const rolesMap: RolesMap = rolesQ.data ?? {};
     const routeMaps = routesQ.data ?? {};
 
@@ -125,29 +85,15 @@ export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreRes
       }
     }
 
-    // services → UI shape, enriched with role/route counts + upstream from rules
+    // services → UI shape, enriched with role/route counts
     const services: Service[] = servicesRaw.map(s => ({
       name: s.name,
-      upstreamUrl: null as string | null,
       description: s.description || s.displayName || s.name,
       createdAt: '',
       routes: (routeMaps[s.name]?.length ?? s.routesCount) || 0,
       roles: (rolesMap[s.name] ? Object.keys(rolesMap[s.name]).length : s.rolesCount) || 0,
       ...(s.system ? { system: true } : {}),
     }));
-    for (const svc of services) {
-      const rule = rules.find(r => r.service === svc.name && r.upstream);
-      if (rule?.upstream) svc.upstreamUrl = rule.upstream;
-    }
-
-    // authDomain — scraped from the kratos-public rule match URL (API-4 will
-    // replace this with a real meta field from jinbe).
-    let authDomain: string | undefined;
-    const kratosRule = rules.find(r => r.id === 'kratos-public' || r.id.includes('kratos'));
-    if (kratosRule) {
-      const m = kratosRule.match.url.match(/https?:\/\/([^/\\>]+)/);
-      if (m) authDomain = m[1].replace(/\\/g, '');
-    }
 
     // Services whose roles/routes FAILED to load (absent from the aggregate map
     // after it settled — the hooks omit a failed service rather than folding it
@@ -163,7 +109,6 @@ export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreRes
       : [];
 
     return {
-      meta: { ...EMPTY_META, lastSync: 'live', authDomain },
       services,
       roles: rolesMap,
       groups,
@@ -173,26 +118,24 @@ export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreRes
       routeMaps,
       rolesErrored,
       routesErrored,
-      accessRules: rules,
-      audit: auditQ.data ?? [],
     };
-  }, [usersQ.users, usersQ.usersLoading, groupsQ.data, servicesQ.data, rulesQ.data, rolesQ.data, rolesQ.isSuccess, routesQ.data, routesQ.isSuccess, auditQ.data]);
+  }, [usersQ.users, usersQ.usersLoading, groupsQ.data, servicesQ.data, rolesQ.data, rolesQ.isSuccess, routesQ.data, routesQ.isSuccess]);
 
-  // Any admin endpoint (groups/services/rules/users) 401/403s identically when
+  // Any admin endpoint (groups/services/users) 401/403s identically when
   // the caller lacks access, so any of them is a valid auth probe. Surface the
   // first error from any critical query.
   const apiError =
-    (groupsQ.error ?? servicesQ.error ?? rulesQ.error ?? usersQ.error) as Error | null;
+    (groupsQ.error ?? servicesQ.error ?? usersQ.error) as Error | null;
 
   // Gate first paint on the lighter admin queries — NOT on the (potentially
   // large) user directory. This preserves the old fast-first-paint behaviour
   // where the dashboard rendered before the full directory streamed in; the
   // Users list / counts fill in via `usersLoading` once the users query lands.
   const isLoading =
-    groupsQ.isLoading || servicesQ.isLoading || rulesQ.isLoading;
+    groupsQ.isLoading || servicesQ.isLoading;
 
   const isLive =
-    groupsQ.isSuccess && servicesQ.isSuccess && rulesQ.isSuccess && !apiError;
+    groupsQ.isSuccess && servicesQ.isSuccess && !apiError;
 
   return { state, isLive, isLoading, apiError };
 }

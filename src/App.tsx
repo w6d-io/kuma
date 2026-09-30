@@ -190,7 +190,7 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
 }
 
 function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
-  const { page, pipeline, theme, cycleTheme, persona, tweaks, isLive, isLoading, apiError, state, pushToast } = useApp();
+  const { page, theme, cycleTheme, tweaks, isLive, isLoading, apiError, pushToast } = useApp();
   const title = navItemFor(page)?.name || "Console";
 
   // Back from a step-up for an action the screen cannot run again by itself: say what to redo.
@@ -198,7 +198,6 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
     const redo = takeRedo();
     if (redo) pushToast("Second factor confirmed · nothing was done yet", { sub: redo, ttl: 15000 });
   }, [pushToast]);
-  const showPipe = tweaks?.showPipeline !== false;
   const isForbidden = page !== "dashboard" && (simulatingForbidden(tweaks) || ((apiError as any)?.status === 403 && !edgeBlocked(apiError)));
 
   useEffect(() => {
@@ -207,9 +206,9 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
       // with code=session_invalid — force re-auth so Kratos regenerates the
       // session instead of bouncing a "valid-looking" broken cookie forever.
       const stale = (apiError as any)?.details?.code === 'session_invalid';
-      redirectToLogin(state.meta.authDomain, { refresh: stale });
+      redirectToLogin({ refresh: stale });
     }
-  }, [apiError, state.meta.authDomain]);
+  }, [apiError]);
 
   return (
     <>
@@ -241,12 +240,6 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
              (apiError as any)?.status === 503 ? "engine unreachable" : "offline"}
           </span>
         )}
-        {showPipe && pipeline.stage !== "idle" && (
-          <span className="sync-pill syncing">
-            <span className="d" />
-            {pipeline.stage}…
-          </span>
-        )}
         <ButtonBase className="search-trigger" onClick={onOpenCmdk}>
           <span className="icon">{I.search}</span>
           <span>Search or jump to…</span>
@@ -266,12 +259,6 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
         <div className="viewer-banner danger">
           <span>{I.shield}</span>
           403 Forbidden · access denied
-        </div>
-      )}
-      {!isForbidden && persona === "viewer" && (
-        <div className="viewer-banner">
-          <span>{I.shield}</span>
-          read-only persona · destructive actions and writes are disabled
         </div>
       )}
       <SecondFactorBanner />
@@ -370,7 +357,7 @@ function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 function TweaksPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { theme, setTheme, persona, setPersona, tweaks, setTweak } = useApp();
+  const { theme, setTheme, tweaks, setTweak } = useApp();
   if (!open) return null;
 
   const Seg = ({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { v: string; l: string }[] }) => (
@@ -392,9 +379,7 @@ function TweaksPanel({ open, onClose }: { open: boolean; onClose: () => void }) 
         <div className="tweak-row"><span className="lbl">Accent</span><Seg label="Accent" value={tweaks.accent} onChange={v => setTweak("accent", v)} options={[{ v: "terracotta", l: "Terracotta" }, { v: "indigo", l: "Indigo" }, { v: "slate", l: "Slate" }]} /></div>
         <div className="tweak-row"><span className="lbl">Density</span><Seg label="Density" value={tweaks.density} onChange={v => setTweak("density", v)} options={[{ v: "compact", l: "Compact" }, { v: "comfortable", l: "Comfy" }, { v: "cozy", l: "Cozy" }]} /></div>
         <div className="tweak-section">Console</div>
-        <div className="tweak-row"><span className="lbl">Persona</span><Seg label="Persona" value={persona} onChange={setPersona} options={[{ v: "admin", l: "Admin" }, { v: "viewer", l: "Viewer" }]} /></div>
         <div className="tweak-row"><span className="lbl">Collapse nav</span><Switch label="Collapse nav" on={!!tweaks.navCollapsed} onChange={v => setTweak("navCollapsed", v)} /></div>
-        <div className="tweak-row"><span className="lbl">Pipeline</span><Switch label="Pipeline" on={!!tweaks.showPipeline} onChange={v => setTweak("showPipeline", v)} /></div>
         <div className="tweak-row"><span className="lbl">Counts</span><Switch label="Counts" on={!!tweaks.showCounts} onChange={v => setTweak("showCounts", v)} /></div>
         {DEV && (
           <div className="tweak-row">
@@ -422,7 +407,7 @@ function BlockedPage() {
 }
 
 function AppShell() {
-  const { page, setPage, toasts, apiError, tweaks, state } = useApp();
+  const { page, setPage, toasts, apiError, tweaks } = useApp();
   const { data: session, isSuccess: sessionReady } = useSession();
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [tweaksOpen, setTweaksOpen] = useState(false);
@@ -434,8 +419,8 @@ function AppShell() {
   // set = a cookie WAS presented but rejected → refresh=true regenerates it.
   useEffect(() => {
     if (!sessionReady || !session || session.authenticated) return;
-    redirectToLogin(state.meta.authDomain, { refresh: !!session.error });
-  }, [sessionReady, session, state.meta.authDomain]);
+    redirectToLogin({ refresh: !!session.error });
+  }, [sessionReady, session]);
 
   // Real-time: subscribe to the server change stream (admins only) so the whole
   // console reflects changes sub-second without polling.

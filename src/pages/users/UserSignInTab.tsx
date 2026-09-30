@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useApp } from '../../contexts/AppContext';
 import { useSession } from '../../api/hooks';
 import { recoveryApi } from '../../api/recovery';
 import { ApiErrorState } from '../../components/ApiErrorState';
@@ -17,7 +16,6 @@ import type { User } from '../../api/types';
  * fine permission or the coarse admin:write it refines; jinbe decides either way.
  */
 export function UserSignInTab({ user }: { user: User }) {
-  const { persona, pushToast } = useApp();
   const { data: session } = useSession();
   const qc = useQueryClient();
   const key = ['user-second-factors', user.id];
@@ -31,7 +29,6 @@ export function UserSignInTab({ user }: { user: User }) {
   const required = q.data?.required ?? null;
 
   const open = (which: 'link' | 'remove') => {
-    if (persona === 'viewer') { pushToast('Read-only persona · change blocked', { err: true }); return; }
     setDialog(which);
   };
 

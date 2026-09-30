@@ -45,8 +45,8 @@ const IMPORT_SECTIONS: { id: keyof PendingBundle['counts']; label: string }[] = 
 ];
 
 export function SettingsPage() {
-  const { state, pushToast, refetch } = useApp();
-  const authDomain = state.meta.authDomain || (window as any).__AUTH_DOMAIN__ || '';
+  const { pushToast, refetch } = useApp();
+  const authDomain = (window as any).__AUTH_DOMAIN__ || '';
   const accountUrl = authDomain
     ? `https://${authDomain}/settings?return_to=${encodeURIComponent(window.location.href)}`
     : null;

@@ -5,14 +5,12 @@ import { permits } from '../../policy/model';
 import { administersPlatform, groupOutcome } from '../../lib/rbacEdit';
 
 /**
- * Whether this session may change roles and groups. jinbe asks for admin write on every write here;
- * the read-only persona switches the controls off for a demo. Controls a reader cannot use are left
- * out rather than greyed, with one line saying why.
+ * Whether this session may change roles and groups. jinbe asks for admin write on every write here.
+ * Controls a reader cannot use are left out rather than greyed, with one line saying why.
  */
 export function useCanEditAccess(): boolean {
   const { data: session } = useSession();
-  const { persona } = useApp();
-  return persona !== 'viewer' && permits(session?.permissions, 'admin:write');
+  return permits(session?.permissions, 'admin:write');
 }
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
