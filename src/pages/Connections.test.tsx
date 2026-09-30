@@ -122,7 +122,7 @@ describe('Connections & keys', () => {
     expect(text()).toContain('"method":"tools/list"');
     expect(document.querySelector('[role=tabpanel]')!.getAttribute('aria-labelledby')).toBe('mcp-client-tab-curl');
     expect(text()).toContain('7 days at most on this platform');
-    expect(text()).toContain('Publish or roll back a site');
+    expect(text()).toContain('deletes are made by hand in the console');
     expect(text()).toContain('403 mcp_disabled — not enabled for your groups');
     expect(text()).toContain('503 retry_later');
   });

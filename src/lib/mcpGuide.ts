@@ -124,9 +124,9 @@ export const MCP_TROUBLESHOOTING: ReadonlyArray<{ answer: string; meaning: strin
 
 /** What a key can never do, whatever permissions it carries (jinbe's delegation gate). */
 export const MCP_ALWAYS_REFUSED: readonly string[] = [
-  'Create, change or revoke keys — personal or organization',
-  'Reset a second factor, recovery email or sign-in link; change sign-in settings',
-  'Change groups, roles, route maps or who is an administrator — and anything about your own account',
-  'Publish or roll back a site or the gateway, or approve a request',
-  'Anything that asks for a recent second factor: that stays in the browser',
+  'Delete anything — a site, a user, a group, a zone, a membership, a session: deletes are made by hand in the console',
+  'Create keys (revoking one is allowed), reset a second factor, approve a request',
+  'Change sign-in or AI-assistant settings, zones or the gateway, group and role definitions, or anything about your own account',
+  'Export the policy bundle or the audit log in bulk',
+  'Publish, change an email or grant a group with a key created without “protected actions”, or more than 30 days after its second factor',
 ];
