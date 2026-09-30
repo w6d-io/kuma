@@ -5,7 +5,7 @@ import { useUserIdentity } from '../../api/hooks';
 import { membershipsOf } from '../../api/transforms';
 import { orgLabel } from '../../lib/orgOptions';
 import { sameGroups } from '../../lib/orgGrants';
-import { Badge, Button, Card } from '../../components/ui';
+import { Badge, Button, Card, TwoFactorBadge } from '../../components/ui';
 import { ApiErrorState } from '../../components/ApiErrorState';
 import { I } from '../../components/ui/Icons';
 import type { User } from '../../api/types';
@@ -39,6 +39,7 @@ export function UserAccessTab({ user, groups, toggle, siteRows, onOpenOrg }: {
       <section aria-labelledby="site-access-h">
         <h3 id="site-access-h" className="mt-0 mb-2 text-base">Site access <span className="muted fw-regular">(everywhere)</span></h3>
         <div className="small muted mb-8">From their groups. Holds on every site, whatever org they are in.</div>
+        {accessQ.data?.secondFactor && <TheirSecondFactor sf={accessQ.data.secondFactor} />}
         {!siteRows.mayAssign ? (
           <div className="small muted mb-8">
             You cannot assign groups: your roles do not include managing members. Below is what this person already holds.
@@ -128,5 +129,19 @@ function OrgsWithoutGrants({ user }: { user: User }) {
         ? <div className="row wrap gap-4">{ids.map((o) => <Badge key={o} mono={false} title={o}>{orgLabel(o, catalog)} · member</Badge>)}</div>
         : <span className="small muted">Not in any org.</span>}
     </Card>
+  );
+}
+
+/** Whether their groups make two-step sign-in mandatory for them, and whether they are ready for it. */
+function TheirSecondFactor({ sf }: { sf: NonNullable<UserAccess['secondFactor']> }) {
+  const n = sf.stepUpPermissions?.length ?? 0;
+  return (
+    <div className="row gap-8 items-center wrap small mb-8">
+      {sf.required ? <TwoFactorBadge kind="required" title={`Required by ${sf.requiredBecause.join(', ')}`} /> : <span className="muted">Two-step sign-in optional</span>}
+      {sf.required && <span>as a member of {sf.requiredBecause.join(', ')}</span>}
+      {sf.enrolled === true && <Badge tone="success" mono={false}>enrolled</Badge>}
+      {sf.enrolled === false && <TwoFactorBadge kind="needs-enrol" title="No second factor enrolled: groups that require one cannot be given to them." />}
+      {n > 0 && <span className="muted">{n} permission{n === 1 ? '' : 's'} need a recent second factor</span>}
+    </div>
   );
 }

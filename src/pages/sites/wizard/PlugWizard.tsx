@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Callout, Card, I, PageHeader, Stepper } from '../../../components/ui';
-import { useZones, sitesApi, useInvalidateSite, notAvailable } from '../../../api/sites';
+import { useZones, sitesApi, useInvalidateSite, useSitesPlatform, notAvailable } from '../../../api/sites';
+import { rememberLifetime } from '../../../lib/sites/lifecycle';
+import { LifetimeField } from '../Lifecycle';
 import { goSites, sitesHref, WIZARD_STEPS, type WizardStep } from '../../../lib/sites/route';
 import { addressProblems, loadWizard, siteFrom, WIZARD_STORE, type WizardState } from '../../../lib/sites/wizard';
 import { useSitePerms } from '../usePerms';
@@ -19,6 +21,7 @@ import { WizardReview } from './WizardReview';
 export function PlugWizard({ step }: { step: WizardStep; query: Record<string, string> }) {
   const perms = useSitePerms();
   const zones = useZones();
+  const platform = useSitesPlatform();
   const invalidate = useInvalidateSite();
   const { run, busy } = useSiteAction();
   const [s, setS] = useState<WizardState>(loadWizard);
@@ -42,6 +45,8 @@ export function PlugWizard({ step }: { step: WizardStep; query: Record<string, s
     const site = siteFrom(s);
     const out = await run('Save draft', () => sitesApi.putDraft(site.name, site, 0), `${site.displayName} saved as a draft`);
     if (out) {
+      // The draft cannot carry the lifetime: the site's Review sends it with the first save.
+      rememberLifetime(site.name, platform.data?.ephemeral ? s.ttl ?? null : null);
       try { sessionStorage.removeItem(WIZARD_STORE); } catch { /* ignore */ }
       invalidate(site.name);
       goSites(sitesHref({ view: 'site', name: site.name, tab: 'review' }));
@@ -69,6 +74,7 @@ export function PlugWizard({ step }: { step: WizardStep; query: Record<string, s
         {step === 'kind' && <KindStep s={s} patch={patch} />}
         {step === 'access' && <AccessStep s={s} patch={patch} />}
         {step === 'review' && <WizardReview site={siteFrom(s)} />}
+        {step === 'review' && platform.data?.ephemeral && <div className="mt-16"><LifetimeField value={s.ttl ?? null} onChange={(ttl) => patch({ ttl })} /></div>}
         <div className="row gap-8 justify-end mt-16 wrap">
           {step === 'address' && problems.length === 0 && (
             <Button variant="ghost" onClick={() => { patch({ template: 'web-api' }); to('review'); }}>Use recommended setup → Review</Button>

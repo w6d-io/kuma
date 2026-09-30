@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Badge, Button, Callout, EmptyState, I, PageHeader, SkeletonPanel, Tabs } from '../../components/ui';
+import { Badge, Button, Callout, EmptyState, I, PageHeader, SkeletonPanel, Tabs, TwoFactorBadge } from '../../components/ui';
 import { goSites, sitesHref, type SiteTab } from '../../lib/sites/route';
 import { useSiteEditor } from './useSiteEditor';
 import { QueryError, StatusBadge } from './parts';
@@ -18,6 +18,8 @@ import { VerifyTab } from './tabs/VerifyTab';
 import { PendingRequests } from './PendingRequests';
 import { useInvalidateSite } from '../../api/sites';
 import { EditAddressDialog } from './EditAddress';
+import { EphemeralBadge, ExtendButton } from './Lifecycle';
+import { SiteDeletionPending } from './Deletions';
 
 /**
  * One site (site-ux.md §5.2): who it is, whether there is a draft, and its tabs. The draft banner is
@@ -75,13 +77,14 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
       <PageHeader
         eyebrow={<Button variant="ghost" size="sm" icon={I.caretLeft} onClick={() => goSites(sitesHref({ view: 'list' }))}>Sites</Button>}
         title={s.displayName ?? name}
-        status={<span className="row gap-8"><StatusBadge status={status} />{liveVersion && <Badge tone="plain">v{liveVersion}</Badge>}</span>}
+        status={<span className="row gap-8"><StatusBadge status={status} />{liveVersion && <Badge tone="plain">v{liveVersion}</Badge>}{d?.ephemeral && <EphemeralBadge e={d.ephemeral} />}<TwoFactorBadge kind="site" site={d?.secondFactor ?? (s.login?.twoFactor ? { scope: s.login.twoFactor.scope, routes: s.login.twoFactor.routes ?? [] } : undefined)} /></span>}
         sub={<span className="row gap-4 items-center wrap">
           <span className="mono">{s.address?.host}{s.address?.pathPrefix ?? ''} → {upstream}</span>
           {!readOnly && ed.site && <Button variant="ghost" size="sm" iconOnly icon={I.edit} aria-label="Edit address" title="Edit address" onClick={() => setEditAddress(true)} />}
         </span>}
         actions={<>
           <Button size="md" icon={I.route} kbd="t" onClick={() => go('routes', { test: 'GET /' })}>Test a URL</Button>
+          {d?.ephemeral && perms.canRequest && <ExtendButton name={name} e={d.ephemeral} size="md" onDone={() => invalidate(name)} />}
           {d?.applied && <Button size="md" icon={I.shield} onClick={() => go('verify')}>Verify</Button>}
           {s.address?.host && <Button size="md" trailing={I.arrowOut} onClick={() => window.open(`https://${s.address!.host}${s.address!.pathPrefix ?? ''}/`, '_blank', 'noopener')}>Open site</Button>}
         </>}
@@ -96,6 +99,7 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
         <Callout tone="info" icon={I.info} className="mb-12">You can look around. Changing sites needs a super admin.</Callout>
       )}
       {perms.canApply && !ed.system && <PendingRequests name={name} onApplied={() => invalidate(name)} />}
+      {!ed.system && <SiteDeletionPending name={name} onDeleted={() => { invalidate(); goSites(sitesHref({ view: 'list' })); }} />}
       {ed.hasDraft && !readOnly && tab !== 'review' && (
         <Callout
           tone="warning"

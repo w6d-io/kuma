@@ -5,6 +5,7 @@ import { permissionOverview } from '../../lib/rbacEdit';
 import type { RouteEntry } from '../../api/types';
 import { Badge, ButtonBase, Callout, Card, EmptyRow, I, Input, Stat, Table } from '../../components/ui';
 import { plural } from './access';
+import { StepUpMark } from './shared';
 
 // A concrete path the checker can match: each `:param` (and `:any*` tail) becomes a sample value.
 const checkLink = (site: string, r: RouteEntry) =>
@@ -65,7 +66,7 @@ export function PermissionsOverview({ site }: { site: string }) {
             {rows.map(row => (
               <tr key={row.permission}>
                 <td className="nowrap" data-label="Permission">
-                  <span className="mono fw-medium">{row.permission}</span>
+                  <span className="row gap-4"><span className="mono fw-medium">{row.permission}</span><StepUpMark permission={row.permission} site={site} /></span>
                   {row.roles.length === 0 && <div><Badge tone="warning">no role grants it</Badge></div>}
                   {row.onlyEverything && <div><Badge tone="neutral" mono={false}>only via everything</Badge></div>}
                 </td>

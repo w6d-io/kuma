@@ -17,6 +17,8 @@ import { mergeChecks, siteGateChecks } from '../../../lib/sites/gateChecks';
 import { describeSiteError, publishAction, useSiteAction } from '../useAction';
 import { useApp } from '../../../contexts/AppContext';
 import { stepUpAndResume, useResume } from '../../../lib/resume';
+import { rememberLifetime, rememberedLifetime } from '../../../lib/sites/lifecycle';
+import { LifetimeField } from '../Lifecycle';
 
 /**
  * Review → Apply → Verify (site-ux.md §9). In words first, then the checks and the risk, then the
@@ -45,6 +47,8 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
   const [failure, setFailure] = useState<{ message: string; checks: Check[]; version?: number; findings?: Finding[] } | null>(null);
   const [acked, setAcked] = useState<Set<string>>(new Set());
   const [resumed, setResumed] = useState<number | null>(null);
+  // A site saved for the first time may be ephemeral (chosen in the wizard, or here).
+  const [ttl, setTtl] = useState<number | null>(() => rememberedLifetime(ed.name));
   const siteKey = site ? JSON.stringify(site) : '';
   const diff = useQuery({ queryKey: ['sites', 'diff', ed.name, siteKey], queryFn: () => sitesApi.diff(ed.name, site!), enabled: !!site && !result, retry: false });
   const status = useSiteStatus(ed.name, { poll: !!result });
@@ -77,6 +81,7 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
 
   const production = !!platform.data?.production;
   const first = !ed.detail.data?.applied;
+  const lifetime = !ed.detail.data && !!platform.data?.ephemeral;
   const preview = ed.preview.state === 'ok' ? ed.preview.preview : null;
   // The gate checks run here too: a gate nobody can sign in through never reaches the server.
   const checks = site ? mergeChecks(preview?.checks ?? [], siteGateChecks(site)) : preview?.checks ?? [];
@@ -113,7 +118,8 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
     await ed.settle();
     let saved: { version: number };
     try {
-      saved = await sitesApi.save(ed.name, site, { note: note || undefined, etag: ed.detail.data?.etag });
+      saved = await sitesApi.save(ed.name, site, { note: note || undefined, etag: ed.detail.data?.etag, ...(lifetime && ttl ? { ephemeral: { ttl } } : {}) });
+      rememberLifetime(ed.name, null);
     } catch (err) {
       setFailure({ message: describeSiteError(err), checks: checksOf(err) });
       invalidate(ed.name);
@@ -219,6 +225,7 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
 
       {!result && (
         <Card>
+          {lifetime && <LifetimeField value={ttl} onChange={(v) => { setTtl(v); rememberLifetime(ed.name, v); }} disabled={applying} />}
           <Field label="Note for history" hint={production ? 'Required on production — changes are recorded with a reason.' : 'Optional. Shown in History.'} required={production}>
             <Textarea rows={2} value={note} maxLength={280} onChange={(e) => setNote(e.target.value)} placeholder="Add reports endpoints" />
           </Field>

@@ -4,6 +4,7 @@ import { SitesList } from './SitesList';
 import { SiteDetailPage } from './SiteDetail';
 import { PlugWizard } from './wizard/PlugWizard';
 import { MigrationPage } from './Migration';
+import { DeletionInbox } from './Deletions';
 import './sites.css';
 
 /**
@@ -27,6 +28,7 @@ export function SitesPage() {
     case 'list': return <SitesList query={view.query} />;
     case 'new': return <PlugWizard step={view.step} query={view.query} />;
     case 'migrate': return <MigrationPage step={view.step} />;
+    case 'deletions': return <DeletionInbox />;
     case 'site': return <SiteDetailPage key={view.name} name={view.name} tab={view.tab} query={view.query} />;
   }
 }

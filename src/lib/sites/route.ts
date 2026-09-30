@@ -7,6 +7,7 @@
  *   #/sites?filter=attention                list, filtered
  *   #/sites/new?step=address|kind|access|review
  *   #/sites/migrate?step=preview|parity|dualrun|cutover|done   (also #/sites/migration)
+ *   #/sites/deletion-requests                     deletion requests waiting on a decision
  *   #/sites/<name>[/<tab>][?query]
  */
 
@@ -23,6 +24,7 @@ export type SitesView =
   | { view: 'list'; query: Record<string, string> }
   | { view: 'new'; step: WizardStep; query: Record<string, string> }
   | { view: 'migrate'; step: MigrationStep | null; query: Record<string, string> }
+  | { view: 'deletions'; query: Record<string, string> }
   | { view: 'site'; name: string; tab: SiteTab; query: Record<string, string> };
 
 const pick = <T extends string>(list: readonly T[], v: string | undefined, fallback: T): T =>
@@ -43,6 +45,7 @@ export function parseSitesHash(hash: string): SitesView {
   if (second === 'migrate' || second === 'migration') {
     return { view: 'migrate', step: query.step ? pick(MIGRATION_STEPS, query.step, 'preview') : null, query };
   }
+  if (second === 'deletion-requests') return { view: 'deletions', query };
   const name = decode(second);
   if (!name) return { view: 'list', query };
   return { view: 'site', name, tab: pick(SITE_TABS, third, 'overview'), query };
@@ -56,11 +59,13 @@ function qs(query: Record<string, string | undefined> = {}): string {
 export function sitesHref(v: { view: 'list'; query?: Record<string, string | undefined> }
   | { view: 'new'; step?: WizardStep; query?: Record<string, string | undefined> }
   | { view: 'migrate'; step?: MigrationStep }
+  | { view: 'deletions' }
   | { view: 'site'; name: string; tab?: SiteTab; query?: Record<string, string | undefined> }): string {
   switch (v.view) {
     case 'list': return `#/sites${qs(v.query)}`;
     case 'new': return `#/sites/new${qs({ ...v.query, step: v.step && v.step !== 'address' ? v.step : undefined })}`;
     case 'migrate': return `#/sites/migrate${qs({ step: v.step })}`;
+    case 'deletions': return '#/sites/deletion-requests';
     case 'site': {
       const tab = v.tab && v.tab !== 'overview' ? `/${v.tab}` : '';
       return `#/sites/${encodeURIComponent(v.name)}${tab}${qs(v.query)}`;

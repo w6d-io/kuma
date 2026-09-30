@@ -3,7 +3,7 @@ import { useApp } from '../../contexts/AppContext';
 import { findingsOf, notAvailable, type SiteError } from '../../api/sites';
 import type { Finding } from '../../lib/sites/types';
 import { stepUpAndAskToRedo, stepUpAndResume } from '../../lib/resume';
-import { EDGE_BLOCKED, edgeBlocked } from '../../lib/apiError';
+import { EDGE_BLOCKED, edgeBlocked, refusalDetail } from '../../lib/apiError';
 
 /**
  * Run a gateway-changing action (apply, rollback, pause, delete…) with the site-ux §10.7 wording for
@@ -24,10 +24,15 @@ export function describeSiteError(err: unknown): string {
     case 'rules_pending': return e.message;
     case 'unconfirmed_findings': return 'Not published: fix the security errors and acknowledge the findings, then publish again.';
     case 'system_site': return 'System sites are managed by the platform chart.';
+    case 'second_approver_required': return 'You asked for this deletion, so someone else holding sites:delete has to approve it.';
+    case 'deletion_request_pending': return 'A deletion of this site is already waiting for a decision.';
+    case 'request_decided': return 'Someone decided this request meanwhile. Reload to see what they chose.';
+    case 'not_ephemeral': return 'This site is permanent: it has no expiry to extend.';
+    case 'delegation_refused': return 'A person decides this in the console, not a key.';
   }
   if (e.status === 503) return 'Checks are unavailable (gatekit or Kubernetes did not answer), so nothing was changed.';
   if (edgeBlocked(err)) return `${EDGE_BLOCKED.title}. ${EDGE_BLOCKED.detail}`;
-  if (e.status === 403) return 'Your roles do not allow this. Changing what the gateway serves needs a super admin.';
+  if (e.status === 403) return refusalDetail(err) ?? 'Your roles do not allow this. Changing what the gateway serves needs a super admin.';
   return e.message || 'The request failed.';
 }
 

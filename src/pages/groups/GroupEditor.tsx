@@ -11,6 +11,8 @@ import {
 } from '../../lib/rbacEdit';
 import { PermChips } from '../access/shared';
 import { plural } from '../access/access';
+import { GroupSecondFactor } from './GroupSecondFactor';
+import { useGroupSecondFactors } from '../../api/twoFactor';
 
 type Tab = 'access' | 'members';
 
@@ -36,6 +38,7 @@ export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDelete
   const [tab, setTab] = useState<Tab>('access');
   const [step, setStep] = useState<'edit' | 'review'>('edit');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const secondFactorOf = useGroupSecondFactors();
 
   const system = !!(name && state.groupsMeta[name]?.system);
   const members = name && users ? membersOf(users, [name]) : [];
@@ -106,6 +109,7 @@ export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDelete
               <Input id="group-name" mono value={newName} onChange={e => setNewName(e.target.value)} autoFocus />
             </Field>
           )}
+          {name && <GroupSecondFactor name={name} rule={secondFactorOf(name)} />}
           {name && (
             <Tabs
               label="Group"
@@ -178,7 +182,7 @@ function WhoGetsWhat({ access, grantable }: { access: ReturnType<typeof effectiv
       {access.length === 0 ? <EmptyHint>Members get nothing from this group yet.</EmptyHint> : access.map(a => (
         <div key={a.site} className="rb-access">
           <div className="small mono text-muted">{a.site}</div>
-          <PermChips perms={a.everything ? ['*'] : a.permissions} max={12} />
+          <PermChips perms={a.everything ? ['*'] : a.permissions} max={12} site={a.site} />
           {a.undefinedRoles.length > 0 && (
             <div className="small text-warning mt-4">{a.undefinedRoles.join(', ')} not defined on {a.site}: gives nothing.</div>
           )}

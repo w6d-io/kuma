@@ -11,6 +11,8 @@ export { CopyField } from './CopyField';
 export { Switch } from './Switch';
 export { Card, Stat, Callout } from './Card';
 export { Badge, Kbd, TagList } from './Badge';
+export { TwoFactorBadge } from './TwoFactorBadge';
+export type { TwoFactorBadgeProps } from './TwoFactorBadge';
 export type { BadgeTone, BadgeVariant } from './Badge';
 export { Table, Th, EmptyRow, LoadingRows, sortRows, nextSort } from './Table';
 export type { SortState, SortDir } from './Table';

@@ -149,7 +149,7 @@ function RolesTab({ site, system }: { site: string; system: boolean }) {
               return (
                 <tr key={role}>
                   <td className="mono fw-medium nowrap" data-label="Role">{role}</td>
-                  <td data-label="Permissions"><PermChips perms={roles[role]} /></td>
+                  <td data-label="Permissions"><PermChips perms={roles[role]} site={site} /></td>
                   <td data-label="Given by groups">
                     {groups.length === 0 ? <span className="small muted">no group</span> : (
                       <span className="row wrap gap-4">{groups.map(g => <Badge key={g} tone="info">{g}</Badge>)}</span>

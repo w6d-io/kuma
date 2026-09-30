@@ -3,7 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../contexts/AppContext';
 import { accountsApi, type PersonalKeySecretView } from '../../api/accounts';
 import { useMcpStatus } from '../../api/hooks';
-import { Button, Checkbox, ChecklistGroups, Drawer, EmptyHint, Field, FormGrid, Input, RadioGroup, Select, type ChecklistGroup } from '../../components/ui';
+import { Button, Checkbox, ChecklistGroups, Drawer, EmptyHint, Field, FormGrid, Input, RadioGroup, Select, TwoFactorBadge, type ChecklistGroup } from '../../components/ui';
+import { useStepUpRules } from '../../api/twoFactor';
+import type { StepUpRule } from '../../lib/twoFactor';
 import { statusOf, toastFor } from '../../lib/apiError';
 import { stepUpAndAskToRedo } from '../../lib/resume';
 import { PERSONAL_EXPIRY_CHOICES, PERSONAL_EXPIRY_DEFAULT, scopeGroupLabel, scopeHint, sortScopes, type PlatformScope } from '../../lib/apiKeys';
@@ -23,7 +25,7 @@ function outsideMcpGroups(err: unknown): boolean {
 }
 
 /** The permissions as the checklist's groups: one per resource, each with what it lets a program do. */
-function permissionGroups(entries: readonly PlatformScope[]): ChecklistGroup[] {
+function permissionGroups(entries: readonly PlatformScope[], stepUp: (p: string) => StepUpRule | null): ChecklistGroup[] {
   const byGroup = new Map<string, string[]>();
   for (const { scope, group } of entries) byGroup.set(group, [...(byGroup.get(group) ?? []), scope]);
   return [...byGroup.entries()]
@@ -31,7 +33,15 @@ function permissionGroups(entries: readonly PlatformScope[]): ChecklistGroup[] {
     .map(([group, scopes]) => ({
       id: group,
       label: scopeGroupLabel(group),
-      options: sortScopes(scopes).map((s) => ({ value: s, label: <span className="mono">{s}</span>, hint: scopeHint(s), search: `${group} ${s}` })),
+      options: sortScopes(scopes).map((s) => {
+        const rule = stepUp(s);
+        return {
+          value: s,
+          label: <span className="row gap-4"><span className="mono">{s}</span>{rule && <TwoFactorBadge kind="recent" rule={rule} />}</span>,
+          hint: scopeHint(s),
+          search: `${group} ${s}`,
+        };
+      }),
     }));
 }
 
@@ -49,6 +59,7 @@ export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () =>
   const [chosenExpiry, setExpiresIn] = useState<number | null>(null);
   const expiresIn = chosenExpiry !== null && expiryChoices.includes(chosenExpiry) ? chosenExpiry : (maxDays ?? PERSONAL_EXPIRY_DEFAULT);
   const [mode, setMode] = useState<'all' | 'chosen'>('all');
+  const { ruleOf } = useStepUpRules();
   const catalogue = useQuery({ queryKey: ['my-api-keys', 'scopes'], queryFn: () => accountsApi.myApiKeyScopes(), enabled: mode === 'chosen', staleTime: 60_000, retry: false });
   const [picked, setPicked] = useState<string[]>([]);
   // Publishing, changing an email and granting groups need a recent second factor; a key may stand on
@@ -103,7 +114,7 @@ export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () =>
     if (catalogue.isLoading) return <EmptyHint>Loading your permissions…</EmptyHint>;
     if (catalogue.error) return <EmptyHint>Your permissions could not be read. Try again, or keep all your permissions.</EmptyHint>;
     if (!catalogue.data?.length) return <EmptyHint>You hold no permission a key could be narrowed to.</EmptyHint>;
-    return <ChecklistGroups label="Permissions" groups={permissionGroups(catalogue.data)} value={scopes} onChange={setPicked} searchAt={10} />;
+    return <ChecklistGroups label="Permissions" groups={permissionGroups(catalogue.data, (p) => ruleOf(p))} value={scopes} onChange={setPicked} searchAt={10} />;
   };
 
   return (

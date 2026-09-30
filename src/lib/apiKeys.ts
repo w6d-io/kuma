@@ -159,3 +159,25 @@ export function mcpServerUrl(): string {
 
 /** Where the MCP server answers when the deployment has not said (MCP_SERVER_URL unset). */
 export const MCP_URL_PLACEHOLDER = 'https://mcp.<your platform>/mcp';
+
+/**
+ * Whether a signed-in app may still do the protected actions (publish, change an address, grant a
+ * group) on the second factor proven at sign-in: until `until`, ended, or never allowed.
+ */
+export function protectedWindow(until: string | null | undefined, allowed: boolean | undefined, now: number = Date.now()): { state: 'on' | 'ended' | 'off'; until?: string } {
+  if (allowed === false || !until) return { state: 'off' };
+  const at = Date.parse(until);
+  if (Number.isNaN(at)) return { state: 'off' };
+  return at > now ? { state: 'on', until } : { state: 'ended', until };
+}
+
+/** "in 3 h", "in 40 min", "in 2 days": how long until a moment ahead. */
+export function remainingLabel(at: string, now: number = Date.now()): string {
+  const ms = Date.parse(at) - now;
+  if (Number.isNaN(ms) || ms <= 0) return 'ended';
+  const min = Math.ceil(ms / 60_000);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 48) return `${h} h`;
+  return `${Math.floor(h / 24)} days`;
+}

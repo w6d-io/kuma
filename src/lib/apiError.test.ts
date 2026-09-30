@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeApiError, orgDirectoryNotConfigured, toastFor } from './apiError';
+import { describeApiError, orgDirectoryNotConfigured, permissionRefusal, refusalDetail, toastFor } from './apiError';
 
 const err = (status: number, message = 'x') => Object.assign(new Error(message), { status });
 // What the API client throws for a 503 body `{error, message?}` (src/api/client.ts errorFrom).
@@ -129,5 +129,35 @@ describe('edge firewall block', () => {
   it('keeps the role wording for a jinbe or Oathkeeper 403 that explains itself', () => {
     const jinbe = Object.assign(new Error('Forbidden'), { status: 403, code: 'forbidden', edgeBlocked: false, details: { error: 'forbidden' } });
     expect(describeApiError(jinbe, { groups: ['viewer'] }).detail).toMatch(/Your roles do not include/);
+  });
+});
+
+describe('permission refusal (jinbe 403 body)', () => {
+  // What errorFrom throws for jinbe's require-permission refusal.
+  const refused = (body: Record<string, unknown>) =>
+    Object.assign(new Error(String(body.message ?? 'Forbidden')), { status: 403, code: 'Forbidden', edgeBlocked: false, details: { error: 'Forbidden', ...body } });
+
+  it('names the permission and the groups that grant it, and nothing else', () => {
+    const e = refused({ code: 'permission_required', message: 'This needs users:reset_second_factor.', permission: 'users:reset_second_factor', grantedBy: ['staff-security', 'super_admins'], hint: 'ignored when groups are listed' });
+    expect(refusalDetail(e)).toBe('You need users:reset_second_factor. Ask an administrator to add you to one of: staff-security, super_admins.');
+    const v = describeApiError(e, { groups: [] });
+    expect(v).toMatchObject({ kind: 'forbidden', title: 'Access denied', retryable: false });
+    expect(v.detail).not.toMatch(/no groups/);
+    expect(toastFor(e)).toEqual(['Access denied', { err: true, sub: refusalDetail(e) }]);
+  });
+
+  it('lists several missing permissions, says * in words, and falls back to the hint without groups', () => {
+    expect(refusalDetail(refused({ code: 'grant_exceeds_own', missing: ['a:read', 'b:write', 'c:list'], grantedBy: ['ops'] })))
+      .toBe('This grants what you do not hold. You need a:read, b:write and c:list. Ask an administrator to add you to one of: ops.');
+    expect(refusalDetail(refused({ permission: '*', grantedBy: [], hint: 'No group grants this on its own; ask a super admin.' })))
+      .toBe('You need full platform access (super admin). No group grants this on its own; ask a super admin.');
+    expect(refusalDetail(refused({ permission: 'x:y', grantedBy: [] }))).toBe('You need x:y. Ask an administrator for it.');
+  });
+
+  it('is not a refusal on an older body, another status, or garbage', () => {
+    expect(permissionRefusal(refused({}))).toBeNull();
+    expect(permissionRefusal(Object.assign(new Error('x'), { status: 422, details: { permission: 'a' } }))).toBeNull();
+    expect(permissionRefusal(refused({ permission: 3, grantedBy: 'x' }))).toBeNull();
+    expect(permissionRefusal(refused({ missing: ['a', 4, ''], grantedBy: [1, 'g'] }))).toEqual({ code: undefined, permissions: ['a'], grantedBy: ['g'], hint: undefined });
   });
 });

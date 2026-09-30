@@ -7,6 +7,7 @@ import {
   type SiteRoles,
 } from '../../lib/rbacEdit';
 import { plural } from './access';
+import { StepUpMark } from './shared';
 
 export interface RoleDraft {
   write: SiteRolesWrite;
@@ -140,7 +141,7 @@ export function RoleEditor({ site, role, roles, groups, routes, known, peopleIn,
                       key={p}
                       checked={perms.has(p)}
                       onChange={on => toggle(p, on)}
-                      label={<span className="mono">{p}</span>}
+                      label={<span className="row gap-4"><span className="mono">{p}</span><StepUpMark permission={p} site={site} /></span>}
                       hint={routeUse.get(p) ? plural(routeUse.get(p)!, 'route') : 'no route needs it'}
                     />
                   ))}

@@ -15,6 +15,10 @@ describe('parseSitesHash', () => {
     expect(parseSitesHash('#/sites/migrate?step=parity')).toMatchObject({ view: 'migrate', step: 'parity' });
     expect(parseSitesHash('#/sites/migration')).toMatchObject({ view: 'migrate', step: null });
   });
+  it('reads the deletion inbox, and writes it back', () => {
+    expect(parseSitesHash('#/sites/deletion-requests')).toMatchObject({ view: 'deletions' });
+    expect(sitesHref({ view: 'deletions' })).toBe('#/sites/deletion-requests');
+  });
   it('reads a site, its tab and its query', () => {
     expect(parseSitesHash('#/sites/payroll')).toEqual({ view: 'site', name: 'payroll', tab: 'overview', query: {} });
     expect(parseSitesHash('#/sites/payroll/routes?route=r12&test=GET%20/api/x')).toEqual({

@@ -10,6 +10,7 @@ import { ZonesSettings } from '../components/ZonesSettings';
 import { SecondFactorSettings } from '../components/SecondFactorSettings';
 import { SignInProtectionSettings } from '../components/SignInProtectionSettings';
 import { McpSettings } from '../components/McpSettings';
+import { OwnSecondFactor } from '../components/OwnSecondFactor';
 
 // Shape of a bundle we can preview before importing. Counts drive the confirm
 // dialog; the raw parsed object is POSTed on confirm.
@@ -206,6 +207,8 @@ export function SettingsPage() {
           </div>
         </Card>
       )}
+
+      <OwnSecondFactor />
 
       {/* ─── Authentication methods (Kratos self-service, hot-reload) ─── */}
       {authMethodsAvailable && authMethods && (

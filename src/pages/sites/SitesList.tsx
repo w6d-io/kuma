@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Badge, Button, ButtonBase, Callout, EmptyRow, EmptyState, I, Input, LoadingRows, PageHeader, Segmented, Table, Th } from '../../components/ui';
+import { Badge, Button, ButtonBase, Callout, EmptyRow, EmptyState, I, Input, LoadingRows, PageHeader, Segmented, Table, Th, TwoFactorBadge } from '../../components/ui';
 import { sitesApi, useSites, notAvailable } from '../../api/sites';
 import { goSites, sitesHref } from '../../lib/sites/route';
 import type { SiteSummary } from '../../lib/sites/types';
 import { QueryError, StatusBadge, WafBadge } from './parts';
 import { timeAgo } from '../../lib/sites/format';
 import { useSitePerms } from './usePerms';
+import { EphemeralBadge } from './Lifecycle';
+import { DeletionsWaiting } from './Deletions';
 
 /**
  * The Sites list (site-ux.md §5.1): every site with its state in words, the built-in system sites
@@ -67,6 +69,7 @@ export function SitesList({ query }: { query: Record<string, string> }) {
       {!perms.canDraft && perms.canRead && (
         <Callout tone="info" icon={I.info} className="mb-12">You can look around. Changing sites needs a platform admin.</Callout>
       )}
+      <DeletionsWaiting />
       {migrating && (
         <Callout
           tone="warning"
@@ -131,9 +134,10 @@ export function SitesList({ query }: { query: Record<string, string> }) {
                   <td>
                     <div className="mono small nowrap">{s.host}</div>
                     <WafBadge p={s.protection} />
+                    <TwoFactorBadge kind="site" site={s.secondFactor} />
                   </td>
                   <td className="small">{s.system ? 'System site' : s.kind ?? '—'}</td>
-                  <td><span className="row gap-8 wrap"><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}</span></td>
+                  <td><span className="row gap-8 wrap"><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}{s.ephemeral && <EphemeralBadge e={s.ephemeral} />}</span></td>
                   <td className="small tabular">{s.status === 'draft' && !s.appliedVersion ? 'draft' : `v${s.appliedVersion ?? s.version}`}</td>
                 </tr>
               ))}
@@ -143,8 +147,8 @@ export function SitesList({ query }: { query: Record<string, string> }) {
             {shown.map((s) => (
               <li key={s.name}>
                 <ButtonBase className="site-card" onClick={() => open(s)}>
-                  <span className="row gap-8 items-baseline wrap"><span className="fw-medium">{s.displayName}</span><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}</span>
-                  <span className="row gap-8 items-baseline wrap"><span className="mono small break-all">{s.host}</span><WafBadge p={s.protection} /></span>
+                  <span className="row gap-8 items-baseline wrap"><span className="fw-medium">{s.displayName}</span><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}{s.ephemeral && <EphemeralBadge e={s.ephemeral} />}</span>
+                  <span className="row gap-8 items-baseline wrap"><span className="mono small break-all">{s.host}</span><WafBadge p={s.protection} /><TwoFactorBadge kind="site" site={s.secondFactor} /></span>
                   <span className="small muted">{subline(s)}</span>
                 </ButtonBase>
               </li>

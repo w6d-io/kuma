@@ -5,7 +5,9 @@ import { AccessLevel } from '../components/ui/Primitives';
 import { SiteAccessTree } from './access/SiteAccessTree';
 import { useSiteGroups } from './access/access';
 import { groupOutcome } from '../lib/rbacEdit';
-import { Avatar, Badge, Button, ButtonBase, Callout, Card, Checkbox, Drawer, Field, I, Input, Stepper, cx } from '../components/ui';
+import { Avatar, Badge, Button, ButtonBase, Callout, Card, Checkbox, Drawer, Field, I, Input, Stepper, TwoFactorBadge, cx } from '../components/ui';
+import { useGroupSecondFactors } from '../api/twoFactor';
+import { blockedForEnrolment } from '../lib/twoFactor';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
 import { useDebounced } from '../hooks/useDebounced';
@@ -49,6 +51,7 @@ export function GrantAccess() {
   const { grant, setGrant, apiSetUserGroups, setUserDrawer, state } = useApp();
   const applyChange = useApplyChange();
   const { data: session } = useSession();
+  const secondFactorOf = useGroupSecondFactors();
   // Mirror of jinbe's escalation guard: handing out a group that administers the platform needs the
   // permission below. jinbe refuses with 422 either way; this only greys the control and says why.
   const mayGrantPrivileged = permits(session?.permissions, PRIVILEGED_MUTATION);
@@ -118,7 +121,9 @@ export function GrantAccess() {
   // already have is fine — this is about escalation, not the status quo).
   const escalating = groups.filter((g) => !before.has(g) && siteGroups.privileged(g));
   const actorBlock = escalating.length > 0 && !mayGrantPrivileged;
-  const mfaBlock = escalating.length > 0 && user?.mfa === false;
+  // Groups whose second-factor rule the person does not meet yet (never enrolled).
+  const needsEnrol = added.filter((g) => { const r = secondFactorOf(g); return r ? blockedForEnrolment(r, user?.mfa) : siteGroups.privileged(g) && user?.mfa === false; });
+  const mfaBlock = needsEnrol.length > 0;
 
   const pick = (u: User) => {
     setSelected(u);
@@ -274,12 +279,14 @@ export function GrantAccess() {
             {outcomes.map((o) => {
               const on = groups.includes(o.g);
               const blockedByActor = o.privileged && !mayGrantPrivileged && !on;
-              const blockedByMfa = o.privileged && user.mfa === false && !on;
+              // Follows the group's "members must use 2FA" rule; the privileged test only on a jinbe that does not say.
+              const rule = secondFactorOf(o.g);
+              const blockedByMfa = !on && (rule ? blockedForEnrolment(rule, user.mfa) : o.privileged && user.mfa === false);
               const blocked = blockedByActor || blockedByMfa;
               const title = blockedByActor
                 ? `“${o.g}” administers the platform. Assigning it needs admin.membership:write.`
                 : blockedByMfa
-                ? `“${o.g}” grants admin privileges. ${user.name} must enroll a second factor (TOTP / security key / backup codes) first.`
+                ? `Members of “${o.g}” must use two-step sign-in. ${user.name} must enrol a second factor (authenticator app, security key or backup codes) first.`
                 : undefined;
               return (
                 <div key={o.g} title={title} className={cx('ga-row ga-outcome', on && 'on')}>
@@ -294,7 +301,8 @@ export function GrantAccess() {
                             {o.g}
                             {o.privileged && <Badge tone="warning" title="Gives everything on a system site"><span className="chip-ico">{I.lock}</span>platform admin</Badge>}
                             {blockedByActor && <Badge tone="danger">needs admin.membership:write</Badge>}
-                            {blockedByMfa && !blockedByActor && <Badge tone="danger">2FA required</Badge>}
+                            {rule?.required && <TwoFactorBadge kind="required" />}
+                            {blockedByMfa && !blockedByActor && <TwoFactorBadge kind="needs-enrol" />}
                           </span>
                           <AccessLevel level={o.level} compact />
                         </span>
@@ -330,7 +338,7 @@ export function GrantAccess() {
             <Callout tone="danger" icon={I.alert} title="Can't apply — privileged grant blocked" className="mb-12">
               <div className="small text-muted">
                 {actorBlock && <>Assigning <b>{escalating.join(', ')}</b> administers the platform; that needs admin.membership:write. </>}
-                {mfaBlock && <>{user.name} must enroll a second factor before receiving <b>{escalating.join(', ')}</b>. </>}
+                {mfaBlock && <>{user.name} must enrol a second factor before being added to <b>{needsEnrol.join(', ')}</b>: its members must use two-step sign-in. </>}
                 jinbe enforces this regardless (422).
               </div>
             </Callout>

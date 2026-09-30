@@ -3,6 +3,7 @@
 // One module for the calls behind the Access view, the access checker and the My org page, so the
 // shapes they read are written down once. Same `request` as client.ts — same errors.
 import { request } from './client';
+import type { UserSecondFactor } from '../lib/twoFactor';
 import { statusOf } from '../lib/apiError';
 
 const enc = encodeURIComponent;
@@ -28,6 +29,8 @@ export interface OrgAccessEntry {
 export interface UserAccess {
   site: { groups: string[]; byService: Record<string, string[]> };
   orgs: OrgAccessEntry[];
+  /** Their second-factor picture (session fields null); absent on an older jinbe. */
+  secondFactor?: UserSecondFactor | null;
 }
 
 export type AccessReason = 'ok' | 'not_found' | 'forbidden' | 'forbidden_org';

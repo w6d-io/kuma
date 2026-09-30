@@ -6,6 +6,7 @@
  * jinbe serves today plus the §14.2 ones still being built (status, drift, requests, migration);
  * those are optional everywhere so an older server reads as "not there yet", not as a crash.
  */
+import type { SiteSecondFactor } from '../twoFactor';
 
 export const HTTP_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const;
 export type HttpMethod = (typeof HTTP_METHODS)[number];
@@ -112,6 +113,44 @@ export interface SiteSummary {
   system?: boolean;
   /** Behind the WAF or not; null when the cluster could not say, absent on older servers. */
   protection?: ProtectionStatus | null;
+  /** Paused automatically when its TTL passes; null for a permanent site, absent on older servers. */
+  ephemeral?: EphemeralView | null;
+  /** Its own two-step sign-in bar (the saved version), absent on older servers. */
+  secondFactor?: SiteSecondFactor;
+}
+
+/** An ephemeral site's expiry (jinbe sites/lifecycle-store.ts ephemeralView). Expired: paused, not deleted. */
+export interface EphemeralView {
+  ttlSec: number;
+  expiresAt: string;
+  remainingSec: number;
+  expired: boolean;
+  expiredAt?: string;
+  setBy: string;
+}
+
+/** The TTLs jinbe accepts (GET /sites/platform `ephemeral`), in seconds. */
+export interface EphemeralLimits { minSec: number; maxSec: number; defaultSec: number }
+
+/**
+ * A request to delete a site (jinbe sites/deletion-requests.ts). Anyone who may save a site may ask;
+ * a person holding sites:delete other than the requester decides — never through a key.
+ */
+export interface DeletionRequest {
+  id: string;
+  site: string;
+  reason?: string;
+  requestedBy: string;
+  requesterId?: string | null;
+  /** The client (an MCP key) the requester asked through, when not a browser. */
+  requestedVia?: string;
+  requestedAt: string;
+  state: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  decidedBy?: string;
+  decidedAt?: string;
+  decisionReason?: string;
+  /** On the inbox only: the caller asked for it, so may not decide it (four-eyes). */
+  requestedByYou?: boolean;
 }
 
 export interface SiteDetail {
@@ -123,6 +162,8 @@ export interface SiteDetail {
   savedBy?: string;
   applied: { version: number; at: string; by: string; rules: string[] } | null;
   system?: boolean;
+  ephemeral?: EphemeralView | null;
+  secondFactor?: SiteSecondFactor;
 }
 
 export interface SiteDraft {

@@ -1,6 +1,6 @@
 import type { KratosIdentity } from '../api/client';
 import type { EmailChange } from '../api/accounts';
-import { EDGE_BLOCKED, edgeBlocked } from './apiError';
+import { EDGE_BLOCKED, edgeBlocked, refusalDetail } from './apiError';
 
 /**
  * What the address change and the verification resend can answer, in the words the drawer shows.
@@ -64,7 +64,7 @@ export function emailChangeFailure(err: unknown): EmailChangeFailure {
       return { title: 'No address to change', detail: e.message ?? 'This account has no sign-in address.' };
   }
   if (edgeBlocked(err)) return { title: EDGE_BLOCKED.title, detail: EDGE_BLOCKED.detail };
-  if (e.status === 403) return { title: 'Access denied', detail: 'This needs users:update_email (admin:write).' };
+  if (e.status === 403) return { title: 'Access denied', detail: refusalDetail(err) ?? 'This needs users:update_email (admin:write).' };
   if (e.status === 404) return { title: 'Not found', detail: 'This account no longer exists.' };
   return { title: 'The address was not changed', detail: e.message || 'The request failed.' };
 }
@@ -99,6 +99,6 @@ export function verificationFailure(err: unknown): VerificationOutcome {
   if (e.code === 'verification_link_unavailable') return { kind: 'unavailable' };
   if (e.code === 'unknown_address') return { kind: 'unknown_address' };
   if (edgeBlocked(err)) return { kind: 'failed', message: EDGE_BLOCKED.detail };
-  if (e.status === 403) return { kind: 'failed', message: 'This needs users:verify (admin:write).' };
+  if (e.status === 403) return { kind: 'failed', message: refusalDetail(err) ?? 'This needs users:verify (admin:write).' };
   return { kind: 'failed', message: e.message || 'The link could not be sent.' };
 }

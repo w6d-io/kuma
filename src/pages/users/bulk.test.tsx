@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({ session: { permissions: ['admin:read', 'admin:writ
 vi.mock('../../auth/session', () => ({ bearerToken: async () => null }));
 vi.mock('../../lib/stepUp', async (orig) => ({ ...(await orig<typeof import('../../lib/stepUp')>()), bounceToStepUp: () => true }));
 vi.mock('../../api/hooks', () => ({ useSession: () => ({ data: h.session }) }));
+vi.mock('../../api/twoFactor', () => ({ useGroupSecondFactors: () => () => undefined }));
 vi.mock('../access/access', () => ({
   useSiteGroups: () => ({ offered: ['billing', 'ops'], mayAssign: true, privileged: () => false, describe: (g: string) => `${g} roles` }),
 }));

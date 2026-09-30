@@ -106,4 +106,41 @@ describe('lib/mcpSettings', () => {
     expect(personalExpiryChoices(10)).toEqual([1, 7, 10]);
     expect(personalExpiryChoices(1)).toEqual([1]);
   });
+
+  it('offers browser sign-in only on a jinbe that has it, and saves it with the fields it does not edit', () => {
+    h.data = view();
+    const older = render(<McpSettings />);
+    expect(older.container.querySelector('[aria-label="Allow sign-in with a browser (OAuth)"]')).toBeNull();
+    cleanup();
+
+    const oauth = { enabled: true, maxDays: 30, protectedActions: 'window', protectedActionsHours: 12 };
+    h.data = view({ oauth });
+    const { container } = render(<McpSettings />);
+    const sw = container.querySelector<HTMLElement>('[aria-label="Allow sign-in with a browser (OAuth)"]')!;
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    click(sw);
+    expect(container.textContent).toContain('Assistants need a personal key');
+    click(byText(container, 'button', /^Save$/));
+    expect(h.mutate).toHaveBeenCalledWith(settings({ oauth: { ...oauth, enabled: false } }), expect.anything());
+  });
+
+  it('sets how long a browser sign-in lives and how long protected actions stay allowed', () => {
+    const oauth = { enabled: true, maxDays: 30, protectedActions: 'window', protectedActionsHours: 12 };
+    h.data = view({ oauth });
+    const { container } = render(<McpSettings />);
+    const selectIn = (label: RegExp) => byText(container, '.field', label).querySelector('select')!;
+    const days = selectIn(/^Longest sign-in/);
+    const hours = selectIn(/^Protected actions after sign-in/);
+    expect(hours.value).toBe('12');
+    act(() => { days.value = '7'; days.dispatchEvent(new Event('change', { bubbles: true })); });
+    act(() => { hours.value = '0'; hours.dispatchEvent(new Event('change', { bubbles: true })); });
+    click(byText(container, 'button', /^Save$/));
+    expect(h.mutate).toHaveBeenCalledWith(settings({ oauth: { enabled: true, maxDays: 7, protectedActions: 'off', protectedActionsHours: 12 } }), expect.anything());
+  });
+
+  it('never sends a browser sign-in setting to a jinbe without one', () => {
+    const d = toMcpDraft(settings() as never);
+    expect(d.browserSignIn).toBeNull();
+    expect('oauth' in fromMcpDraft({ ...d, enabled: false })).toBe(false);
+  });
 });
