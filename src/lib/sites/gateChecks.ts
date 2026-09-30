@@ -1,5 +1,6 @@
 import { secretLooking } from './validate';
-import type { Check, Gate, Handler } from './types';
+import { BARE_BEARER, NOBODY_SIGNS_IN, bareBearerLosesTokens } from './gateWords';
+import type { Check, Gate, Handler, Site } from './types';
 
 /**
  * A gate's handler chain, checked the moment it changes (site-ux.md §12 "Gates"). Order rules and
@@ -16,6 +17,8 @@ function scan(value: unknown, at: string, out: Check[]) {
 export function gateChecks(gate: Gate): Check[] {
   const out: Check[] = [];
   const authn = gate.authenticators.map((h) => h.handler);
+  if (authn.length === 0) out.push({ level: 'error', code: 'no_authenticator', message: NOBODY_SIGNS_IN });
+  if (bareBearerLosesTokens(gate.authenticators)) out.push({ level: 'warn', code: 'bearer_takes_authorization', message: BARE_BEARER });
   const noop = authn.indexOf('noop');
   if (noop >= 0 && noop !== authn.length - 1) out.push({ level: 'error', code: 'noop_not_last', message: '“Anyone (no check)” must be the last sign-in method, or the only one.' });
   if (authn.length === 1 && authn[0] === 'noop' && gate.authorizer === 'policy') {
@@ -41,6 +44,17 @@ export function gateChecks(gate: Gate): Check[] {
     out.push({ level: 'error', code: 'pattern_query', message: 'A match URL cannot contain a query string.' });
   }
   return out;
+}
+
+/** Every gate's checks, placed at the gate (Review blocks on their errors like the server's). */
+export function siteGateChecks(site: Site): Check[] {
+  return site.gates.flatMap((g) => gateChecks(g).map((c) => ({ ...c, message: site.gates.length > 1 ? `${g.label}: ${c.message}` : c.message, path: `gates.${g.id}` })));
+}
+
+/** Local checks beside the server's, without saying the same thing twice. */
+export function mergeChecks(server: readonly Check[], local: readonly Check[]): Check[] {
+  const seen = new Set(server.map((c) => `${c.code}|${c.path ?? ''}`));
+  return [...server, ...local.filter((c) => !seen.has(`${c.code}|${c.path ?? ''}`))];
 }
 
 /** Move one handler in a chain (keyboard: Alt+↑/↓). */

@@ -11,6 +11,7 @@ import type { SiteEditor } from '../useSiteEditor';
 import type { Go } from '../SiteDetail';
 import { CheckList, RiskBadge } from '../parts';
 import { checkLines } from '../../../lib/sites/format';
+import { mergeChecks, siteGateChecks } from '../../../lib/sites/gateChecks';
 import { describeSiteError, publishAction, useSiteAction } from '../useAction';
 import { useApp } from '../../../contexts/AppContext';
 import { stepUpAndResume, useResume } from '../../../lib/resume';
@@ -70,7 +71,8 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
   const production = !!platform.data?.production;
   const first = !ed.detail.data?.applied;
   const preview = ed.preview.state === 'ok' ? ed.preview.preview : null;
-  const checks = preview?.checks ?? [];
+  // The gate checks run here too: a gate nobody can sign in through never reaches the server.
+  const checks = site ? mergeChecks(preview?.checks ?? [], siteGateChecks(site)) : preview?.checks ?? [];
   const { errors, warnings } = checkCounts(checks);
   const risk = diff.data?.risk ?? preview?.risk;
   const blocked = errors > 0 || ed.preview.state !== 'ok' || (production && !note.trim());
