@@ -7,13 +7,12 @@ import { takeResume } from '../../lib/resume';
 const h = vi.hoisted(() => ({
   session: { permissions: ['admin:read', 'admin:write'] } as { permissions: string[]; effective_permissions?: string[] },
   identity: null as unknown,
-  persona: 'admin',
   toasts: [] as unknown[],
 }));
 vi.mock('../../auth/session', () => ({ bearerToken: async () => null }));
 vi.mock('../../lib/stepUp', async (orig) => ({ ...(await orig<typeof import('../../lib/stepUp')>()), bounceToStepUp: () => true }));
 vi.mock('../../contexts/AppContext', () => ({
-  useApp: () => ({ persona: h.persona, pushToast: (...a: unknown[]) => h.toasts.push(a), apiSendRecoveryEmail: async () => {} }),
+  useApp: () => ({ pushToast: (...a: unknown[]) => h.toasts.push(a), apiSendRecoveryEmail: async () => {} }),
 }));
 vi.mock('../../api/hooks', () => ({
   useSession: () => ({ data: h.session }),
@@ -50,7 +49,6 @@ const identity = (verified: boolean) => ({
 beforeEach(() => {
   h.session = { permissions: ['admin:read', 'admin:write'] };
   h.identity = identity(true);
-  h.persona = 'admin';
   h.toasts = [];
   sessionStorage.clear();
 });

@@ -118,11 +118,9 @@ export const PAGE_IDS = ['dashboard', 'users', 'groups', 'audit', 'accessreview'
 export type PageId = (typeof PAGE_IDS)[number];
 
 export interface TweakDefaults {
-  persona: string;
   density: string;
   accent: string;
   monoFont: string;
-  showPipeline: boolean;
   showCounts: boolean;
   showMotion: boolean;
   navCollapsed: boolean;

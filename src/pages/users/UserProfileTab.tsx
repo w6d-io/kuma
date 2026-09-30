@@ -25,7 +25,7 @@ export function UserProfileTab({ user, resumedEmail, onEmailChanged }: {
   resumedEmail?: string;
   onEmailChanged?: (result: EmailChange) => void;
 }) {
-  const { pushToast, persona, apiSendRecoveryEmail } = useApp();
+  const { pushToast, apiSendRecoveryEmail } = useApp();
   const { data: session } = useSession();
   const qc = useQueryClient();
   const identityQ = useUserIdentity(user.id);
@@ -56,14 +56,9 @@ export function UserProfileTab({ user, resumedEmail, onEmailChanged }: {
   const mayChangeEmail = mayUse(session, 'users:update_email');
   const mayVerify = mayUse(session, 'users:verify');
   const change = profileChange(baseline, draft);
-  const blocked = () => {
-    if (persona !== 'viewer') return false;
-    pushToast('Read-only persona · change blocked', { err: true });
-    return true;
-  };
 
   const save = async () => {
-    if (!change || blocked()) return;
+    if (!change) return;
     setSaving(true);
     try {
       await accountsApi.updateProfile(user.id, change.traits);
@@ -90,7 +85,6 @@ export function UserProfileTab({ user, resumedEmail, onEmailChanged }: {
   };
 
   const resendVerification = async () => {
-    if (blocked()) return;
     setVerifying(true);
     try {
       await accountsApi.resendVerification(user.id);
@@ -122,7 +116,7 @@ export function UserProfileTab({ user, resumedEmail, onEmailChanged }: {
           {address && (address.verified
             ? <Badge tone="success" mono={false}>verified</Badge>
             : <Badge tone="warning" mono={false}>unverified</Badge>)}
-          {mayChangeEmail && <Button size="sm" icon={I.edit} onClick={() => { if (!blocked()) setChangingEmail(true); }}>Change email</Button>}
+          {mayChangeEmail && <Button size="sm" icon={I.edit} onClick={() => setChangingEmail(true)}>Change email</Button>}
         </div>
       </Field>
       <div className="row justify-end gap-8">

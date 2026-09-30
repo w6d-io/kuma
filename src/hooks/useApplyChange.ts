@@ -5,7 +5,7 @@ import { rememberPendingChange, type PendingIntent } from '../lib/pendingChange'
 import { toastFor } from '../lib/apiError';
 
 export function useApplyChange() {
-  const { pushToast, pipeline, persona, refreshAudit } = useApp();
+  const { pushToast, pipeline, refreshAudit } = useApp();
 
   // `verb` is retained in the signature for call-site readability and future
   // per-verb handling; the audit record itself comes from jinbe, not the client.
@@ -20,11 +20,6 @@ export function useApplyChange() {
     // return closes it on refusals too, and the operator loses what they had selected.
     onApplied?: () => void,
   ) => {
-    if (persona === "viewer") {
-      pushToast("Read-only persona · change blocked", { err: true });
-      return false;
-    }
-
     const result = mutator?.();
 
     if (result instanceof Promise) {
