@@ -1,6 +1,6 @@
 import { BULK_MAX_ITEMS, type BulkItemStatus, type BulkOutcome, type BulkPlan } from '../api/bulk';
 import type { BadgeTone } from '../components/ui';
-import { EDGE_BLOCKED, edgeBlocked } from './apiError';
+import { EDGE_BLOCKED, edgeBlocked, refusalDetail } from './apiError';
 import { emailError } from './profile';
 
 /**
@@ -145,6 +145,6 @@ export function bulkFailure(err: unknown): BulkFailure {
       return { title: 'Not accepted', detail: e.message || 'The list is not valid.' };
   }
   if (edgeBlocked(err)) return { title: EDGE_BLOCKED.title, detail: EDGE_BLOCKED.detail };
-  if (e.status === 403) return { title: 'Access denied', detail: 'Your roles do not include this action.' };
+  if (e.status === 403) return { title: 'Access denied', detail: refusalDetail(err) ?? 'Your roles do not include this action.' };
   return { title: 'Nothing ran', detail: e.message || 'The request failed.' };
 }

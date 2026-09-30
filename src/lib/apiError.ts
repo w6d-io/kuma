@@ -112,6 +112,58 @@ export const EDGE_BLOCKED: ApiErrorView = {
   retryable: false,
 };
 
+/**
+ * What a 403 for a missing permission carries besides "no" (jinbe services/permission-refusal.ts):
+ * `permission` for one, `missing` for several, `grantedBy` — the groups whose roles give it, names
+ * only — and `hint`, jinbe's own sentence for who to ask. Read off the body, not the error's `code`
+ * (the client keeps `error` there, which is "Forbidden" on these). Null on any other refusal.
+ */
+export interface PermissionRefusal {
+  code?: string;
+  permissions: string[];
+  grantedBy: string[];
+  hint?: string;
+}
+
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && !!x) : []);
+
+export function permissionRefusal(err: unknown): PermissionRefusal | null {
+  if (statusOf(err) !== 403) return null;
+  const d = (err as { details?: Record<string, unknown> } | null)?.details;
+  if (!d || typeof d !== 'object') return null;
+  const permissions = typeof d.permission === 'string' && d.permission ? [d.permission] : strings(d.missing);
+  if (permissions.length === 0 && !Array.isArray(d.grantedBy)) return null;
+  return {
+    code: typeof d.code === 'string' ? d.code : undefined,
+    permissions,
+    grantedBy: strings(d.grantedBy),
+    hint: typeof d.hint === 'string' && d.hint ? d.hint : undefined,
+  };
+}
+
+/** `*` is every permission at once — said as what it is, not as a symbol. */
+const permissionWords = (p: string) => (p === '*' ? 'full platform access (super admin)' : p);
+
+function listWords(xs: string[]): string {
+  return xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
+}
+
+/**
+ * The sentence for a permission refusal: "You need <permission>. Ask an administrator to add you to
+ * one of: <groups>." Without groups, jinbe's hint says who to ask (nobody short of a super admin, or
+ * it could not tell). Null when the refusal names nothing to act on.
+ */
+export function refusalDetail(err: unknown): string | null {
+  const r = permissionRefusal(err);
+  if (!r) return null;
+  const need = r.permissions.length ? `You need ${listWords(r.permissions.map(permissionWords))}.` : '';
+  const exceeding = r.code === 'grant_exceeds_own' ? 'This grants what you do not hold. ' : '';
+  const who = r.grantedBy.length
+    ? `Ask an administrator to add you to one of: ${r.grantedBy.join(', ')}.`
+    : r.hint ?? 'Ask an administrator for it.';
+  return `${exceeding}${need} ${who}`.trim();
+}
+
 export function describeApiError(err: unknown, ctx: { groups?: string[] } = {}): ApiErrorView {
   const status = statusOf(err);
   // An account that must use two-step sign-in, below aal2 (jinbe second-factor/gate.ts). The client
@@ -130,6 +182,8 @@ export function describeApiError(err: unknown, ctx: { groups?: string[] } = {}):
   }
   if (edgeBlocked(err)) return EDGE_BLOCKED;
   if (status === 403) {
+    const refusal = refusalDetail(err);
+    if (refusal) return { kind: 'forbidden', title: 'Access denied', detail: refusal, retryable: false };
     // Only claim "no groups" when the session says so. Anybody else holds something — just not
     // what this screen needs.
     const none = ctx.groups !== undefined && ctx.groups.length === 0;

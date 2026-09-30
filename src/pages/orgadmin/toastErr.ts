@@ -1,5 +1,5 @@
 import { stepUpAndAskToRedo } from '../../lib/resume';
-import { edgeBlocked, toastFor } from '../../lib/apiError';
+import { edgeBlocked, refusalDetail, toastFor } from '../../lib/apiError';
 
 export type PushToast = (msg: string, opts?: { err?: boolean; sub?: string; ttl?: number }) => void;
 type ApiErr = Error & { code?: string; status?: number; details?: { hint?: string } };
@@ -24,7 +24,7 @@ export function makeToastErr(pushToast: PushToast) {
       return;
     }
     if (e.status === 403 && !edgeBlocked(e)) {
-      pushToast('Not authorized for this organization', { err: true, sub: e.message });
+      pushToast('Not authorized for this organization', { err: true, sub: refusalDetail(e) ?? e.message });
       return;
     }
     pushToast(...toastFor(e));
