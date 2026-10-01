@@ -149,4 +149,18 @@ describe('Review · security findings', () => {
     await settle();
     expect(api.apply).toHaveBeenLastCalledWith('echo', 17, ['public_route']);
   });
+
+  it('says which organizations a publish takes the site from, and where to keep them, without blocking', async () => {
+    const go = vi.fn();
+    const removes: Finding = { code: 'publish_removes_orgs', level: 'warn', message: 'publishing removes this site from: Test org (o1)', fix: 'Add them to the site before publishing to keep their access', path: 'orgs' };
+    const host: Finding = { code: 'preserve_host_off', level: 'info', message: 'the service sees the internal host name (echo.echo.svc.cluster.local), not echo.dev.example.com', fix: 'Turn on Preserve host', path: 'upstream.preserveHost' };
+    render(<QueryClientProvider client={new QueryClient()}><ReviewTab ed={editor({ version: 16, applied: 16, hasDraft: true, findings: [removes, host] })} canApply go={go} /></QueryClientProvider>);
+    await settle();
+    expect(text()).toContain('publishing removes this site from: Test org (o1)');
+    expect(text()).toContain('internal host name');
+    expect(text()).toContain('Nothing to acknowledge — ready to publish');
+    await click(button(/^Site organizations$/));
+    expect(go).toHaveBeenCalledWith('access', { view: 'orgs' });
+  });
 });
+

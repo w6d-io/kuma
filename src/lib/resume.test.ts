@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const bounce = vi.hoisted(() => vi.fn(() => true));
 vi.mock('./stepUp', () => ({ bounceToStepUp: bounce }));
 
-import { rememberResume, stepUpAndAskToRedo, stepUpAndResume, takeRedo, takeResume } from './resume';
+import { rememberResume, stepUpAndAskToRedo, stepUpAndResume, stepUpOnRefusal, takeRedo, takeResume } from './resume';
 
 beforeEach(() => { sessionStorage.clear(); bounce.mockClear(); });
 afterEach(() => { sessionStorage.clear(); });
@@ -38,5 +38,38 @@ describe('resume after a step-up', () => {
     expect(stepUpAndAskToRedo('Delete echo again.')).toBe(true);
     expect(takeRedo()).toBe('Delete echo again.');
     expect(takeRedo()).toBeNull();
+  });
+});
+
+describe('stepUpOnRefusal', () => {
+  const reauth = Object.assign(new Error('x'), { status: 422, code: 'reauth_required' });
+
+  it('leaves any other error to the caller', () => {
+    const toast = vi.fn();
+    expect(stepUpOnRefusal(Object.assign(new Error('no'), { status: 403 }), toast, { redo: 'again' })).toBe(false);
+    expect(toast).not.toHaveBeenCalled();
+    expect(bounce).not.toHaveBeenCalled();
+  });
+
+  it('remembers the action and bounces, saying it is saved by itself on the way back', () => {
+    const toast = vi.fn();
+    expect(stepUpOnRefusal(reauth, toast, { resume: 'org-sites', data: { organizationId: 'o1', services: ['echo'] } })).toBe(true);
+    expect(bounce).toHaveBeenCalledTimes(1);
+    expect(toast.mock.calls[0][1].sub).toContain('saved by itself');
+    expect(takeResume('org-sites')).toEqual({ organizationId: 'o1', services: ['echo'] });
+  });
+
+  it('asks to redo what the screen cannot replay', () => {
+    const toast = vi.fn();
+    expect(stepUpOnRefusal(reauth, toast, { redo: 'Delete the group again.' })).toBe(true);
+    expect(takeRedo()).toBe('Delete the group again.');
+    expect(toast.mock.calls[0][1].sub).toContain('do it again');
+  });
+
+  it('says to re-verify by hand when the bounce cannot go', () => {
+    bounce.mockReturnValueOnce(false);
+    const toast = vi.fn();
+    expect(stepUpOnRefusal(reauth, toast, { redo: 'x' })).toBe(true);
+    expect(toast.mock.calls[0][1].sub).toContain('then try again');
   });
 });

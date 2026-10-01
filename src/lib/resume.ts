@@ -79,6 +79,33 @@ export function stepUpAndAskToRedo(what: string): boolean {
   return bounceToStepUp();
 }
 
+type Toast = (msg: string, opts?: { err?: boolean; sub?: string; ttl?: number }) => void;
+
+/** What happens after the step-up: `resume` runs the action again by itself, `redo` asks for it. */
+export type StepUpNext = { resume: string; data: unknown } | { redo: string };
+
+/**
+ * The one answer to a `reauth_required` refusal, for a screen that toasts its failures: says what
+ * is about to happen, sends the person to prove their second factor, and on the way back either
+ * runs the action again (the screen's useResume for `resume`) or asks for it again. True when it
+ * was that refusal (handled, even if the bounce could not go); false for anything else, which the
+ * caller shows as usual. A screen that only toasted it left people to find the re-sign-in by hand.
+ */
+export function stepUpOnRefusal(err: unknown, pushToast: Toast, next: StepUpNext): boolean {
+  if ((err as { code?: unknown } | null)?.code !== 'reauth_required') return false;
+  const auto = 'resume' in next;
+  const going = auto ? stepUpAndResume(next.resume, next.data) : stepUpAndAskToRedo(next.redo);
+  pushToast('Two-factor re-verification required', {
+    err: true,
+    sub: !going
+      ? 'Nothing was saved. Re-verify your second factor, then try again.'
+      : auto
+        ? 'Nothing was saved yet. You will be sent to re-verify your second factor; back here it is saved by itself. This is not a sign-out.'
+        : 'Nothing was saved. You will be sent to re-verify your second factor, then back here to do it again. This is not a sign-out.',
+  });
+  return true;
+}
+
 /** What to ask the person to redo, consumed; null when nothing is waiting. */
 export function takeRedo(now: number = Date.now()): string | null {
   const s = store();

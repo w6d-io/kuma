@@ -3,7 +3,7 @@ import { useApp } from '../../contexts/AppContext';
 import { findingsOf, notAvailable, type SiteError } from '../../api/sites';
 import type { Finding } from '../../lib/sites/types';
 import { stepUpAndAskToRedo, stepUpAndResume } from '../../lib/resume';
-import { EDGE_BLOCKED, edgeBlocked, refusalDetail } from '../../lib/apiError';
+import { EDGE_BLOCKED, edgeBlocked, problemsSentence, refusalDetail, validationProblems } from '../../lib/apiError';
 
 /**
  * Run a gateway-changing action (apply, rollback, pause, delete…) with the site-ux §10.7 wording for
@@ -33,6 +33,8 @@ export function describeSiteError(err: unknown): string {
   if (e.status === 503) return 'Checks are unavailable (gatekit or Kubernetes did not answer), so nothing was changed.';
   if (edgeBlocked(err)) return `${EDGE_BLOCKED.title}. ${EDGE_BLOCKED.detail}`;
   if (e.status === 403) return refusalDetail(err) ?? 'Your roles do not allow this. Changing what the gateway serves needs a super admin.';
+  const problems = validationProblems(err);
+  if (problems.length && !e.message.includes(problems[0].message)) return `${e.message}: ${problemsSentence(problems)}`;
   return e.message || 'The request failed.';
 }
 

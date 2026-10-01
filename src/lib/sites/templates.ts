@@ -66,7 +66,10 @@ export function buildSite(template: TemplateId, b: SiteBasics, opts: { shellPubl
     name: b.name,
     displayName: b.displayName || b.name,
     address: { host: b.host, ...(prefix ? { pathPrefix: prefix } : {}) },
-    upstream: { service: b.service, namespace: b.namespace, port: b.port },
+    // The service sees the visitor's domain, not its *.svc.cluster.local name: apps build redirects,
+    // links, cookie domains and Origin checks from Host, and the gateway adds no X-Forwarded-Host.
+    // Turned off per site (Gates tab) only for a service that virtual-hosts on its service name.
+    upstream: { service: b.service, namespace: b.namespace, port: b.port, preserveHost: true },
     exposure: { mode: 'zone' },
     roles: 'standard',
     groups: { platform: {}, orgGrantable: {} },
@@ -77,7 +80,7 @@ export function buildSite(template: TemplateId, b: SiteBasics, opts: { shellPubl
   const items = (rs: Route[]) => rs.map((r) => under(prefix, r));
   switch (template) {
     case 'public':
-      return { ...base, upstream: { ...base.upstream, preserveHost: true }, gates: [PUBLIC_GATE], routes: { items: [], catchAll: { gate: 'public', access: { kind: 'public' } } } };
+      return { ...base, gates: [PUBLIC_GATE], routes: { items: [], catchAll: { gate: 'public', access: { kind: 'public' } } } };
     case 'app':
       return { ...base, gates: [PUBLIC_GATE, BROWSER_GATE], routes: { items: items(ASSETS), catchAll: { gate: 'browser', access: { kind: 'signed-in' } } } };
     case 'api':

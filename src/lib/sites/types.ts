@@ -171,7 +171,12 @@ export interface SiteDraft {
   baseVersion: number;
   updatedBy: string;
   updatedAt?: string;
+  /** What the next autosave names as If-Match: a draft saved by someone else since is refused (412). */
+  etag?: string;
 }
+
+/** A 412 stale_draft's `current`: the draft somebody else saved since this editor loaded it. */
+export interface DraftConflict { etag: string; updatedBy: string; updatedAt: string | null; baseVersion?: number }
 
 /** One side of an address change, as jinbe describes it on `address_changed`. */
 export interface AddressView { host: string; pathPrefix: string | null; zone: string | null; url: string }
@@ -224,7 +229,8 @@ export interface Preview {
  * A security finding on what would be published. `error` must be fixed; `confirm` needs a person to
  * acknowledge its code (one acknowledgement covers every finding with that code); `warn` is said.
  */
-export interface Finding { code: string; level: 'error' | 'warn' | 'confirm'; message: string; fix: string; path?: string }
+/** `info`: worth knowing, never blocks nor asks to be acknowledged (e.g. the service gets its internal name as Host). */
+export interface Finding { code: string; level: 'error' | 'warn' | 'confirm' | 'info'; message: string; fix: string; path?: string }
 
 export interface FieldChange { path: string; before: unknown; after: unknown }
 export interface ArtefactDiff { kind: string; id: string; before: unknown; after: unknown; fields: FieldChange[] }

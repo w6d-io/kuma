@@ -12,7 +12,7 @@ describe('wizard', () => {
   it('builds the intent with groups and org-grantable groups', () => {
     const s = siteFrom({ ...filled, groups: { admins: 'admin', devs: '' }, orgsOn: true, orgs: ['11111111-1111-1111-1111-111111111111'] });
     expect(s.address.host).toBe('payroll.dev.example.com');
-    expect(s.upstream).toEqual({ service: 'payroll-ui', namespace: 'payroll', port: 8080 });
+    expect(s.upstream).toEqual({ service: 'payroll-ui', namespace: 'payroll', port: 8080, preserveHost: true });
     expect(s.groups.platform).toEqual({ admins: ['admin'] });
     expect(Object.keys(s.groups.orgGrantable)).toEqual(['payroll-editors', 'payroll-viewers']);
     expect(s.orgs).toHaveLength(1);

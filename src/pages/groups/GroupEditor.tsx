@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useDeleteGroup, useSaveGroup } from '../../api/rbacWrites';
 import { describeApiError } from '../../lib/apiError';
+import { stepUpOnRefusal } from '../../lib/resume';
 import type { GroupMapping } from '../../api/types';
 import {
   Badge, Button, ButtonBase, Callout, Checkbox, ConfirmDialog, Drawer, EmptyHint, Field, I, Input, Tabs,
@@ -65,6 +66,7 @@ export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDelete
       pipeline.run(name ? `group ${finalName}` : `new group ${finalName}`);
       if (name) onClose(); else onCreated(finalName);
     } catch (e) {
+      if (stepUpOnRefusal(e, pushToast, { redo: `Save the group ${finalName} again: nothing was saved before the check.` })) return;
       pushToast('The group was not saved', { err: true, sub: describeApiError(e).detail, ttl: 8000 });
     }
   };
@@ -75,6 +77,7 @@ export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDelete
       setConfirmDelete(false);
       onDeleted();
     } catch (e) {
+      if (stepUpOnRefusal(e, pushToast, { redo: `Delete the group ${name} again: nothing was deleted before the check.` })) return;
       pushToast('The group was not deleted', { err: true, sub: describeApiError(e).detail, ttl: 8000 });
     }
   };

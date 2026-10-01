@@ -4,7 +4,7 @@ import { bearerToken } from '../auth/session';
 import { isNotAvailable } from './orgAccess';
 import type {
   ApplyProgress, ApplyRequest, ApplyResult, BlastRadius, Check, DeletionRequest, DriftItem, EphemeralLimits, EphemeralView, Finding, DualRun, HostCheck,
-  MatchResult, MigrationStatus, ParityReport, Preview, RenderResult, Site, SiteDetail, SiteDiff, SiteDraft,
+  MatchResult, MigrationStatus, ParityReport, Preview, RenderResult, Site, SiteDetail, SiteDiff, SiteDraft, DraftConflict,
   SiteK8sStatus, SiteSummary, SiteVersion, Zone, MigrationGroup, HttpMethod,
   GatewayInfo, ZoneDetail, ZoneGatewayRef, ZoneIngress,
 } from '../lib/sites/types';
@@ -54,6 +54,14 @@ export function findingsOf(err: unknown): Finding[] | null {
   return e?.code === 'unconfirmed_findings' ? e.details?.findings ?? [] : null;
 }
 
+/** The draft somebody else saved, when an autosave was refused for it (412 stale_draft); null otherwise. */
+export function draftConflictOf(err: unknown): DraftConflict | null {
+  const e = err as (SiteError & { details?: { current?: Partial<DraftConflict> } }) | null;
+  if (e?.status !== 412 || e.code !== 'stale_draft') return null;
+  const c = e.details?.current ?? {};
+  return { etag: c.etag ?? '', updatedBy: c.updatedBy || 'Someone', updatedAt: c.updatedAt ?? null, baseVersion: c.baseVersion };
+}
+
 /** The checks an error carries (422 invalid_site, 409 checks_failed). */
 export function checksOf(err: unknown): Check[] {
   return ((err as SiteError | null)?.details?.checks ?? []) as Check[];
@@ -76,8 +84,14 @@ export const sitesApi = {
     request<HostCheck>(`${BASE}/check-host`, { method: 'POST', body: json(body) }),
 
   getDraft: (name: string) => request<SiteDraft>(`${BASE}/${enc(name)}/draft`),
-  putDraft: (name: string, site: Partial<Site>, baseVersion?: number) =>
-    request<SiteDraft>(`${BASE}/${enc(name)}/draft`, { method: 'PUT', body: json({ site, ...(baseVersion != null ? { baseVersion } : {}) }) }),
+  /**
+   * `etag`: the draft this edit started from, sent as If-Match — someone else's autosave since is
+   * 412 stale_draft (draftConflictOf). Without one there was no draft: If-None-Match * asks that
+   * none appeared meanwhile, so neither side overwrites the other silently.
+   */
+  putDraft: (name: string, site: Partial<Site>, baseVersion?: number, etag?: string) =>
+    withHeaders<SiteDraft>(`${BASE}/${enc(name)}/draft`, { method: 'PUT', body: json({ site, ...(baseVersion != null ? { baseVersion } : {}) }) },
+      etag ? { 'If-Match': `"${etag}"` } : { 'If-None-Match': '*' }),
   deleteDraft: (name: string) => request<void>(`${BASE}/${enc(name)}/draft`, { method: 'DELETE' }),
 
   preview: (site: Site) => request<Preview>(`${BASE}/preview`, { method: 'POST', body: json({ site }) }),

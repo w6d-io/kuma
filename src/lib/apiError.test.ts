@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeApiError, orgDirectoryNotConfigured, permissionRefusal, refusalDetail, toastFor } from './apiError';
+import { describeApiError, orgDirectoryNotConfigured, permissionRefusal, refusalDetail, toastFor, validationProblems } from './apiError';
 
 const err = (status: number, message = 'x') => Object.assign(new Error(message), { status });
 // What the API client throws for a 503 body `{error, message?}` (src/api/client.ts errorFrom).
@@ -159,5 +159,49 @@ describe('permission refusal (jinbe 403 body)', () => {
     expect(permissionRefusal(Object.assign(new Error('x'), { status: 422, details: { permission: 'a' } }))).toBeNull();
     expect(permissionRefusal(refused({ permission: 3, grantedBy: 'x' }))).toBeNull();
     expect(permissionRefusal(refused({ missing: ['a', 4, ''], grantedBy: [1, 'g'] }))).toEqual({ code: undefined, permissions: ['a'], grantedBy: ['g'], hint: undefined });
+  });
+});
+
+describe('validation refusals (400/422)', () => {
+  const bad = (status: number, body: Record<string, unknown>) =>
+    Object.assign(new Error(String(body.message ?? body.error)), { status, code: body.error, details: body });
+
+  it('names the refused field from the Zod handler\'s details', () => {
+    const e = bad(400, { error: 'Validation failed', details: [{ path: 'services.0', message: 'Invalid' }] });
+    expect(toastFor(e)).toEqual(['Some values were not accepted', { err: true, sub: 'services.0: Invalid' }]);
+  });
+
+  it('lets the screen say which value a path is', () => {
+    const e = bad(400, { error: 'Validation failed', details: [{ path: 'services.1', message: 'Invalid' }] });
+    const picked = ['echo', 'echo-mfa'];
+    const field = (f: string) => { const m = /^services\.(\d+)$/.exec(f); return m ? `Site ${picked[Number(m[1])]}` : undefined; };
+    expect(toastFor(e, { field })[1].sub).toBe('Site echo-mfa: Invalid');
+  });
+
+  it('reads Zod issues, settings problems and bundle failures alike', () => {
+    expect(validationProblems(bad(400, { error: 'invalid_request', issues: [{ path: ['spec', 'hosts', 0], message: 'Required' }] })))
+      .toEqual([{ field: 'spec.hosts.0', message: 'Required' }]);
+    expect(validationProblems(bad(400, { error: 'invalid_settings', problems: [{ field: 'serverUrl', message: 'https only' }] })))
+      .toEqual([{ field: 'serverUrl', message: 'https only' }]);
+    expect(validationProblems(bad(422, { error: 'invalid_binding', problems: ['ops: global has no roles'] })))
+      .toEqual([{ field: '', message: 'ops: global has no roles' }]);
+    expect(validationProblems(bad(400, { error: 'Bad Request', failures: [{ id: 'r1', reason: 'no permission' }] })))
+      .toEqual([{ field: 'r1', message: 'no permission' }]);
+  });
+
+  it('says a refusal once when the sites routes send details and issues together', () => {
+    const e = bad(400, { error: 'invalid_request', message: 'The request is not valid: site.address.host: a DNS host name',
+      details: [{ field: 'site.address.host', path: 'site.address.host', message: 'a DNS host name' }],
+      issues: [{ path: ['site', 'address', 'host'], message: 'a DNS host name' }] });
+    expect(validationProblems(e)).toEqual([{ field: 'site.address.host', message: 'a DNS host name' }]);
+  });
+
+  it('shows four, then how many more', () => {
+    const details = Array.from({ length: 6 }, (_, i) => ({ path: `services.${i}`, message: 'Invalid' }));
+    expect(describeApiError(bad(400, { error: 'Validation failed', details })).detail).toMatch(/services\.3: Invalid · and 2 more$/);
+  });
+
+  it('keeps a bare 400 to its message', () => {
+    expect(toastFor(err(400, 'Say why.'))).toEqual(['Say why.', { err: true }]);
   });
 });

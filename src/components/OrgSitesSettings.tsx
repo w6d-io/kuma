@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useOrgServiceMap, useSetOrgServiceBundle, useDeleteOrgServiceMapping } from '../api/hooks';
 import { useOrgCatalog } from '../api/orgCatalog';
@@ -7,6 +7,11 @@ import { I, Badge, Button, Card, ConfirmDialog, Table, cx } from './ui';
 import { OrgPicker } from './OrgPicker';
 import { orgLabel } from '../lib/orgOptions';
 import { toastFor } from '../lib/apiError';
+import { stepUpOnRefusal, useResume } from '../lib/resume';
+
+const RESUME = 'org-sites';
+type SitesResume = { organizationId: string; services: string[]; was: string[] };
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(x => b.includes(x));
 
 /**
  * Settings · which sites each organization runs, for the org-scoped screens (org admins, delegated
@@ -30,35 +35,59 @@ export function OrgSitesSettings() {
   // changes (e.g. clicking "Edit" on a row), so a save is a deliberate REPLACE
   // — never an accidental clobber that narrows an existing bundle to a single
   // freshly-picked service. Keyed on `newOrgId` only so a background refetch
-  // never resets an in-progress edit.
+  // never resets an in-progress edit. `seed` puts a choice back instead (a
+  // resumed save that could not run).
+  const seed = useRef<string[] | null>(null);
   useEffect(() => {
-    setNewServices(newOrgId && mappings[newOrgId] ? [...mappings[newOrgId]] : []);
+    setNewServices(seed.current ?? (newOrgId && mappings[newOrgId] ? [...mappings[newOrgId]] : []));
+    seed.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newOrgId]);
+
+  // Back from the step-up the save needed: the same list saved again, once, if nobody changed the
+  // organization's sites meanwhile; otherwise it is put back in the form to be checked and saved.
+  useResume<SitesResume>(RESUME, !mapLoading, (r) => {
+    if (sameSet(mappings[r.organizationId] ?? [], r.was)) { save(r.organizationId, r.services); return; }
+    seed.current = r.services;
+    setNewOrgId(r.organizationId);
+    pushToast('The organization\'s sites changed meanwhile', { sub: 'Nothing was saved. Your choice is back in the form — check it and save.', ttl: 8000 });
+  });
 
   const toggleService = (svc: string) =>
     setNewServices(prev => (prev.includes(svc) ? prev.filter(s => s !== svc) : [...prev, svc]));
 
-  function handleSetBundle() {
-    const orgId = newOrgId;
-    if (!orgId || newServices.length === 0) return;
+  function save(orgId: string, services: string[]) {
+    const was = mappings[orgId] ?? [];
     setBundle.mutate(
-      { organizationId: orgId, services: newServices },
+      { organizationId: orgId, services },
       {
         onSuccess: () => {
           setNewOrgId('');
           setNewServices([]);
-          pushToast('Sites saved', { sub: `${name(orgId)} → ${newServices.length} site${newServices.length === 1 ? '' : 's'}` });
+          pushToast('Sites saved', { sub: `${name(orgId)} → ${services.length} site${services.length === 1 ? '' : 's'}` });
         },
-        onError: (e: Error) => pushToast(...toastFor(e)),
+        onError: (e: Error) => {
+          if (stepUpOnRefusal(e, pushToast, { resume: RESUME, data: { organizationId: orgId, services, was } satisfies SitesResume })) return;
+          // jinbe names a refused site by its place in the list (services.3): said as the site.
+          const field = (f: string) => { const m = /^services\.(\d+)$/.exec(f); return m && services[Number(m[1])] ? `Site ${services[Number(m[1])]}` : undefined; };
+          pushToast(...toastFor(e, { field }));
+        },
       },
     );
+  }
+
+  function handleSetBundle() {
+    if (!newOrgId || newServices.length === 0) return;
+    save(newOrgId, newServices);
   }
 
   function handleDeleteMapping(orgId: string) {
     deleteMapping.mutate(orgId, {
       onSuccess: () => pushToast('Sites removed', { sub: name(orgId) }),
-      onError: (e: Error) => pushToast(...toastFor(e)),
+      onError: (e: Error) => {
+        if (stepUpOnRefusal(e, pushToast, { redo: `Remove the sites of ${name(orgId)} again: nothing was removed before the check.` })) return;
+        pushToast(...toastFor(e));
+      },
     });
   }
 

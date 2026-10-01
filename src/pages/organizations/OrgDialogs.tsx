@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useCreateOrganization, useDeleteOrganization, useServices, useUpdateOrganization } from '../../api/hooks';
 import type { OrganizationRecord } from '../../api/client';
 import { toastFor } from '../../lib/apiError';
+import { stepUpOnRefusal } from '../../lib/resume';
 import { orgFormProblem, tenantFrom } from '../../lib/orgTenant';
 import { MultiSelectPills } from '../../components/ui/Primitives';
 import { Button, Card, ConfirmDialog, Dialog, Field, Input } from '../../components/ui';
@@ -151,7 +152,10 @@ export function DeleteOrgDialog({ org, name, members, onClose, onDeleted, pushTo
         if (members > 0) { onClose(); return; }
         remove.mutate(org, {
           onSuccess: () => { pushToast(`Deleted ${label}`); onDeleted(); },
-          onError: (e) => pushToast(...toastFor(e)),
+          onError: (e) => {
+            if (stepUpOnRefusal(e, pushToast, { redo: `Delete ${label} again: nothing was deleted before the check.` })) return;
+            pushToast(...toastFor(e));
+          },
         });
       }}
     />

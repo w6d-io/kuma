@@ -158,8 +158,11 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
       )}
 
       {!result && findings.length > 0 && (
-        <Card title="Security findings" sub={findingsBlock ?? 'Acknowledged — ready to publish'}>
-          <FindingsList findings={findings} acknowledged={acked} onChange={setAcked} disabled={applying} />
+        <Card title="Security findings" sub={findingsBlock ?? (findings.some((f) => f.level === 'confirm') ? 'Acknowledged — ready to publish' : 'Nothing to acknowledge — ready to publish')}>
+          <FindingsList findings={findings} acknowledged={acked} onChange={setAcked} disabled={applying} actionFor={(f) =>
+            f.code === 'publish_removes_orgs' ? <Button size="sm" onClick={() => go('access', { view: 'orgs' })}>Site organizations</Button>
+              : f.code === 'preserve_host_off' ? <Button size="sm" variant="ghost" onClick={() => go('gates')}>Gates</Button>
+                : null} />
         </Card>
       )}
 
