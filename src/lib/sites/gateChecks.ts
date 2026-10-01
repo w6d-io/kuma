@@ -1,4 +1,5 @@
-import { secretLooking } from './validate';
+import { COOKIE_RESERVED, reservedHeaderProblem, secretLooking } from './validate';
+import { PASSES_NO_IDENTITY, passesNoIdentity } from './presets';
 import { BARE_BEARER, BEARER_BEFORE_OAUTH2, NOBODY_SIGNS_IN, bareBearer } from './gateWords';
 import type { Check, Gate, Handler, Site } from './types';
 
@@ -34,9 +35,11 @@ export function gateChecks(gate: Gate): Check[] {
   if (muts.includes('hydrator') && muts.includes('header') && muts.indexOf('hydrator') > muts.indexOf('header')) {
     out.push({ level: 'error', code: 'hydrator_order', message: 'Enrich (hydrator) must come before the identity headers.' });
   }
-  if (muts.length === 1 && muts[0] === 'noop' && !authn.every((a) => a === 'noop')) {
-    out.push({ level: 'warn', code: 'noop_mutator', message: 'The service receives no identity headers — it must not trust X-User-* headers from the request.' });
-  }
+  // Set in Expert JSON or over the API: jinbe would replace it silently.
+  const headerKeys = gate.mutators.filter((m) => m.handler === 'header').flatMap((m) => Object.keys((m.config?.headers as Record<string, unknown> | undefined) ?? {}));
+  if (headerKeys.some((k) => reservedHeaderProblem(k))) out.push({ level: 'error', code: 'cookie_header_reserved', message: `${COOKIE_RESERVED}. Remove the Cookie header.` });
+  // Same code as jinbe's finding.
+  if (passesNoIdentity(gate)) out.push({ level: 'warn', code: 'gate_passes_no_identity', message: `${PASSES_NO_IDENTITY}.` });
   const jwt = gate.authenticators.find((h) => h.handler === 'jwt');
   if (jwt && (jwt.config?.required_scope as string[] | undefined)?.length && (jwt.config?.scope_strategy ?? 'none') === 'none') {
     out.push({ level: 'error', code: 'jwt_scope', message: 'JWT required scopes need a scope matching other than none.' });
@@ -54,9 +57,9 @@ export function siteGateChecks(site: Site): Check[] {
   return site.gates.flatMap((g, i) => gateChecks(g).map((c) => ({ ...c, message: site.gates.length > 1 ? `${g.label}: ${c.message}` : c.message, path: gatePath(i, c.code) })));
 }
 
-/** Where jinbe places a gate check: the sign-in ones at the gate's authenticators. */
+/** Where jinbe places a gate check: the sign-in ones at the gate's authenticators, the identity one at its mutators. */
 export const SIGN_IN_CODES = new Set(['gate_without_authenticator', 'bearer_before_oauth2', 'bare_bearer_token']);
-export const gatePath = (index: number, code: string) => `gates.${index}${SIGN_IN_CODES.has(code) ? '.authenticators' : ''}`;
+export const gatePath = (index: number, code: string) => `gates.${index}${SIGN_IN_CODES.has(code) ? '.authenticators' : code === 'gate_passes_no_identity' ? '.mutators' : ''}`;
 
 /** Local checks beside the server's, without saying the same thing twice. */
 export function mergeChecks(server: readonly Check[], local: readonly Check[]): Check[] {

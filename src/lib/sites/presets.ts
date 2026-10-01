@@ -53,7 +53,7 @@ export const PASS_LABEL: Record<PassPreset, string> = {
 };
 export const GETS_LABEL: Record<GetsPreset, string> = {
   identity: 'Identity headers: X-User-Id, X-User-Email (groups and type need Enrich)',
-  nothing: 'Nothing (the service must not trust X-User-* headers)',
+  nothing: 'Nothing: the app sees empty X-User-* identity headers (for public gates)',
   enrich: 'Enrich from an API, then headers: adds X-User-Groups and X-Type',
 };
 export const FAILS_LABEL: Record<FailsPreset, string> = {
@@ -82,11 +82,21 @@ export function presetsOf(gate: Gate): GatePresets {
 export const isCustomized = (gate: Gate) => Object.values(presetsOf(gate)).includes('custom') || !!gate.expert?.matchUrl;
 
 /** Whether the gate lets anonymous callers through (a Public route needs one). */
+/** Whether some sign-in method of the gate identifies a person or a machine (not only noop / anonymous). */
+export const identifiesPeople = (gate: Gate) => gate.authenticators.some((a) => !['noop', 'anonymous', 'unauthorized'].includes(a.handler));
+
+/** A gate that identifies people but forwards nothing: the app receives X-User-* headers empty. */
+export const passesNoIdentity = (gate: Gate) => identifiesPeople(gate) && gate.mutators.every((m) => m.handler === 'noop');
+
+export const PASSES_NO_IDENTITY = 'Passes no identity: the app receives X-User-* headers empty';
+
 export const allowsAnonymous = (gate: Gate) => gate.authenticators.some((a) => a.handler === 'noop' || a.handler === 'anonymous');
 
 /**
  * Apply one answer. "Anyone" forces "Who may pass" to Everyone or Nobody: with no subject the policy
- * has nobody to check (render refuses a noop gate with remote_json).
+ * has nobody to check (render refuses a noop gate with remote_json), and the service gets nothing.
+ * Any sign-in answer passes the identity: a sign-in gate that forwarded nothing left the app with
+ * every X-User-* header empty.
  */
 export function withPreset(gate: Gate, question: 'who' | 'pass' | 'gets' | 'fails', value: string): Gate {
   if (question === 'who') {
@@ -94,7 +104,7 @@ export function withPreset(gate: Gate, question: 'who' | 'pass' | 'gets' | 'fail
     if (value === 'anyone') {
       return { ...next, authorizer: gate.authorizer === 'policy' ? PASS.everyone : gate.authorizer, mutators: GETS.nothing };
     }
-    return next;
+    return passesNoIdentity(next) ? { ...next, mutators: GETS.identity } : next;
   }
   if (question === 'pass') return { ...gate, authorizer: PASS[value as PassPreset] };
   if (question === 'gets') return { ...gate, mutators: GETS[value as GetsPreset] };

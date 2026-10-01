@@ -40,3 +40,18 @@ describe('Gates · Basic with a customized answer', () => {
     expect(text()).toContain('Nobody can sign in through this gate');
   });
 });
+
+describe('Gates · a sign-in gate that passes no identity', () => {
+  it('shows the badge and the warning once, and one click passes the identity headers', async () => {
+    const update = mount({ ...gate, authenticators: [{ handler: 'cookie_session' }], mutators: [{ handler: 'noop' }] });
+    expect(text()).toContain('Passes no identity');
+    expect(text().split('the app receives X-User-* headers empty').length - 1).toBe(1);
+    await click(button(/^Pass identity headers$/));
+    const next = update.mock.calls[0][0](site) as Site;
+    expect(next.gates[0].mutators).toEqual([{ handler: 'header' }]);
+  });
+  it('says nothing for a public gate', () => {
+    mount({ ...gate, authenticators: [{ handler: 'noop' }], authorizer: { handler: 'allow' }, mutators: [{ handler: 'noop' }] });
+    expect(text()).not.toContain('Passes no identity');
+  });
+});

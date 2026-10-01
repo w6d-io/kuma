@@ -18,6 +18,7 @@ import { VerifyTab } from './tabs/VerifyTab';
 import { PendingRequests } from './PendingRequests';
 import { useInvalidateSite } from '../../api/sites';
 import { EditAddressDialog } from './EditAddress';
+import { bypassSentence, resolveBypass } from '../../lib/sites/twoFactorGates';
 import { EphemeralBadge, ExtendButton } from './Lifecycle';
 import { SiteDeletionPending } from './Deletions';
 
@@ -70,6 +71,9 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
     ...(ed.system ? [] : [{ value: 'settings' as const, label: 'Settings' }]),
     ...((ed.hasDraft || tab === 'review') && !readOnly ? [{ value: 'review' as const, label: 'Review & apply' }] : []),
   ];
+  // The saved version is what the badge describes; a draft that fixes the gate is said on Review.
+  const bypass = resolveBypass(ed.saved ?? s, d?.secondFactor);
+  const notEnforced = bypassSentence(bypass) || null;
   const upstream = s.upstream ? `${s.upstream.scheme ?? 'http'}://${s.upstream.service}.${s.upstream.namespace}:${s.upstream.port}` : '—';
 
   return (
@@ -77,7 +81,7 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
       <PageHeader
         eyebrow={<Button variant="ghost" size="sm" icon={I.caretLeft} onClick={() => goSites(sitesHref({ view: 'list' }))}>Sites</Button>}
         title={s.displayName ?? name}
-        status={<span className="row gap-8"><StatusBadge status={status} />{liveVersion && <Badge tone="plain">v{liveVersion}</Badge>}{d?.ephemeral && <EphemeralBadge e={d.ephemeral} />}<TwoFactorBadge kind="site" site={d?.secondFactor ?? (s.login?.twoFactor ? { scope: s.login.twoFactor.scope, routes: s.login.twoFactor.routes ?? [] } : undefined)} /></span>}
+        status={<span className="row gap-8"><StatusBadge status={status} />{liveVersion && <Badge tone="plain">v{liveVersion}</Badge>}{d?.ephemeral && <EphemeralBadge e={d.ephemeral} />}<TwoFactorBadge kind="site" notEnforced={notEnforced} site={d?.secondFactor ?? (s.login?.twoFactor ? { scope: s.login.twoFactor.scope, routes: s.login.twoFactor.routes ?? [] } : undefined)} /></span>}
         sub={<span className="row gap-4 items-center wrap">
           <span className="mono">{s.address?.host}{s.address?.pathPrefix ?? ''} → {upstream}</span>
           {!readOnly && ed.site && <Button variant="ghost" size="sm" iconOnly icon={I.edit} aria-label="Edit address" title="Edit address" onClick={() => setEditAddress(true)} />}
@@ -93,6 +97,12 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
       {ed.system && (
         <Callout tone="info" icon={I.lock} className="mb-12" title="System site">
           Managed by the platform chart. You can look, test and link here; changes happen in the chart (values: kratos-login-ui / oathkeeper rules). Your sites can't use these paths on this host.
+        </Callout>
+      )}
+      {notEnforced && (
+        <Callout tone="danger" icon={I.shield} className="mb-12" title={notEnforced}
+          actions={<Button size="sm" variant="primary" onClick={() => go('gates', { gate: bypass[0].gate })}>Open gate {bypass[0].label}</Button>}>
+          This site asks for two-step sign-in, but {bypass.length === 1 ? 'that gate does' : 'those gates do'} not ask the policy engine, so neither 2FA nor permissions are checked on {bypass.length === 1 ? 'its' : 'their'} routes. Set “Who may pass” to “Check permissions per route”.
         </Callout>
       )}
       {!ed.system && !perms.canDraft && (

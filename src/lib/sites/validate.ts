@@ -123,8 +123,21 @@ export function secretLooking(v: string): boolean {
 // The platform's identity headers (global header mutator): a gate may not re-declare them.
 const PLATFORM_HEADERS = ['x-user-id', 'x-user-email', 'x-user-groups', 'x-user-name'];
 
+/**
+ * jinbe renders every gate's header mutator with its own Cookie header (the platform session cookie
+ * stripped, against replay) and overrides a site's: a Cookie set here would be replaced silently.
+ */
+export const COOKIE_RESERVED = 'Cookie is reserved: the gateway removes the platform session cookie before it reaches the app';
+
+/** A header a gate may not set itself, whatever its case. */
+export function reservedHeaderProblem(name: string): string | null {
+  return name.trim().toLowerCase() === 'cookie' ? COOKIE_RESERVED : null;
+}
+
 export function headerNameProblem(name: string, existing: readonly string[]): string | null {
   if (!/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/.test(name)) return 'A header name: letters, digits and dashes, no spaces.';
+  const reserved = reservedHeaderProblem(name);
+  if (reserved) return reserved;
   const lower = name.toLowerCase();
   if (PLATFORM_HEADERS.includes(lower)) return 'This is a platform identity header; it is always sent.';
   if (existing.some((e) => e.toLowerCase() === lower)) return 'This gate already sends that header (names are case-insensitive).';

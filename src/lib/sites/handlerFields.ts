@@ -5,6 +5,8 @@
  * the permission service address) — shown with the reason, never editable per rule.
  */
 
+import { reservedHeaderProblem } from './validate';
+
 export type FieldType = 'string' | 'list' | 'bool' | 'enum' | 'duration' | 'url' | 'kv' | 'template' | 'token_from' | 'when' | 'number';
 
 export interface HandlerField {
@@ -16,6 +18,8 @@ export interface HandlerField {
   options?: string[];
   placeholder?: string;
   locked?: string;
+  /** kv only: why a key is refused (null when it may be used). */
+  keyProblem?: (name: string) => string | null;
 }
 
 export type HandlerKind = 'authenticators' | 'authorizers' | 'mutators' | 'errors';
@@ -95,7 +99,7 @@ export const HANDLER_FIELDS: Record<HandlerKind, Record<string, HandlerField[]>>
     deny: [],
   },
   mutators: {
-    header: [{ key: 'headers', label: 'Extra headers', type: 'kv', level: 'A', help: 'Added to the platform identity headers (X-User-Id, X-User-Email …), which cannot be removed.' }],
+    header: [{ key: 'headers', label: 'Extra headers', type: 'kv', level: 'A', help: 'Added to the platform identity headers (X-User-Id, X-User-Email …), which cannot be removed.', keyProblem: reservedHeaderProblem }],
     hydrator: [
       { key: 'api.url', label: 'Enrichment service', type: 'url', level: 'E' },
       { key: 'cache.enabled', label: 'Cache', type: 'bool', level: 'E' },

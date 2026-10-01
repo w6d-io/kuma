@@ -9,6 +9,7 @@ import { timeAgo } from '../../lib/sites/format';
 import { useSitePerms } from './usePerms';
 import { EphemeralBadge } from './Lifecycle';
 import { DeletionsWaiting } from './Deletions';
+import { siteNotEnforced } from '../../lib/twoFactor';
 
 /**
  * The Sites list (site-ux.md §5.1): every site with its state in words, the built-in system sites
@@ -135,6 +136,7 @@ export function SitesList({ query }: { query: Record<string, string> }) {
                     <div className="mono small nowrap">{s.host}</div>
                     <WafBadge p={s.protection} />
                     <TwoFactorBadge kind="site" site={s.secondFactor} />
+                    <NotEnforced s={s} />
                   </td>
                   <td className="small">{s.system ? 'System site' : s.kind ?? '—'}</td>
                   <td><span className="row gap-8 wrap"><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}{s.ephemeral && <EphemeralBadge e={s.ephemeral} />}</span></td>
@@ -150,11 +152,32 @@ export function SitesList({ query }: { query: Record<string, string> }) {
                   <span className="row gap-8 items-baseline wrap"><span className="fw-medium">{s.displayName}</span><StatusBadge status={s.status} />{s.draft && s.status !== 'draft' && <Badge tone="plain" mono={false} icon={I.edit}>draft</Badge>}{s.ephemeral && <EphemeralBadge e={s.ephemeral} />}</span>
                   <span className="row gap-8 items-baseline wrap"><span className="mono small break-all">{s.host}</span><WafBadge p={s.protection} /><TwoFactorBadge kind="site" site={s.secondFactor} /></span>
                   <span className="small muted">{subline(s)}</span>
+                  {siteNotEnforced(s.secondFactor) && <span className="small text-danger">{siteNotEnforced(s.secondFactor)}</span>}
                 </ButtonBase>
               </li>
             ))}
           </ul>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A site whose 2FA bar is set but skipped by a gate (jinbe `secondFactor.enforced: false`): said in
+ * words under the badge, with the way to the gate that lets every signed-in person in.
+ */
+function NotEnforced({ s }: { s: SiteSummary }) {
+  const sentence = siteNotEnforced(s.secondFactor);
+  const gate = s.secondFactor?.notEnforcedOn?.[0];
+  if (!sentence) return null;
+  return (
+    <div className="stack gap-4 mt-4">
+      <span className="small text-danger">{sentence}</span>
+      {gate && (
+        <Button size="sm" variant="ghost" icon={I.shield} onClick={() => goSites(sitesHref({ view: 'site', name: s.name, tab: 'gates', query: { gate } }))}>
+          Open gate {gate}
+        </Button>
       )}
     </div>
   );

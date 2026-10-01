@@ -14,24 +14,30 @@ type Config = Record<string, unknown> | undefined;
 const listText = (v: unknown) => (Array.isArray(v) ? v.join(', ') : '');
 const toList = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean);
 
-function KvEditor({ value, onChange, disabled, onTemplate }: { value: Record<string, string>; onChange: (v: Record<string, string>) => void; disabled?: boolean; onTemplate?: () => void }) {
+/** `keyProblem`: a key refused here (the header mutator's Cookie); said by the field, and Add stays off. */
+function KvEditor({ value, onChange, disabled, onTemplate, keyProblem, onPending }: {
+  value: Record<string, string>; onChange: (v: Record<string, string>) => void; disabled?: boolean; onTemplate?: () => void;
+  keyProblem?: (name: string) => string | null; onPending?: (problem: string | null) => void;
+}) {
   const entries = Object.entries(value);
   const [k, setK] = useState('');
   const [v, setV] = useState('');
+  const pending = k.trim() ? keyProblem?.(k) ?? null : null;
+  const typeKey = (next: string) => { setK(next); onPending?.(next.trim() ? keyProblem?.(next) ?? null : null); };
   return (
     <div className="stack gap-4">
       {entries.map(([name, val]) => (
         <div key={name} className="row gap-8 items-center">
-          <span className="mono small site-kv-name">{name}</span>
+          <span className={cx('mono small site-kv-name', keyProblem?.(name) && 'text-danger')}>{name}</span>
           <Input size="sm" mono aria-label={`${name} value`} value={val} disabled={disabled} invalid={secretLooking(val)} onChange={(e) => onChange({ ...value, [name]: e.target.value })} />
           {!disabled && <Button size="sm" variant="ghost" iconOnly icon={I.close} aria-label={`Remove ${name}`} onClick={() => { const n = { ...value }; delete n[name]; onChange(n); }} />}
         </div>
       ))}
       {!disabled && (
         <div className="row gap-8 items-center">
-          <Input size="sm" mono placeholder="Name" aria-label="New name" value={k} onChange={(e) => setK(e.target.value)} />
-          <Input size="sm" mono placeholder="Value" aria-label="New value" value={v} onChange={(e) => setV(e.target.value)} />
-          <Button size="sm" icon={I.plus} disabled={!k.trim()} onClick={() => { onChange({ ...value, [k.trim()]: v }); setK(''); setV(''); }}>Add</Button>
+          <Input size="sm" mono placeholder="Name" aria-label="New name" value={k} invalid={!!pending} onChange={(e) => typeKey(e.target.value)} />
+          <Input size="sm" mono placeholder="Value" aria-label="New value" value={v} invalid={false} onChange={(e) => setV(e.target.value)} />
+          <Button size="sm" icon={I.plus} disabled={!k.trim() || !!pending} onClick={() => { onChange({ ...value, [k.trim()]: v }); typeKey(''); setV(''); }}>Add</Button>
           {onTemplate && <Button size="sm" variant="ghost" icon={I.sparkle} onClick={onTemplate}>Template builder</Button>}
         </div>
       )}
@@ -83,6 +89,7 @@ export function HandlerFieldEditor({ field, config, onChange, disabled, idBase, 
   idBase: string;
   onTemplate?: () => void;
 }) {
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
   const value = getPath(config, field.key);
   const set = (v: unknown) => onChange(setPath(config, field.key, v));
   if (field.locked) {
@@ -113,8 +120,12 @@ export function HandlerFieldEditor({ field, config, onChange, disabled, idBase, 
       );
     case 'list':
       return <Field label={field.label} hint={field.help ?? 'Comma-separated.'}><Input size="sm" mono placeholder={field.placeholder} value={listText(value)} disabled={disabled} onChange={(e) => set(toList(e.target.value))} /></Field>;
-    case 'kv':
-      return <Field label={field.label} hint={field.help}><KvEditor value={(value as Record<string, string>) ?? {}} disabled={disabled} onChange={set} onTemplate={onTemplate} /></Field>;
+    case 'kv': {
+      const kv = (value as Record<string, string>) ?? {};
+      // A refused key already there (from Expert JSON or the API), else the one being typed.
+      const keyErr = (field.keyProblem && Object.keys(kv).map(field.keyProblem).find(Boolean)) || pendingKey || undefined;
+      return <Field label={field.label} hint={field.help} error={keyErr}><KvEditor value={kv} disabled={disabled} onChange={set} onTemplate={onTemplate} keyProblem={field.keyProblem} onPending={setPendingKey} /></Field>;
+    }
     case 'template':
       return <Field label={field.label} hint={field.help}><Textarea mono rows={4} value={text} disabled={disabled} onChange={(e) => set(e.target.value || undefined)} /></Field>;
     case 'token_from':

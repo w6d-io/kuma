@@ -135,6 +135,29 @@ describe('Review · security findings', () => {
     expect(button(/^Apply changes/).disabled).toBe(true);
   });
 
+  it('2FA set but not enforced blocks the publish and leads to the gate; a sign-in-only gate is acknowledged', async () => {
+    mount(editor({ version: 16, applied: 16, hasDraft: true, findings: [
+      { code: 'second_factor_not_enforced', level: 'error', message: 'Two-step sign-in is set but NOT enforced: gate \'web\' never asks the policy.', fix: "Set Who may pass to the policy on gate 'web'." },
+      { code: 'gate_signed_in_only', level: 'confirm', message: 'Gate web lets every signed-in person in.', fix: 'Check permissions per route.', path: 'gates.0' },
+    ] }));
+    await settle();
+    expect(text()).toContain('NOT enforced');
+    expect(text()).toContain('1 security error must be fixed first.');
+    expect(button(/^Apply changes/).disabled).toBe(true);
+    expect(document.querySelectorAll('[aria-label="Findings to acknowledge"] input[type="checkbox"]')).toHaveLength(1);
+    expect(button(/^Gates$/)).toBeTruthy();
+  });
+
+  it('a gate that passes no identity is a warning with the way to the gate, said once', async () => {
+    mount(editor({ version: 16, applied: 16, hasDraft: true, findings: [
+      { code: 'gate_passes_no_identity', level: 'warn', message: "gate 'web' identifies people but passes no identity.", fix: "Set What the service gets to identity headers on gate 'web'.", path: 'gates.0.mutators' },
+    ] }));
+    await settle();
+    expect(text()).toContain('passes no identity');
+    expect(button(/^Gates$/)).toBeTruthy();
+    expect(button(/^Apply changes/).disabled).toBe(false);
+  });
+
   it('a publish refused for unconfirmed findings lists them and publishes that version once they are ticked', async () => {
     api.apply.mockRejectedValueOnce(Object.assign(new Error('Not published'), { status: 422, code: 'unconfirmed_findings', details: { findings: [pub] } }));
     mount(editor({ version: 17, applied: 16, hasDraft: false }));

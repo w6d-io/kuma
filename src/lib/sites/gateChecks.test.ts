@@ -15,7 +15,7 @@ describe('gateChecks', () => {
   });
   it('hydrator before header; noop mutator warns on a signed-in gate', () => {
     expect(codes(g({ mutators: [{ handler: 'header' }, { handler: 'hydrator' }] }))).toContain('hydrator_order');
-    expect(codes(g({ mutators: [{ handler: 'noop' }] }))).toContain('noop_mutator');
+    expect(codes(g({ mutators: [{ handler: 'noop' }] }))).toContain('gate_passes_no_identity');
   });
   it('refuses secrets anywhere in a config', () => {
     const c = gateChecks(g({ authenticators: [{ handler: 'cookie_session', config: { additional_headers: { Authorization: 'Bearer abcdefgh' } } }] }));
@@ -30,6 +30,10 @@ describe('gateChecks', () => {
     expect(gateChecks(g({ authenticators: [bare, { handler: 'oauth2_introspection' }] }))).toEqual([expect.objectContaining({ level: 'error', code: 'bearer_before_oauth2' })]);
     expect(codes(g({ authenticators: [{ handler: 'oauth2_introspection' }, bare] }))).not.toContain('bare_bearer_token');
     expect(codes(g({ authenticators: [{ handler: 'bearer_token', config: { token_from: { header: 'X-Session-Token' } } }] }))).toEqual([]);
+  });
+  it('a Cookie header on the identity headers is refused (jinbe would replace it)', () => {
+    expect(gateChecks(g({ mutators: [{ handler: 'header', config: { headers: { COOKIE: 'a=b' } } }] }))).toEqual([expect.objectContaining({ level: 'error', code: 'cookie_header_reserved' })]);
+    expect(codes(g({ mutators: [{ handler: 'header', config: { headers: { 'X-Org': '{{ print .Subject }}' } } }] }))).toEqual([]);
   });
   it('jwt scopes need a strategy', () => {
     expect(codes(g({ authenticators: [{ handler: 'jwt', config: { required_scope: ['a'] } }] }))).toContain('jwt_scope');

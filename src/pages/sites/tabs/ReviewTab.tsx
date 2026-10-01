@@ -6,7 +6,7 @@ import { sitesApi, checksOf, findingsOf, useInvalidateSite, useSitesPlatform, us
 import { checkCounts, riskLine, summarizeArtefact } from '../../../lib/sites/diffWords';
 import { applyFinished, derivedStages, fromProgress } from '../../../lib/sites/stages';
 import { summarySentence } from '../../../lib/sites/templates';
-import type { ApplyResult, Check, Finding } from '../../../lib/sites/types';
+import type { ApplyResult, Check, Finding, Gate } from '../../../lib/sites/types';
 import { findingsBlocker, mergeFindings } from '../../../lib/sites/verify';
 import { FindingsList } from '../Findings';
 import type { SiteEditor } from '../useSiteEditor';
@@ -19,6 +19,7 @@ import { useApp } from '../../../contexts/AppContext';
 import { stepUpAndResume, useResume } from '../../../lib/resume';
 import { rememberLifetime, rememberedLifetime } from '../../../lib/sites/lifecycle';
 import { LifetimeField } from '../Lifecycle';
+import { gateOfFinding } from '../../../lib/sites/twoFactorGates';
 
 /**
  * Review → Apply → Verify (site-ux.md §9). In words first, then the checks and the risk, then the
@@ -32,6 +33,13 @@ import { LifetimeField } from '../Lifecycle';
  * The server's security findings are the confirmation step of every publish: errors block, and each
  * finding to accept is ticked by its code, which the publish (or the apply request) then carries.
  */
+
+/** Findings fixed on a gate: 2FA set but a gate skips the policy, a gate that checks only a sign-in or passes no identity. */
+const GATE_FINDINGS = new Set(['second_factor_not_enforced', 'gate_signed_in_only', 'gate_passes_no_identity']);
+
+function OpenGate({ gate, go }: { gate: Gate | undefined; go: Go }) {
+  return <Button size="sm" variant="ghost" icon={I.shield} onClick={() => go('gates', gate ? { gate: gate.id } : undefined)}>{gate ? `Open gate ${gate.label}` : 'Gates'}</Button>;
+}
 
 export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; canApply: boolean; go: Go; query?: Record<string, string> }) {
   const site = ed.site;
@@ -84,7 +92,9 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
   const lifetime = !ed.detail.data && !!platform.data?.ephemeral;
   const preview = ed.preview.state === 'ok' ? ed.preview.preview : null;
   // The gate checks run here too: a gate nobody can sign in through never reaches the server.
-  const checks = site ? mergeChecks(preview?.checks ?? [], siteGateChecks(site)) : preview?.checks ?? [];
+  // A local gate check jinbe also raises as a finding is said once, in the findings.
+  const findingCodes = new Set((preview?.findings ?? []).map((f) => f.code));
+  const checks = site ? mergeChecks(preview?.checks ?? [], siteGateChecks(site).filter((c) => !findingCodes.has(c.code))) : preview?.checks ?? [];
   const { errors, warnings } = checkCounts(checks);
   const risk = diff.data?.risk ?? preview?.risk;
   const findings = mergeFindings(preview?.findings ?? [], failure?.findings ?? []);
@@ -162,7 +172,8 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
           <FindingsList findings={findings} acknowledged={acked} onChange={setAcked} disabled={applying} actionFor={(f) =>
             f.code === 'publish_removes_orgs' ? <Button size="sm" onClick={() => go('access', { view: 'orgs' })}>Site organizations</Button>
               : f.code === 'preserve_host_off' ? <Button size="sm" variant="ghost" onClick={() => go('gates')}>Gates</Button>
-                : null} />
+                : GATE_FINDINGS.has(f.code) ? <OpenGate gate={gateOfFinding(site, f)} go={go} />
+                  : null} />
         </Card>
       )}
 
