@@ -1,7 +1,7 @@
 import { Badge } from './Badge';
 import { I } from './Icons';
 import {
-  GROUP_REQUIRED_TITLE, NEEDS_ENROL_TITLE, siteScopeLabel, siteScopeSentence, stepUpTitle,
+  GROUP_REQUIRED_TITLE, NEEDS_ENROL_TITLE, siteNotEnforced, siteScopeLabel, siteScopeSentence, stepUpTitle,
   type SiteSecondFactor, type StepUpRule,
 } from '../../lib/twoFactor';
 
@@ -12,12 +12,13 @@ import {
  *   required     a group whose members must use two-step sign-in          "2FA required"
  *   recent       a permission that needs a second factor proven recently  "recent 2FA"
  *   site         a site's own bar, when it has one                        "2FA for changes"
+ *                — and in danger when a gate skips the policy that enforces it: "2FA NOT enforced"
  *   needs-enrol  a person who cannot join such a group yet                "needs 2FA enrolled"
  */
 export type TwoFactorBadgeProps =
   | { kind: 'required'; title?: string }
   | { kind: 'recent'; rule?: Pick<StepUpRule, 'maxAgeMin' | 'viaPersonalKey' | 'fourEyes'> | null; title?: string }
-  | { kind: 'site'; site: SiteSecondFactor | null | undefined; title?: string }
+  | { kind: 'site'; site: SiteSecondFactor | null | undefined; title?: string; /** Why the bar is not enforced, in a sentence. */ notEnforced?: string | null }
   | { kind: 'needs-enrol'; title?: string };
 
 export function TwoFactorBadge(props: TwoFactorBadgeProps) {
@@ -31,6 +32,9 @@ export function TwoFactorBadge(props: TwoFactorBadgeProps) {
     case 'site': {
       const label = siteScopeLabel(props.site);
       if (!label || !props.site) return null;
+      // jinbe's `enforced: false` (list, detail, map) or the screen's own reading of the gates.
+      const notEnforced = props.notEnforced ?? (siteNotEnforced(props.site) && (props.site.summary ?? siteNotEnforced(props.site)));
+      if (notEnforced) return <Badge tone="danger" icon={I.shield} mono={false} title={notEnforced}>2FA NOT enforced</Badge>;
       return <Badge tone="info" icon={I.shield} mono={false} title={props.title ?? siteScopeSentence(props.site)}>{label}</Badge>;
     }
   }

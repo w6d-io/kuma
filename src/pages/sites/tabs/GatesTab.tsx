@@ -10,6 +10,7 @@ import type { SiteEditor } from '../useSiteEditor';
 import type { Go } from '../SiteDetail';
 import { CheckList, LockedCallout, MethodChips } from '../parts';
 import { checkLines } from '../../../lib/sites/format';
+import { gateSkipsTwoFactor } from '../../../lib/sites/twoFactorGates';
 import { SIGN_IN_CODES, gateChecks, gatePath, mergeChecks } from '../../../lib/sites/gateChecks';
 import { customAnswers, type CustomAnswer, type Question } from '../../../lib/sites/gateWords';
 import { GateAdvanced } from './GateAdvanced';
@@ -54,6 +55,14 @@ export function GatesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnly
   const local = gate && level !== 'advanced' ? gateChecks(gate).map((c) => ({ ...c, path: gatePath(index, c.code) })) : [];
   // Basic says this gate's sign-in problems in its "Customized" note.
   const checks = mergeChecks(serverChecks, local).filter((c) => level !== 'basic' || !(SIGN_IN_CODES.has(c.code) && c.path === gatePath(index, c.code)));
+  const skips2fa = gate ? gateSkipsTwoFactor(site, gate) : null;
+  const lines = [
+    ...(skips2fa ? [{
+      level: 'warn' as const, text: skips2fa,
+      action: !readOnly && <Button size="sm" variant="primary" onClick={() => setGate(withPreset(gate!, 'pass', 'policy'))}>{PASS_LABEL.policy}</Button>,
+    }] : []),
+    ...checkLines(checks),
+  ];
 
   return (
     <div className="stack gap-16">
@@ -63,7 +72,7 @@ export function GatesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnly
           const catchAll = site.routes.catchAll.gate === g.id;
           return (
             <ButtonBase key={g.id} className={cx('site-gate-card', g.id === selectedId && 'on')} aria-pressed={g.id === selectedId} onClick={() => select(g.id)}>
-              <span className="row gap-8 items-center"><span className="fw-medium">{g.label}</span>{isCustomized(g) && <Badge tone="info" mono={false}>Customized</Badge>}</span>
+              <span className="row gap-8 items-center"><span className="fw-medium">{g.label}</span>{isCustomized(g) && <Badge tone="info" mono={false}>Customized</Badge>}{gateSkipsTwoFactor(site, g) && <Badge tone="danger" mono={false}>2FA not enforced</Badge>}</span>
               <span className="small muted">{WHO_LABEL[presetsOf(g).who as WhoPreset] ?? 'Custom sign-in'}</span>
               <span className="small">{n} route{n === 1 ? '' : 's'}{catchAll ? ' · everything else' : ''}{g.preflight ? ' · + browser pre-flight' : ''}</span>
             </ButtonBase>
@@ -82,7 +91,7 @@ export function GatesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnly
           {level === 'basic' && <GateBasic gate={gate} site={site} enabled={enabled} readOnly={readOnly} onChange={setGate} onSite={setSite} onLocked={setLocked} onAdvanced={() => select(gate.id, 'advanced')} />}
           {level === 'advanced' && <GateAdvanced gate={gate} site={site} enabled={enabled} readOnly={readOnly} onChange={setGate} onLocked={setLocked} />}
           {level === 'expert' && <GateExpert gate={gate} preview={ed.preview} readOnly={readOnly} onChange={setGate} />}
-          {checks.length > 0 && <CheckList className="mt-12" lines={checkLines(checks)} />}
+          {lines.length > 0 && <CheckList className="mt-12" lines={lines} />}
           {!readOnly && site.gates.length > 1 && (
             <div className="row justify-end mt-12">
               <Button
