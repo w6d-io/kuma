@@ -12,7 +12,7 @@ import { CheckList } from './parts';
  */
 export function FindingsList({ findings, acknowledged, onChange, disabled, actionFor }: {
   findings: readonly Finding[]; acknowledged: ReadonlySet<string>; onChange: (next: Set<string>) => void; disabled?: boolean;
-  /** A way to act on a warning or note where it is fixed (e.g. the site's Organizations). */
+  /** A way to act on a finding where it is fixed (the site's Organizations, the gate to change). */
   actionFor?: (f: Finding) => ReactNode;
 }) {
   const { errors, warnings, notes, confirm } = groupFindings(findings);
@@ -24,7 +24,7 @@ export function FindingsList({ findings, acknowledged, onChange, disabled, actio
   return (
     <div className="stack gap-12">
       {errors.length > 0 && (
-        <CheckList live={false} lines={errors.map((f) => ({ level: 'error', text: `${f.message} ${f.fix}` }))} />
+        <CheckList live={false} lines={errors.map((f) => ({ level: 'error', text: `${f.message} ${f.fix}`, action: actionFor?.(f) }))} />
       )}
       {confirm.length > 0 && (
         <div className="stack gap-8" role="group" aria-label="Findings to acknowledge">
@@ -38,6 +38,7 @@ export function FindingsList({ findings, acknowledged, onChange, disabled, actio
               hint={<>
                 {items.length > 1 && <ul className="site-list m-0">{items.slice(1).map((f, i) => <li key={i}>{f.message}</li>)}</ul>}
                 <span>{items[0].fix}</span>
+                {actionFor?.(items[0]) && <span className="row mt-4">{actionFor(items[0])}</span>}
               </>}
             />
           ))}

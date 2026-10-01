@@ -46,6 +46,13 @@ export interface SiteSecondFactor {
   clients?: 'exempt' | 'refused' | null;
   minAal?: 'aal1' | 'aal2';
   summary?: string;
+  /**
+   * False when a gate serving its signed-in routes never asks the policy (Who may pass: Everyone),
+   * so the bar is set but not enforced; null when jinbe could not tell; absent on older servers.
+   */
+  enforced?: boolean | null;
+  /** The gate ids that skip the policy. */
+  notEnforcedOn?: string[];
 }
 
 /** One person's picture (/me/permissions and a user's access `secondFactor`). */
@@ -93,6 +100,15 @@ export function siteScopeLabel(sf: SiteSecondFactor | null | undefined): string 
     case 'routes': return n ? `2FA on ${n} route${n === 1 ? '' : 's'}` : null;
     default: return null;
   }
+}
+
+/** "2FA set but NOT enforced (gate web never checks 2FA or permissions)", from jinbe's answer; null when enforced. */
+export function siteNotEnforced(sf: SiteSecondFactor | null | undefined): string | null {
+  if (!sf || sf.enforced !== false || !siteScopeLabel(sf)) return null;
+  const ids = sf.notEnforcedOn ?? [];
+  if (!ids.length) return '2FA set but NOT enforced (a gate never checks 2FA or permissions)';
+  const more = ids.length > 1 ? ` and ${ids.length - 1} more gate${ids.length === 2 ? '' : 's'}` : '';
+  return `2FA set but NOT enforced (gate ${ids[0]} never checks 2FA or permissions${more})`;
 }
 
 /** The site's bar in a sentence: jinbe's own when it sent one. */
