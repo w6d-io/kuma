@@ -35,6 +35,14 @@ export function OrganizationsPage() {
     () => Object.fromEntries((orgsQ.data?.organizations ?? []).map((o) => [o.id, o.name])),
     [orgsQ.data],
   );
+  const owners = useMemo(
+    () => Object.fromEntries((orgsQ.data?.organizations ?? []).map((o) => [o.id, o.owners])),
+    [orgsQ.data],
+  );
+  const entitled = useMemo(
+    () => Object.fromEntries((orgsQ.data?.organizations ?? []).map((o) => [o.id, o.sites])),
+    [orgsQ.data],
+  );
   const tenants = useMemo(
     () => Object.fromEntries((orgsQ.data?.organizations ?? []).map((o) => [o.id, o.tenant])),
     [orgsQ.data],
@@ -142,6 +150,8 @@ export function OrganizationsPage() {
               org={activeOrg}
               name={names[activeOrg]}
               tenant={tenants[activeOrg]}
+              listedOwners={owners[activeOrg]}
+              listedSites={entitled[activeOrg]}
               mayWrite={mayWrite}
               mayDelete={mayDelete}
               onDeleted={() => setPage('organizations', null)}
@@ -156,8 +166,11 @@ export function OrganizationsPage() {
 }
 
 
-function OrgDetail({ org, name, tenant, mayWrite, mayDelete, onDeleted }: {
-  org: string; name?: string; tenant?: string; mayWrite: boolean; mayDelete: boolean; onDeleted: () => void;
+function OrgDetail({ org, name, tenant, listedOwners, listedSites, mayWrite, mayDelete, onDeleted }: {
+  org: string; name?: string; tenant?: string;
+  /** From the organisations list (jinbe:owner holders, org_sites); absent on an older jinbe, then read off the roles. */
+  listedOwners?: string[]; listedSites?: string[];
+  mayWrite: boolean; mayDelete: boolean; onDeleted: () => void;
 }) {
   const { pushToast, setPage } = useApp();
   const [editing, setEditing] = useState(false);
@@ -177,15 +190,17 @@ function OrgDetail({ org, name, tenant, mayWrite, mayDelete, onDeleted }: {
   const total = usersQ.data?.total ?? users.length;
   const rolesQ = useOrgRoles(org, mayReadMembers);
   const memberRoles = useOrgMemberRoles(org, users.map((u) => u.id), mayReadMembers);
-  const owners = ownersOf(memberRoles.byId);
-  const sites = entitledSites(rolesQ.data ?? []);
+  const owners = listedOwners ?? ownersOf(memberRoles.byId);
+  const sites = listedSites ?? entitledSites(rolesQ.data ?? []);
+  const ownersKnown = !!listedOwners || (mayReadMembers && !memberRoles.isLoading);
+  const sitesKnown = !!listedSites || !rolesQ.isLoading;
   const label = (id: string) => users.find((u) => u.id === id)?.traits?.email ?? id;
 
   const [editOwners, setEditOwners] = useState(false);
   const [resumeOwners, setResumeOwners] = useState<{ owners: string[]; auto: boolean } | undefined>();
   // Back from the step-up an owners save needed: the same list saved again, once, if nobody changed
   // it meanwhile. Otherwise the drawer opens on what was chosen, to be checked and saved by hand.
-  useResume<OwnersResume>(mayNameOwners ? `${ORG_OWNERS}:${org}` : null, !memberRoles.isLoading && usersQ.isSuccess, (p) => {
+  useResume<OwnersResume>(mayNameOwners ? `${ORG_OWNERS}:${org}` : null, ownersKnown && usersQ.isSuccess, (p) => {
     setResumeOwners({ owners: p.owners, auto: sameSet(owners, p.was) });
     setEditOwners(true);
     if (!sameSet(owners, p.was)) pushToast('The owners changed meanwhile', { sub: 'Nothing was saved. Your choice is back in the drawer — check it and save.', ttl: 8000 });
@@ -218,7 +233,7 @@ function OrgDetail({ org, name, tenant, mayWrite, mayDelete, onDeleted }: {
           The sites whose roles can be assigned here. Each site&apos;s intent lists the organizations it serves; change it on the site.
         </div>
         <div className="row wrap gap-4 mt-8">
-          {rolesQ.isLoading
+          {!sitesKnown
             ? <span className="small muted">reading…</span>
             : sites.length
               ? sites.map((s) => <Badge key={s} tone="success">{s}</Badge>)
@@ -236,11 +251,9 @@ function OrgDetail({ org, name, tenant, mayWrite, mayDelete, onDeleted }: {
               Owners hold every permission of this organization and assign its roles to its members.
             </div>
             <div className="row wrap gap-4 mt-8">
-              {!mayReadMembers
-                ? <span className="small muted">You cannot see this organization&apos;s members.</span>
-                : memberRoles.isLoading
-                  ? <span className="small muted">reading…</span>
-                  : owners.length === 0
+              {!ownersKnown
+                ? <span className="small muted">{mayReadMembers ? 'reading…' : 'You cannot see this organization\'s members.'}</span>
+                : owners.length === 0
                     ? <span className="small muted">No owner yet — nobody assigns roles here.</span>
                     : owners.map((id) => <Badge key={id} tone="accent">{label(id)}</Badge>)}
             </div>
@@ -323,6 +336,7 @@ function OwnersDrawer({ org, name, current, members, onClose, resume }: {
       await orgAccessApi.setOwners(org, selected);
       pushToast(`Owners of ${name ?? org} updated`, { sub: `${selected.length} owner${selected.length === 1 ? '' : 's'}` });
       qc.invalidateQueries({ queryKey: ['org-member-roles', org] });
+      qc.invalidateQueries({ queryKey: ['all-orgs'] });
       qc.invalidateQueries({ queryKey: ['org-users', org] });
       onClose();
     } catch (e) {

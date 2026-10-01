@@ -1,18 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { accessMatrix, covers, expandRolePermissions, SIGNED_IN, PUBLIC } from './access';
+import { accessMatrix, covers, declaredPermissions, expandRolePermissions, isWildcard, orgRoleName, SIGNED_IN, PUBLIC } from './access';
 import { buildSite, orgGrantableFor } from './templates';
 
 const base = buildSite('api', { name: 'payroll', displayName: 'Payroll', host: 'payroll.dev.example.com', service: 's', namespace: 'n', port: 80 });
 
 describe('roles', () => {
-  it('expands presets like jinbe', () => {
-    expect(expandRolePermissions(base).admin).toEqual(['*']);
+  it('expands presets like jinbe: admin = the operator set plus every permission the routes declare, never *', () => {
+    const admin = expandRolePermissions(base).admin;
+    expect(admin).not.toContain('*');
+    expect(admin).toEqual([...new Set(['payroll:list', 'payroll:read', 'payroll:create', 'payroll:update', 'payroll:delete', 'payroll:execute', ...declaredPermissions(base)])].sort());
     expect(expandRolePermissions({ name: 'p', roles: 'readonly' })).toEqual({ viewer: ['p:list', 'p:read'] });
   });
-  it('covers * and resource wildcards', () => {
-    expect(covers(['*'], 'a:read')).toBe(true);
-    expect(covers(['a:*'], 'a:read')).toBe(true);
-    expect(covers(['a:list'], 'a:read')).toBe(false);
+  it('matches exact names only: a wildcard covers nothing', () => {
+    expect(covers(['*'], 'a:read')).toBe(false);
+    expect(covers(['a:*'], 'a:read')).toBe(false);
+    expect(covers(['a:read'], 'a:read')).toBe(true);
+    expect(isWildcard('a:*')).toBe(true);
+    expect(isWildcard('a:read')).toBe(false);
+  });
+  it('names the org role an org-grantable entry becomes', () => {
+    expect(orgRoleName('payroll', 'payroll-editors')).toBe('editors');
   });
 });
 

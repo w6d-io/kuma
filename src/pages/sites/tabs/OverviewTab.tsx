@@ -1,6 +1,7 @@
 import { Button, ButtonBase, Card, I } from '../../../components/ui';
 import { useVersions } from '../../../api/sites';
 import { kindOf } from '../../../lib/sites/templates';
+import { orgRoleName } from '../../../lib/sites/access';
 import type { SiteEditor } from '../useSiteEditor';
 import type { Go } from '../SiteDetail';
 import { accessWord, timeAgo } from '../../../lib/sites/format';
@@ -50,7 +51,7 @@ export function OverviewTab({ ed, go }: { ed: SiteEditor; go: Go }) {
           : (
             <dl className="site-kv">
               <dt>Groups</dt><dd>{groups.map(([g, roles]) => `${g} → ${roles.join(', ')}`).join(' · ') || '—'}</dd>
-              <dt>Organizations</dt><dd>{(s.orgs?.length ?? 0) === 0 ? 'none' : `${s.orgs!.length}`}{orgGrantable.length ? ` · org admins can give ${orgGrantable.join(', ')}` : ''}</dd>
+              <dt>Organizations</dt><dd>{(s.orgs?.length ?? 0) === 0 ? 'none' : `${s.orgs!.length}`}{orgGrantable.length ? ` · org roles ${orgGrantable.map((g) => `${s.name}:${orgRoleName(s.name ?? "", g)}`).join(', ')}` : ''}</dd>
               <dt>Two-factor</dt><dd>{s.login?.twoFactor.scope === 'writes' ? 'required for changes' : s.login?.twoFactor.scope === 'all' ? 'required for everything' : 'not required'}</dd>
             </dl>
           )}

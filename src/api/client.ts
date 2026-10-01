@@ -250,8 +250,12 @@ export const api = {
         id: string;
         name: string;
         tenant: string;
-        /** What this organisation runs, from the directory — only what is enabled. */
+        /** The organisation registry's deployments — not what it is entitled to (that is `sites`). */
         applications?: string[];
+        /** Identity ids holding jinbe:owner there. Absent on an older jinbe. */
+        owners?: string[];
+        /** The sites whose intents list it (org_sites): whose org roles it may hold. Absent on an older jinbe. */
+        sites?: string[];
       }[];
     }>('/admin/organizations'),
 

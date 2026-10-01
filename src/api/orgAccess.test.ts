@@ -112,8 +112,8 @@ describe('refusedOf', () => {
   });
 
   it('drops malformed entries and keeps grantedBy when jinbe says', () => {
-    expect(refusedOf({ details: { refused: [{ role: 'a:b', reason: 'r', grantedBy: 'x@example.com' }, { reason: 'no role' }, 7] } }))
-      .toEqual([{ role: 'a:b', reason: 'r', missing: [], grantedBy: 'x@example.com' }]);
+    expect(refusedOf({ details: { refused: [{ role: 'a:b', reason: 'r', reasons: ['missing_permissions'], grantedBy: ['jinbe:owner'] }, { reason: 'no role' }, 7] } }))
+      .toEqual([{ role: 'a:b', reason: 'r', missing: [], reasons: ['missing_permissions'], grantedBy: ['jinbe:owner'] }]);
   });
 });
 

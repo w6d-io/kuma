@@ -63,8 +63,10 @@ export interface RefusedRole {
   reason: OrgRoleRefusalReason | string;
   /** The permissions the caller would need to hold here to hand it out. */
   missing: string[];
-  /** Who granted it, when jinbe says. */
-  grantedBy?: string;
+  /** The policy's own codes behind the reason, when jinbe sends them. */
+  reasons?: string[];
+  /** The roles or groups that would carry what is missing, when jinbe says. */
+  grantedBy?: string[];
 }
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
@@ -146,7 +148,8 @@ export function refusedOf(err: unknown): RefusedRole[] {
       role: r.role as string,
       reason: typeof r.reason === 'string' ? r.reason : '',
       missing: strings(r.missing),
-      ...(typeof r.grantedBy === 'string' ? { grantedBy: r.grantedBy } : {}),
+      ...(Array.isArray(r.reasons) ? { reasons: strings(r.reasons) } : {}),
+      ...(typeof r.grantedBy === 'string' ? { grantedBy: [r.grantedBy] } : Array.isArray(r.grantedBy) ? { grantedBy: strings(r.grantedBy) } : {}),
     }));
 }
 

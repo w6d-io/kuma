@@ -154,7 +154,7 @@ function MemberRow({ cols, refused, children }: { cols: number; refused: Refused
               {refused.map((r) => (
                 <li key={r.role}>
                   <span className="mono">{r.role}</span> — {refusalWords(r)}
-                  {r.grantedBy && <span className="muted"> · granted by {r.grantedBy}</span>}
+                  {r.grantedBy?.length ? <span className="muted"> · held through {r.grantedBy.join(', ')}</span> : null}
                 </li>
               ))}
             </ul>

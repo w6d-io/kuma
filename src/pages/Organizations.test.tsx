@@ -26,7 +26,7 @@ import { OrganizationsPage } from './Organizations';
 
 type Call = { method: string; url: string; body?: unknown };
 let calls: Call[] = [];
-let orgs: Array<{ id: string; name: string; tenant: string; applications: string[] }> = [];
+let orgs: Array<{ id: string; name: string; tenant: string; applications: string[]; owners?: string[]; sites?: string[] }> = [];
 let members: Record<string, unknown>[] = [];
 let listStatus = 200;
 let listBody: unknown = null;
@@ -235,5 +235,18 @@ describe('Organizations', () => {
     expect(put?.body).toEqual({ roles: ['jinbe:viewer'] });
     expect(text()).toContain('Nothing was saved for this person');
     expect(text()).toMatch(/jinbe:viewer — it carries permissions you do not hold here \(missing here: org\.keys:read\)/);
+  });
+
+  it('reads the owners and the entitled sites from the organisations list when jinbe sends them', async () => {
+    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', applications: ['legacy-app'], owners: [BOB], sites: ['crm'] }];
+    members = [{ id: BOB, traits: { email: 'bob@example.com' }, state: 'active', metadata_admin: {} }];
+    orgPermissions = { [ACME]: ['org.members:read'] };
+    mount();
+    await settle();
+    expect(text()).toContain('crm');
+    expect(text()).not.toContain('legacy-app');
+    const ownersCard = [...document.querySelectorAll('.fw-medium')].find((e) => e.textContent === 'Owners')!.closest('.card, [class*="card"]') ?? document.body;
+    expect(ownersCard.textContent).toContain('bob@example.com');
+    expect(calls.some((c) => c.url.includes(`/organizations/${ACME}/users/${BOB}/roles`) && c.method === 'GET')).toBe(true);
   });
 });

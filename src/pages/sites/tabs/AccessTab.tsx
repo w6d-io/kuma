@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, Callout, Card, Checkbox, EmptyHint, Field, I, Input, Segmented, Select, Table, Th } from '../../../components/ui';
 import { useAllOrganizations, useGroupsMap } from '../../../api/hooks';
-import { accessMatrix, expandRolePermissions, PUBLIC, SIGNED_IN } from '../../../lib/sites/access';
+import { accessMatrix, declaredPermissions, expandRolePermissions, isWildcard, orgRoleName, PUBLIC, SIGNED_IN } from '../../../lib/sites/access';
 import { orgGrantableFor } from '../../../lib/sites/templates';
 import type { RolesPreset, Site } from '../../../lib/sites/types';
 import type { SiteEditor } from '../useSiteEditor';
@@ -46,7 +46,7 @@ function MatrixView({ site }: { site: Site }) {
     notes.push({ level: 'info', text: `2FA required ${site.login.twoFactor.scope === 'writes' ? 'for changes' : 'for everything'} (Login tab).` });
   }
   return (
-    <Card pad="none" title={`Who can do what on ${site.displayName}`} sub="Org grants apply only on org-scoped routes and never remove site access. People counts arrive with the server matrix.">
+    <Card pad="none" title={`Who can do what on ${site.displayName}`} sub="Org roles count only on org-scoped routes, in organizations entitled to this site, and never remove site access. People counts arrive with the server matrix.">
       <Table className="site-matrix" aria-label="Access matrix">
         <thead>
           <tr><Th scope="col">Who</Th>{m.columns.map((c) => <Th key={c} scope="col" align="center" className="mono small">{c}</Th>)}</tr>
@@ -74,7 +74,8 @@ function RolesView({ site, readOnly, set }: { site: Site; readOnly: boolean; set
   const roles = expandRolePermissions(site);
   const preset = typeof site.roles === 'string' ? site.roles : 'custom';
   const needed = [...new Set([...site.routes.items, { access: site.routes.catchAll.access }].flatMap((r) => (r.access.kind === 'permission' ? [r.access.permission] : [])))];
-  const perms = [...new Set([...needed, ...Object.values(roles).flat().filter((p) => p !== '*')])].sort();
+  const perms = [...new Set([...needed, ...Object.values(roles).flat().filter((p) => !isWildcard(p))])].sort();
+  const wild = Object.entries(roles).filter(([, held]) => held.some(isWildcard)).map(([role]) => role);
   const [newRole, setNewRole] = useState('');
   const [newPerm, setNewPerm] = useState('');
   const mapped = new Set([...Object.values(site.groups.platform).flat(), ...Object.values(site.groups.orgGrantable).flatMap((g) => g.roles)]);
@@ -102,24 +103,30 @@ function RolesView({ site, readOnly, set }: { site: Site; readOnly: boolean; set
               <th scope="row" className="mono small">{role}{!mapped.has(role) && <span className="muted"> (unmapped)</span>}</th>
               {perms.map((p) => (
                 <td key={p} className="align-center">
-                  <Checkbox className="bare" label={<span className="sr-only">{role} {p}</span>} checked={held.includes('*') || held.includes(p)} disabled={readOnly || preset !== 'custom' || held.includes('*')} onChange={(on) => toggle(role, p, on)} />
+                  <Checkbox className="bare" label={<span className="sr-only">{role} {p}</span>} checked={held.includes(p)} disabled={readOnly || preset !== 'custom'} onChange={(on) => toggle(role, p, on)} />
                 </td>
               ))}
               <td className="align-center">
                 {/* By name, never `*`: a role reaches exactly what it lists. */}
-                <Button size="sm" variant="ghost" disabled={readOnly || preset !== 'custom' || perms.every((p) => held.includes(p))} aria-label={`${role}: all permissions of this site`} onClick={() => setRoles({ ...roles, [role]: [...perms] })}>All</Button>
+                <Button size="sm" variant="ghost" disabled={readOnly || preset !== 'custom' || (perms.every((p) => held.includes(p)) && !held.some(isWildcard))} aria-label={`${role}: all permissions of this site`} onClick={() => setRoles({ ...roles, [role]: [...perms] })}>All</Button>
               </td>
             </tr>
           ))}
         </tbody>
       </Table>
+      {wild.length > 0 && (
+        <Callout tone="danger" icon={I.alert}>
+          {wild.join(', ')} still {wild.length === 1 ? 'carries' : 'carry'} a wildcard, which jinbe refuses (<span className="mono">wildcard_permission</span>). Use “All” to list
+          {' '}{declaredPermissions(site).join(', ') || 'the permissions your routes declare'} instead.
+        </Callout>
+      )}
       <p className="small muted">A role reaches exactly the permissions it lists. “All” ticks every permission this site declares today; one added later must be ticked too.</p>
       {preset === 'custom' && !readOnly && (
         <div className="row gap-8 wrap">
           <Input size="sm" mono placeholder="new-role" aria-label="New role" value={newRole} onChange={(e) => setNewRole(e.target.value.toLowerCase())} />
           <Button size="sm" icon={I.plus} disabled={!/^[a-z][a-z0-9_-]{0,39}$/.test(newRole) || !!roles[newRole]} onClick={() => { setRoles({ ...roles, [newRole]: [] }); setNewRole(''); }}>Add role</Button>
           <Input size="sm" mono placeholder="reports:export" aria-label="New permission" value={newPerm} onChange={(e) => setNewPerm(e.target.value.trim())} />
-          <Button size="sm" icon={I.plus} disabled={!/^[a-z][a-z0-9_.-]*:[a-z*][a-z0-9_*-]*$/.test(newPerm) || !roles.admin} title="Added to admin; tick it for other roles" onClick={() => { const first = Object.keys(roles).find((r) => !roles[r].includes('*')) ?? Object.keys(roles)[0]; toggle(first, newPerm, true); setNewPerm(''); }}>Add permission</Button>
+          <Button size="sm" icon={I.plus} disabled={!/^[a-z][a-z0-9_.-]*:[a-z][a-z0-9_-]*$/.test(newPerm) || !roles.admin} title="Added to admin; tick it for other roles" onClick={() => { const first = roles.admin ? 'admin' : Object.keys(roles)[0]; toggle(first, newPerm, true); setNewPerm(''); }}>Add permission</Button>
         </div>
       )}
     </Card>
@@ -164,20 +171,20 @@ function GroupsView({ site, readOnly, set }: { site: Site; readOnly: boolean; se
         )}
       </Card>
 
-      <Card title="Org-grantable groups" sub="Owned by this site; org admins can hand them to their members.">
-        {Object.keys(site.groups.orgGrantable).length === 0 && <EmptyHint>None. Org admins cannot give access to {site.displayName}.</EmptyHint>}
+      <Card title="Org roles" sub={`Assigned per organization by its owners, as ${site.name}:<role>, to its members — only in organizations entitled to this site, and only by somebody holding every permission the role gives.`}>
+        {Object.keys(site.groups.orgGrantable).length === 0 && <EmptyHint>None. Organizations cannot give their members access to {site.displayName}.</EmptyHint>}
         <ul className="site-list">
           {Object.entries(site.groups.orgGrantable).map(([g, def]) => {
             const held = def.roles.flatMap((r) => expandRolePermissions(site)[r] ?? []);
+            const named = g.startsWith(`${site.name}-`) && /^[a-z0-9][a-z0-9_-]*$/.test(orgRoleName(site.name, g));
             const lines: CheckLine[] = [
-              { level: g.startsWith(`${site.name}-`) ? 'ok' : 'error', text: `named ${site.name}-…` },
-              { level: held.length > 0 ? 'ok' : 'error', text: 'has permissions' },
-              { level: held.includes('*') ? 'error' : 'ok', text: held.includes('*') ? 'carries “everything” — org admins may not hand that out' : 'no “everything” role' },
+              { level: named ? 'ok' : 'error', text: named ? `assigned as ${site.name}:${orgRoleName(site.name, g)}` : `named ${site.name}-… (lowercase letters, digits, - and _)` },
+              { level: held.length > 0 ? 'ok' : 'error', text: held.length > 0 ? `gives ${held.length} permission${held.length === 1 ? '' : 's'}` : 'gives no permission' },
             ];
             return (
               <li key={g} className="stack gap-4">
                 <div className="row gap-8 items-center wrap">
-                  <span className="mono fw-medium">{g}</span>
+                  <span className="mono fw-medium" title={`entry ${g}`}>{site.name}:{orgRoleName(site.name, g)}</span>
                   <Input size="sm" aria-label={`${g} label`} value={def.label} disabled={readOnly} onChange={(e) => setGrantable({ ...site.groups.orgGrantable, [g]: { ...def, label: e.target.value } })} />
                   <Select size="sm" aria-label={`${g} role`} value={def.roles[0]} disabled={readOnly} onChange={(e) => setGrantable({ ...site.groups.orgGrantable, [g]: { ...def, roles: [e.target.value] } })}>
                     {roles.map((r) => <option key={r} value={r}>{r}</option>)}
@@ -190,7 +197,7 @@ function GroupsView({ site, readOnly, set }: { site: Site; readOnly: boolean; se
           })}
         </ul>
         {!readOnly && Object.keys(site.groups.orgGrantable).length === 0 && (
-          <Button size="sm" icon={I.plus} className="mt-8" onClick={() => setGrantable(orgGrantableFor(site.name, site.displayName))}>Create {site.name}-editors and {site.name}-viewers</Button>
+          <Button size="sm" icon={I.plus} className="mt-8" onClick={() => setGrantable(orgGrantableFor(site.name, site.displayName))}>Create org roles {site.name}:editors and {site.name}:viewers</Button>
         )}
       </Card>
     </div>
@@ -204,13 +211,14 @@ function OrgsView({ site, readOnly, set }: { site: Site; readOnly: boolean; set:
   const [pick, setPick] = useState('');
   const setOrgs = (o: string[]) => set((s) => ({ ...s, orgs: o }));
   return (
-    <Card title="Organizations" sub="Which organizations may use this site. Removing one stops its org grants on org-scoped routes; access through platform groups is unchanged.">
+    <>
+    <Card title="Organizations" sub="Which organizations are entitled to this site: its org roles can be assigned in them. Removing one stops those roles counting there; access through platform groups is unchanged.">
       {site.orgs.length === 0 && <EmptyHint>No organization. Only platform groups give access.</EmptyHint>}
       <ul className="site-list">
         {site.orgs.map((id) => (
           <li key={id} className="row gap-8 items-center">
             <span className="fw-medium">{name(id)}</span>
-            <a className="small" href={`#/orgadmin?org=${encodeURIComponent(id)}&site=${encodeURIComponent(site.name)}`}>See its grants</a>
+            <a className="small" href={`#/orgadmin/${encodeURIComponent(id)}`}>Its members&apos; roles</a>
             {!readOnly && <Button size="sm" variant="ghost" iconOnly icon={I.close} aria-label={`Remove ${name(id)}`} onClick={() => setOrgs(site.orgs.filter((x) => x !== id))} />}
           </li>
         ))}
@@ -225,6 +233,49 @@ function OrgsView({ site, readOnly, set }: { site: Site; readOnly: boolean; set:
         </div>
       )}
       {orgs.error ? <p className="small text-warning">Organizations could not be listed.</p> : null}
+    </Card>
+    <EveryOrgCard site={site} readOnly={readOnly} set={set} />
+    </>
+  );
+}
+
+/**
+ * `everyOrg`: what a site role carries into EVERY organization entitled to the site, for whoever holds
+ * that role through a platform group — the only way a platform role acts inside organizations. Never
+ * more than the role holds (jinbe refuses it: `every_org_beyond_role`).
+ */
+function EveryOrgCard({ site, readOnly, set }: { site: Site; readOnly: boolean; set: (fn: (s: Site) => Site) => void }) {
+  const roles = expandRolePermissions(site);
+  const everyOrg = site.everyOrg ?? {};
+  const toggle = (role: string, perm: string, on: boolean) => set((s) => {
+    const cur = s.everyOrg?.[role] ?? [];
+    const next = { ...(s.everyOrg ?? {}), [role]: on ? [...new Set([...cur, perm])].sort() : cur.filter((p) => p !== perm) };
+    if (next[role].length === 0) delete next[role];
+    const { everyOrg: _drop, ...rest } = s;
+    void _drop;
+    return Object.keys(next).length ? { ...rest, everyOrg: next } : rest;
+  });
+  const names = Object.keys(roles).sort();
+  return (
+    <Card title="In every organization" sub="What holders of a site role (through a platform group) may also do inside every entitled organization. Off by default; never more than the role itself holds.">
+      {names.length === 0 && <EmptyHint>This site has no role yet.</EmptyHint>}
+      <ul className="site-list">
+        {names.map((role) => (
+          <li key={role} className="stack gap-4">
+            <span className="mono fw-medium">{role}</span>
+            {roles[role].length === 0 ? <span className="small muted">carries nothing</span> : (
+              <div className="row wrap gap-8">
+                {roles[role].filter((p) => !isWildcard(p)).map((p) => (
+                  <Checkbox key={p} size="sm" checked={(everyOrg[role] ?? []).includes(p)} disabled={readOnly} onChange={(on) => toggle(role, p, on)} label={<span className="mono small">{p}</span>} />
+                ))}
+              </div>
+            )}
+            {(everyOrg[role] ?? []).filter((p) => !roles[role]?.includes(p)).length > 0 && (
+              <span className="small text-danger">Beyond what {role} holds: {(everyOrg[role] ?? []).filter((p) => !roles[role]?.includes(p)).join(', ')}. jinbe refuses it.</span>
+            )}
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }

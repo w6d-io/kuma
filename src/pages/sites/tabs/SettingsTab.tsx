@@ -134,7 +134,7 @@ export function SettingsTab({ ed, readOnly, canApply, onEditAddress }: { ed: Sit
           <ul className="site-list m-0">
             <li>{br.people != null ? `${br.people} people lose access` : 'People with access lose it'}{br.groups.length ? ` (via ${br.groups.join(', ')})` : ''}</li>
             {br.orgs.length > 0 && <li>{br.orgs.length} organization{br.orgs.length === 1 ? '' : 's'} lose it ({br.orgs.reduce((n, o) => n + o.grants, 0)} grants)</li>}
-            {br.orgGrantableGroups.length > 0 && <li>Org-grantable groups deleted: {br.orgGrantableGroups.join(', ')}</li>}
+            {(br.orgRoles ?? br.orgGrantableGroups ?? []).length > 0 && <li>Org roles deleted: {(br.orgRoles ?? br.orgGrantableGroups ?? []).join(', ')}</li>}
             <li>{br.rules} gateway rule{br.rules === 1 ? '' : 's'} and {br.routes} route{br.routes === 1 ? '' : 's'} removed</li>
             {br.apiKeys != null && <li>{br.apiKeys} API keys scoped to it stop working</li>}
             {br.requests24h != null && <li>{br.requests24h} requests in the last 24 h</li>}

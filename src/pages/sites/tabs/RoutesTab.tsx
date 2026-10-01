@@ -40,7 +40,7 @@ export function RoutesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnl
   const gates = site.gates;
   const permissions = [...new Set([
     ...items.flatMap((r) => (r.access.kind === 'permission' ? [r.access.permission] : [])),
-    ...Object.values(expandRolePermissions(site)).flat().filter((p) => p !== '*'),
+    ...Object.values(expandRolePermissions(site)).flat(),
   ])].sort();
   const gateLabel = (id: string) => gates.find((g) => g.id === id)?.label ?? id;
   const setItems = (fn: (rs: Route[]) => Route[]) => ed.update((s) => ({ ...s, routes: { ...s.routes, items: fn(s.routes.items) } }));

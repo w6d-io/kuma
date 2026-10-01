@@ -32,7 +32,7 @@ export function AccessStep({ s, patch }: { s: WizardState; patch: (p: Partial<Wi
 
   return (
     <div className="stack gap-16">
-      <Field label="Roles" hint="admin = everything · editor = read + write · viewer = read. Customize later on Access.">
+      <Field label="Roles" hint="admin = every permission the routes declare · editor = read + write · viewer = read. Customize later on Access.">
         <Select value={s.roles} onChange={(e) => patch({ roles: e.target.value as RolesPreset })}>
           <option value="standard">Standard: admin · editor · viewer</option>
           <option value="readonly">Read-only: viewer</option>
@@ -88,8 +88,8 @@ export function AccessStep({ s, patch }: { s: WizardState; patch: (p: Partial<Wi
             <Checkbox
               checked={s.orgGrantable}
               onChange={(on) => patch({ orgGrantable: on })}
-              label={`Org admins can give their members ${s.displayName || s.name} ${s.roles === 'readonly' ? 'viewers' : 'editors and viewers'}`}
-              hint="Created for you, org-grantable. admin can’t be handed out by org admins (it includes everything)."
+              label={`Organizations can give their members ${s.displayName || s.name} ${s.roles === 'readonly' ? 'viewer' : 'editor and viewer'} roles`}
+              hint="Created for you as org roles, assigned per organization by its owners. admin is not offered: it carries every permission of the site."
             />
           </div>
         )}

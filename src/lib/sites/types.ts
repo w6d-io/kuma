@@ -75,6 +75,8 @@ export interface Site {
   roles: RolesPreset | Record<string, string[]>;
   groups: { platform: Record<string, string[]>; orgGrantable: Record<string, { label: string; roles: string[] }> };
   orgs: string[];
+  /** What a site role carries into every organization entitled to the site, never more than it holds. */
+  everyOrg?: Record<string, string[]>;
   login?: SiteLogin;
   state?: 'active' | 'paused';
 }
@@ -352,7 +354,10 @@ export interface ApplyResult { applyId: string; version: number; rules: string[]
 
 export interface BlastRadius {
   groups: string[];
-  orgGrantableGroups: string[];
+  /** The site's org roles (`<site>:<role>`) the deletion removes. */
+  orgRoles?: string[];
+  /** An older jinbe's name for the same thing. */
+  orgGrantableGroups?: string[];
   orgs: Array<{ id: string; grants: number }>;
   rules: number;
   routes: number;
