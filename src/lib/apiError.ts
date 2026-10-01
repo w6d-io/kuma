@@ -176,8 +176,9 @@ export interface FieldProblem {
  * The field-level reasons a 400/422 carries, whichever way the route spells them: the Zod handler's
  * `details: [{path, message}]` (path dotted), the sites and gateway routes' `issues` (Zod issues,
  * path an array), the settings routes' `problems: [{field, message}]` (or plain sentences), and a
- * bundle import's `failures: [{id, reason}]`. Without these the toast read "Validation failed" and
- * nothing else, and the person could only guess which value was wrong.
+ * bundle import's `failures: [{id, reason}]` — one of them, never the same refusal twice. Without
+ * these the toast read "Validation failed" and nothing else, and the person could only guess which
+ * value was wrong.
  */
 export function validationProblems(err: unknown): FieldProblem[] {
   const status = statusOf(err);
@@ -187,8 +188,9 @@ export function validationProblems(err: unknown): FieldProblem[] {
   const out: FieldProblem[] = [];
   const text = (v: unknown) => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
   const path = (v: unknown) => (Array.isArray(v) ? v.map(text).filter(Boolean).join('.') : text(v));
+  // The first list that says something: the sites routes send details[] and Zod's issues[] side by side.
   for (const list of [body.details, body.issues, body.problems, body.failures]) {
-    if (!Array.isArray(list)) continue;
+    if (!Array.isArray(list) || out.length) continue;
     for (const p of list) {
       if (typeof p === 'string' && p) { out.push({ field: '', message: p }); continue; }
       if (!p || typeof p !== 'object') continue;

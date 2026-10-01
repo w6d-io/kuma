@@ -189,6 +189,13 @@ describe('validation refusals (400/422)', () => {
       .toEqual([{ field: 'r1', message: 'no permission' }]);
   });
 
+  it('says a refusal once when the sites routes send details and issues together', () => {
+    const e = bad(400, { error: 'invalid_request', message: 'The request is not valid: site.address.host: a DNS host name',
+      details: [{ field: 'site.address.host', path: 'site.address.host', message: 'a DNS host name' }],
+      issues: [{ path: ['site', 'address', 'host'], message: 'a DNS host name' }] });
+    expect(validationProblems(e)).toEqual([{ field: 'site.address.host', message: 'a DNS host name' }]);
+  });
+
   it('shows four, then how many more', () => {
     const details = Array.from({ length: 6 }, (_, i) => ({ path: `services.${i}`, message: 'Invalid' }));
     expect(describeApiError(bad(400, { error: 'Validation failed', details })).detail).toMatch(/services\.3: Invalid · and 2 more$/);
