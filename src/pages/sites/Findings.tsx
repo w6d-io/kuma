@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Button, Checkbox, Dialog } from '../../components/ui';
 import { findingsBlocker, groupFindings } from '../../lib/sites/verify';
 import type { Finding } from '../../lib/sites/types';
@@ -10,8 +10,10 @@ import { CheckList } from './parts';
  * something to accept — a public /health, a signed-in catch-all — so this is the confirmation step
  * of every publish, not an exception.
  */
-export function FindingsList({ findings, acknowledged, onChange, disabled }: {
+export function FindingsList({ findings, acknowledged, onChange, disabled, actionFor }: {
   findings: readonly Finding[]; acknowledged: ReadonlySet<string>; onChange: (next: Set<string>) => void; disabled?: boolean;
+  /** A way to act on a warning or note where it is fixed (e.g. the site's Organizations). */
+  actionFor?: (f: Finding) => ReactNode;
 }) {
   const { errors, warnings, notes, confirm } = groupFindings(findings);
   const toggle = (code: string, on: boolean) => {
@@ -41,8 +43,8 @@ export function FindingsList({ findings, acknowledged, onChange, disabled }: {
           ))}
         </div>
       )}
-      {warnings.length > 0 && <CheckList live={false} lines={warnings.map((f) => ({ level: 'warn', text: f.fix ? `${f.message} ${f.fix}` : f.message }))} />}
-      {notes.length > 0 && <CheckList live={false} lines={notes.map((f) => ({ level: 'info', text: f.fix ? `${f.message} ${f.fix}` : f.message }))} />}
+      {warnings.length > 0 && <CheckList live={false} lines={warnings.map((f) => ({ level: 'warn', text: f.fix ? `${f.message} ${f.fix}` : f.message, action: actionFor?.(f) }))} />}
+      {notes.length > 0 && <CheckList live={false} lines={notes.map((f) => ({ level: 'info', text: f.fix ? `${f.message} ${f.fix}` : f.message, action: actionFor?.(f) }))} />}
     </div>
   );
 }
