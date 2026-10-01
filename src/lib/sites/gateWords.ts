@@ -1,4 +1,4 @@
-import { FAILS_LABEL, GETS_LABEL, PASS_LABEL, WHO, WHO_LABEL, presetsOf, type FailsPreset, type GetsPreset, type PassPreset, type WhoPreset } from './presets';
+import { FAILS_LABEL, GETS_LABEL, PASSES_NO_IDENTITY, PASS_LABEL, WHO, WHO_LABEL, presetsOf, type FailsPreset, type GetsPreset, type PassPreset, type WhoPreset } from './presets';
 import type { Gate, Handler } from './types';
 
 /**
@@ -124,7 +124,7 @@ export function describeGets(gate: Gate): CustomAnswer {
   const anonymous = gate.authenticators.every((h) => h.handler === 'noop');
   return {
     words: m.length ? `The service gets ${m.map(mutatorWord).join(', then ')}` : 'Nothing is forwarded',
-    warning: closest === 'nothing' && !anonymous ? { level: 'warn', text: 'The service receives no identity — it must not trust X-User-* headers from the request.' } : undefined,
+    warning: closest === 'nothing' && !anonymous ? { level: 'warn', text: `${PASSES_NO_IDENTITY}.` } : undefined,
     closest: { value: closest, label: GETS_LABEL[closest] },
   };
 }

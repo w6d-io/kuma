@@ -148,6 +148,16 @@ describe('Review · security findings', () => {
     expect(button(/^Gates$/)).toBeTruthy();
   });
 
+  it('a gate that passes no identity is a warning with the way to the gate, said once', async () => {
+    mount(editor({ version: 16, applied: 16, hasDraft: true, findings: [
+      { code: 'gate_passes_no_identity', level: 'warn', message: "gate 'web' identifies people but passes no identity.", fix: "Set What the service gets to identity headers on gate 'web'.", path: 'gates.0.mutators' },
+    ] }));
+    await settle();
+    expect(text()).toContain('passes no identity');
+    expect(button(/^Gates$/)).toBeTruthy();
+    expect(button(/^Apply changes/).disabled).toBe(false);
+  });
+
   it('a publish refused for unconfirmed findings lists them and publishes that version once they are ticked', async () => {
     api.apply.mockRejectedValueOnce(Object.assign(new Error('Not published'), { status: 422, code: 'unconfirmed_findings', details: { findings: [pub] } }));
     mount(editor({ version: 17, applied: 16, hasDraft: false }));

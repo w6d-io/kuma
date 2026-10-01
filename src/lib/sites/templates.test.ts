@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildSite, kindOf, summarySentence, TEMPLATES, orgGrantableFor } from './templates';
-import { GETS, GETS_LABEL, presetsOf, withPreset, isCustomized, allowsAnonymous, missingHandlers, SANDBOX_ENABLED } from './presets';
+import { GETS, GETS_LABEL, WHO, presetsOf, withPreset, isCustomized, allowsAnonymous, missingHandlers, passesNoIdentity, SANDBOX_ENABLED } from './presets';
 
 const basics = { name: 'payroll', displayName: 'Payroll', host: 'payroll.dev.example.com', service: 'payroll-ui', namespace: 'payroll', port: 8080 };
 
@@ -25,6 +25,13 @@ describe('buildSite', () => {
       for (const g of buildSite(t.id, basics).gates) {
         expect(missingHandlers(g.authenticators, SANDBOX_ENABLED.authenticators)).toEqual([]);
         expect(missingHandlers(g.mutators, SANDBOX_ENABLED.mutators)).toEqual([]);
+      }
+    }
+  });
+  it('every gate that identifies people passes the identity, with or without a public shell', () => {
+    for (const t of TEMPLATES) {
+      for (const shellPublic of [false, true]) {
+        for (const g of buildSite(t.id, basics, { shellPublic }).gates) expect(passesNoIdentity(g)).toBe(false);
       }
     }
   });
@@ -83,5 +90,25 @@ describe('summary', () => {
     expect(summarySentence(s, 23)).toBe(
       'payroll.dev.example.com will send signed-in people to payroll-ui.payroll:8080. /api also accepts API tokens. 23 people get access through 1 group. No organizations.',
     );
+  });
+});
+
+// echo-mfa's "Signed in" gate forwarded nothing and the app got every X-User-* header empty.
+describe('sign-in gates pass the identity', () => {
+  const anyone = withPreset({ id: 'g', label: 'G', authenticators: WHO['signed-in'], authorizer: 'policy', mutators: GETS.identity, errors: 'website' }, 'who', 'anyone');
+  it('Anyone forwards nothing; switching back to a sign-in moves Gets to identity', () => {
+    expect(anyone.mutators).toEqual(GETS.nothing);
+    for (const who of ['signed-in', 'signed-in-or-tokens', 'tokens', 'machines', 'optional'] as const) {
+      expect(withPreset(anyone, 'who', who).mutators).toEqual(GETS.identity);
+    }
+  });
+  it('a sign-in switch keeps a Gets that already passes something', () => {
+    const enrich = { ...anyone, authenticators: WHO['signed-in'], mutators: GETS.enrich };
+    expect(withPreset(enrich, 'who', 'tokens').mutators).toEqual(GETS.enrich);
+  });
+  it('says nothing about a gate nobody signs in through', () => {
+    expect(passesNoIdentity(anyone)).toBe(false);
+    expect(passesNoIdentity({ ...anyone, authenticators: WHO.optional })).toBe(true);
+    expect(passesNoIdentity({ ...anyone, authenticators: WHO['signed-in'], mutators: [] })).toBe(true);
   });
 });

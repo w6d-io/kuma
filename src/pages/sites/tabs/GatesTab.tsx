@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Badge, Button, ButtonBase, Callout, Card, Drawer, Field, FormGrid, I, Input, RadioGroup, Segmented, Switch, cx } from '../../../components/ui';
 import { useSitesPlatform } from '../../../api/sites';
 import {
-  FAILS_LABEL, GETS, GETS_LABEL, PASS_LABEL, WHO, WHO_LABEL, isCustomized, missingHandlers, presetsOf, withPreset, SANDBOX_ENABLED,
+  FAILS_LABEL, GETS, GETS_LABEL, PASSES_NO_IDENTITY, PASS_LABEL, WHO, WHO_LABEL, isCustomized, missingHandlers, passesNoIdentity, presetsOf, withPreset, SANDBOX_ENABLED,
   type FailsPreset, type GetsPreset, type PassPreset, type WhoPreset,
 } from '../../../lib/sites/presets';
 import type { Gate, Site } from '../../../lib/sites/types';
@@ -56,12 +56,18 @@ export function GatesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnly
   // Basic says this gate's sign-in problems in its "Customized" note.
   const checks = mergeChecks(serverChecks, local).filter((c) => level !== 'basic' || !(SIGN_IN_CODES.has(c.code) && c.path === gatePath(index, c.code)));
   const skips2fa = gate ? gateSkipsTwoFactor(site, gate) : null;
+  const noIdentity = !!gate && passesNoIdentity(gate);
   const lines = [
+    ...(noIdentity ? [{
+      level: 'warn' as const, text: `${PASSES_NO_IDENTITY}.`,
+      action: !readOnly && <Button size="sm" variant="primary" onClick={() => setGate({ ...gate!, mutators: GETS.identity })}>Pass identity headers</Button>,
+    }] : []),
     ...(skips2fa ? [{
       level: 'warn' as const, text: skips2fa,
       action: !readOnly && <Button size="sm" variant="primary" onClick={() => setGate(withPreset(gate!, 'pass', 'policy'))}>{PASS_LABEL.policy}</Button>,
     }] : []),
-    ...checkLines(checks),
+    // The no-identity line above carries its fix; the same check from the list would repeat it.
+    ...checkLines(noIdentity ? checks.filter((c) => !(c.code === 'gate_passes_no_identity' && c.path === gatePath(index, c.code))) : checks),
   ];
 
   return (
@@ -72,7 +78,7 @@ export function GatesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnly
           const catchAll = site.routes.catchAll.gate === g.id;
           return (
             <ButtonBase key={g.id} className={cx('site-gate-card', g.id === selectedId && 'on')} aria-pressed={g.id === selectedId} onClick={() => select(g.id)}>
-              <span className="row gap-8 items-center"><span className="fw-medium">{g.label}</span>{isCustomized(g) && <Badge tone="info" mono={false}>Customized</Badge>}{gateSkipsTwoFactor(site, g) && <Badge tone="danger" mono={false}>2FA not enforced</Badge>}</span>
+              <span className="row gap-8 items-center"><span className="fw-medium">{g.label}</span>{isCustomized(g) && <Badge tone="info" mono={false}>Customized</Badge>}{gateSkipsTwoFactor(site, g) && <Badge tone="danger" mono={false}>2FA not enforced</Badge>}{passesNoIdentity(g) && <Badge tone="warning" mono={false} title={PASSES_NO_IDENTITY}>Passes no identity</Badge>}</span>
               <span className="small muted">{WHO_LABEL[presetsOf(g).who as WhoPreset] ?? 'Custom sign-in'}</span>
               <span className="small">{n} route{n === 1 ? '' : 's'}{catchAll ? ' · everything else' : ''}{g.preflight ? ' · + browser pre-flight' : ''}</span>
             </ButtonBase>
@@ -185,7 +191,7 @@ function GateBasic({ gate, site, enabled, readOnly, onChange, onSite, onLocked, 
         {custom('gets')}
         <RadioGroup<GetsPreset> label="What the service gets" name={`gets-${gate.id}`} value={p.gets === 'custom' ? ('' as GetsPreset) : p.gets} disabled={readOnly} onChange={(v) => onChange(withPreset(gate, 'gets', v))} options={(Object.keys(GETS) as GetsPreset[]).map((k) => {
           const missing = missingHandlers(GETS[k], enabled.mutators);
-          return { value: k, label: GETS_LABEL[k], hint: lockHint(missing) ?? (k === 'nothing' && !noSubject ? 'Warning: the service may trust spoofed X-User-* headers.' : undefined), disabled: missing.length > 0 };
+          return { value: k, label: GETS_LABEL[k], hint: lockHint(missing) ?? (k === 'nothing' && !noSubject ? `Warning: ${PASSES_NO_IDENTITY.toLowerCase()}.` : undefined), disabled: missing.length > 0 };
         })} />
       </section>
       <section>
