@@ -8,7 +8,7 @@
  */
 import { secondFactorRefusalSentence } from './twoFactor';
 
-export type ApiErrorKind = 'forbidden' | 'blocked' | 'unreachable' | 'unconfigured' | 'expired' | 'not-found' | 'failed';
+export type ApiErrorKind = 'forbidden' | 'blocked' | 'unreachable' | 'unconfigured' | 'expired' | 'not-found' | 'invalid' | 'failed';
 
 export interface ApiErrorView {
   kind: ApiErrorKind;
@@ -166,7 +166,62 @@ export function refusalDetail(err: unknown): string | null {
   return `${exceeding}${need} ${who}`.trim();
 }
 
-export function describeApiError(err: unknown, ctx: { groups?: string[] } = {}): ApiErrorView {
+/** One value the service refused, and why: "services.3" / "Invalid". */
+export interface FieldProblem {
+  field: string;
+  message: string;
+}
+
+/**
+ * The field-level reasons a 400/422 carries, whichever way the route spells them: the Zod handler's
+ * `details: [{path, message}]` (path dotted), the sites and gateway routes' `issues` (Zod issues,
+ * path an array), the settings routes' `problems: [{field, message}]` (or plain sentences), and a
+ * bundle import's `failures: [{id, reason}]`. Without these the toast read "Validation failed" and
+ * nothing else, and the person could only guess which value was wrong.
+ */
+export function validationProblems(err: unknown): FieldProblem[] {
+  const status = statusOf(err);
+  if (status !== 400 && status !== 422) return [];
+  const body = (err as { details?: Record<string, unknown> } | null)?.details;
+  if (!body || typeof body !== 'object') return [];
+  const out: FieldProblem[] = [];
+  const text = (v: unknown) => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
+  const path = (v: unknown) => (Array.isArray(v) ? v.map(text).filter(Boolean).join('.') : text(v));
+  for (const list of [body.details, body.issues, body.problems, body.failures]) {
+    if (!Array.isArray(list)) continue;
+    for (const p of list) {
+      if (typeof p === 'string' && p) { out.push({ field: '', message: p }); continue; }
+      if (!p || typeof p !== 'object') continue;
+      const r = p as Record<string, unknown>;
+      const message = text(r.message) || text(r.reason);
+      if (message) out.push({ field: path(r.path ?? r.field ?? r.id), message });
+    }
+  }
+  return out;
+}
+
+const SHOWN_PROBLEMS = 4;
+
+/**
+ * "services.3: Invalid · name: Required", at most four, then how many more. `label` renames a
+ * field for the screen that knows what it holds (services.3 → the site picked fourth).
+ */
+export function problemsSentence(problems: FieldProblem[], label?: (field: string) => string | undefined): string {
+  const said = problems.slice(0, SHOWN_PROBLEMS).map(({ field, message }) => {
+    const name = (field && label?.(field)) || field;
+    return name ? `${name}: ${message}` : message;
+  });
+  const more = problems.length - SHOWN_PROBLEMS;
+  return more > 0 ? `${said.join(' · ')} · and ${more} more` : said.join(' · ');
+}
+
+export interface ApiErrorContext {
+  groups?: string[];
+  /** Names a refused field the way the screen shows it; the dotted path when it returns nothing. */
+  field?: (field: string) => string | undefined;
+}
+
+export function describeApiError(err: unknown, ctx: ApiErrorContext = {}): ApiErrorView {
   const status = statusOf(err);
   // An account that must use two-step sign-in, below aal2 (jinbe second-factor/gate.ts). The client
   // is already sending the person to the sign-in site's two-step gate (api/client.ts).
@@ -216,6 +271,10 @@ export function describeApiError(err: unknown, ctx: { groups?: string[] } = {}):
   if (status === 404) {
     return { kind: 'not-found', title: 'Not found', detail: 'It may have been removed.', retryable: false };
   }
+  const problems = validationProblems(err);
+  if (problems.length) {
+    return { kind: 'invalid', title: 'Some values were not accepted', detail: problemsSentence(problems, ctx.field), retryable: false };
+  }
   const message = (err as { message?: unknown } | null | undefined)?.message;
   return {
     kind: 'failed',
@@ -226,7 +285,7 @@ export function describeApiError(err: unknown, ctx: { groups?: string[] } = {}):
 }
 
 /** The same wording, shaped for a toast: the title as the message, the detail underneath. */
-export function toastFor(err: unknown, ctx: { groups?: string[] } = {}): [string, { err: true; sub?: string }] {
+export function toastFor(err: unknown, ctx: ApiErrorContext = {}): [string, { err: true; sub?: string }] {
   const v = describeApiError(err, ctx);
   if (v.kind === 'failed') return [v.detail, { err: true }];
   return [v.title, { err: true, sub: v.detail }];

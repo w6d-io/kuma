@@ -4,6 +4,7 @@
 import type { AccessReview } from './types';
 import { bearerToken } from '../auth/session';
 import { bounceToTwoStep } from '../lib/stepUp';
+import { problemsSentence, validationProblems } from '../lib/apiError';
 import type { GroupSecondFactor } from '../lib/twoFactor';
 
 const _rawBase: string = (window as any).__API_BASE__ ?? '';
@@ -26,7 +27,10 @@ export async function errorFrom(res: Response, message?: string): Promise<Error>
   // Oathkeeper always explain theirs in JSON and the ingress error page sends HTML. Told apart
   // here, so the screen does not send somebody off to ask for a role they already hold.
   const edgeBlocked = res.status === 403 && text !== undefined && text.trim() === '';
-  const msg = message ?? (body.message || (typeof body.error === 'string' ? body.error : body.error?.message) || (edgeBlocked ? 'Blocked by the web firewall' : `HTTP ${res.status}`));
+  // A validation refusal with no sentence of its own ("Validation failed") says which values, so a
+  // screen that shows only the message still names them; the list itself stays on `details`.
+  const fields = body.message ? '' : problemsSentence(validationProblems({ status: res.status, details: body }));
+  const msg = message ?? (body.message || (typeof body.error === 'string' ? body.error : body.error?.message) || (edgeBlocked ? 'Blocked by the web firewall' : `HTTP ${res.status}`)) + (fields ? `: ${fields}` : '');
   return Object.assign(new Error(msg), {
     status: res.status,
     code: body.error,
