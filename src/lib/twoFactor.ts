@@ -104,7 +104,7 @@ export function siteScopeLabel(sf: SiteSecondFactor | null | undefined): string 
 
 /** "2FA set but NOT enforced (gate web never checks 2FA or permissions)", from jinbe's answer; null when enforced. */
 export function siteNotEnforced(sf: SiteSecondFactor | null | undefined): string | null {
-  if (!sf || sf.enforced !== false || !siteScopeLabel(sf)) return null;
+  if (!sf || sf.enforced !== false) return null;
   const ids = sf.notEnforcedOn ?? [];
   if (!ids.length) return '2FA set but NOT enforced (a gate never checks 2FA or permissions)';
   const more = ids.length > 1 ? ` and ${ids.length - 1} more gate${ids.length === 2 ? '' : 's'}` : '';

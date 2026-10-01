@@ -15,25 +15,35 @@ export interface TwoFactorBypass {
   reason: 'allow' | 'other';
 }
 
-/** Whether the site asks for a second factor anywhere. */
+/** Whether the site asks for a second factor anywhere (jinbe: a scope, or chosen routes). */
 export function requiresTwoFactor(site: Partial<Pick<Site, 'login'>>): boolean {
   const tf = site.login?.twoFactor;
   if (!tf) return false;
-  return tf.scope === 'all' || tf.scope === 'writes' || (tf.scope === 'routes' && (tf.routes?.length ?? 0) > 0);
+  return tf.scope !== 'none' || (tf.routes?.length ?? 0) > 0;
 }
+
+const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 const guarded = (a: Access) => a.kind === 'signed-in' || a.kind === 'permission';
 
-/** Gates that serve a signed-in or permission route of a site that requires 2FA, without asking the policy. */
+/**
+ * Gates that serve a signed-in or permission route the 2FA applies to, without asking the policy —
+ * jinbe's second_factor_not_enforced: 'all' every such route, 'writes' those with a write method plus
+ * the catch-all, otherwise the chosen route ids ('catch-all' names the catch-all).
+ */
 export function twoFactorBypass(site: Partial<Pick<Site, 'login' | 'gates' | 'routes'>>): TwoFactorBypass[] {
   if (!requiresTwoFactor(site) || !site.gates || !site.routes) return [];
   const tf = site.login!.twoFactor;
-  const chosen = tf.scope === 'routes' ? new Set(tf.routes) : null;
+  const chosen = new Set(tf.routes ?? []);
+  const applies = (id: string, methods: readonly string[] | null) =>
+    tf.scope === 'all' || chosen.has(id) || (tf.scope === 'writes' && (methods === null || methods.some((m) => WRITES.has(m))));
   const used = new Set<string>();
   for (const r of site.routes.items ?? []) {
-    if (guarded(r.access) && (!chosen || chosen.has(r.id) || chosen.has(r.path))) used.add(r.gate);
+    // No methods listed: every method, writes included.
+    if (guarded(r.access) && applies(r.id, r.methods?.length ? r.methods : null)) used.add(r.gate);
   }
-  if (site.routes.catchAll && guarded(site.routes.catchAll.access) && !chosen) used.add(site.routes.catchAll.gate);
+  const ca = site.routes.catchAll;
+  if (ca && guarded(ca.access) && applies('catch-all', null)) used.add(ca.gate);
   return site.gates.filter((g) => used.has(g.id) && skipsPolicy(g)).map((g) => ({
     gate: g.id,
     label: g.label || g.id,

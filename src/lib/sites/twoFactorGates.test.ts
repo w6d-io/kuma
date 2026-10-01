@@ -24,6 +24,16 @@ describe('twoFactorBypass', () => {
       routes: { items: [{ id: 'h', methods: ['GET'], path: '/health', gate: 'open', access: { kind: 'public' } }], catchAll: { gate: 'web', access: { kind: 'signed-in' } } },
     }))).toEqual([]);
   });
+  it('writes: only routes with a write method, plus the catch-all; routes: the chosen ids', () => {
+    const gates = [gate(), gate({ id: 'api', label: 'api', authorizer: allow })];
+    const read = { id: 'list', methods: ['GET' as const], path: '/list', gate: 'api', access: { kind: 'signed-in' as const } };
+    const write = { ...read, id: 'save', methods: ['POST' as const] };
+    expect(twoFactorBypass(site('writes', gates, { routes: { items: [read], catchAll: { gate: 'web', access: { kind: 'signed-in' } } } }))).toEqual([]);
+    expect(twoFactorBypass(site('writes', gates, { routes: { items: [read, write], catchAll: { gate: 'web', access: { kind: 'signed-in' } } } })).map((b) => b.gate)).toEqual(['api']);
+    const chosen = { ...site('routes', gates, { routes: { items: [read], catchAll: { gate: 'api', access: { kind: 'signed-in' } } } }) };
+    chosen.login.twoFactor = { ...chosen.login.twoFactor, routes: ['catch-all'] } as never;
+    expect(twoFactorBypass(chosen).map((b) => b.gate)).toEqual(['api']);
+  });
   it('the Gates tab warns on any signed-in gate that skips the policy, not on an anonymous one or Nobody', () => {
     const s = site('writes', []);
     expect(gateSkipsTwoFactor(s, gate({ authorizer: allow }))).toMatch(/lets every signed-in person in/);

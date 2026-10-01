@@ -18,6 +18,6 @@ describe('2FA set but not enforced', () => {
   it('names the gate; says nothing when enforced or when no bar is set', () => {
     expect(siteNotEnforced(sf)).toBe('2FA set but NOT enforced (gate web never checks 2FA or permissions)');
     expect(siteNotEnforced({ ...sf, enforced: true })).toBeNull();
-    expect(siteNotEnforced({ ...sf, scope: 'none' })).toBeNull();
+    expect(siteNotEnforced({ ...sf, scope: 'none', enforced: null })).toBeNull();
   });
 });
