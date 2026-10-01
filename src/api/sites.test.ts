@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../auth/session', () => ({ bearerToken: vi.fn(async () => 'tok') }));
 
-import { sitesApi, notAvailable, checksOf } from './sites';
+import { sitesApi, notAvailable, checksOf, draftConflictOf } from './sites';
 
 type Call = { url: string; init: RequestInit };
 let calls: Call[] = [];
@@ -33,6 +33,20 @@ describe('sitesApi', () => {
     expect(c.init.method).toBe('PUT');
     expect(headers(c)).toMatchObject({ 'If-Match': '"abc"', 'Content-Type': 'application/json', Authorization: 'Bearer tok' });
     expect(JSON.parse(String(c.init.body))).toEqual({ site: { name: 'payroll' }, note: 'n' });
+  });
+
+  it('names the draft an autosave started from, or asks that none appeared', async () => {
+    await sitesApi.putDraft('payroll', { displayName: 'P' }, 3, 'd1');
+    await sitesApi.putDraft('payroll', { displayName: 'P' }, 3);
+    expect(headers(calls[0])).toMatchObject({ 'If-Match': '"d1"' });
+    expect(headers(calls[1])).toMatchObject({ 'If-None-Match': '*' });
+    expect(headers(calls[1])['If-Match']).toBeUndefined();
+  });
+
+  it('reads who saved the draft off a 412 stale_draft, and nothing off another refusal', () => {
+    const e = Object.assign(new Error('x'), { status: 412, code: 'stale_draft', details: { current: { etag: 'e2', updatedBy: 'ana@x.io', updatedAt: 't' } } });
+    expect(draftConflictOf(e)).toEqual({ etag: 'e2', updatedBy: 'ana@x.io', updatedAt: 't', baseVersion: undefined });
+    expect(draftConflictOf(Object.assign(new Error('x'), { status: 409, code: 'conflict' }))).toBeNull();
   });
 
   it('sends the draft with its base version', async () => {

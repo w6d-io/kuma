@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { sitesApi, siteKeys, useSite, useSiteDraft, notAvailable, type SiteError } from '../../api/sites';
+import { draftConflictOf, sitesApi, siteKeys, useSite, useSiteDraft, notAvailable, type SiteError } from '../../api/sites';
 import { intentChanges } from '../../lib/sites/diffWords';
-import type { Preview, Site } from '../../lib/sites/types';
+import type { DraftConflict, Preview, Site } from '../../lib/sites/types';
 
 /**
  * One site being edited (site-ux.md §0.5): the saved intent, the server-side draft on top of it,
@@ -10,6 +10,10 @@ import type { Preview, Site } from '../../lib/sites/types';
  *
  * Nothing here reaches the gateway. A draft is per site on the server; edits land in local state at
  * once and are written 800 ms after the last one, so typing never waits on the network.
+ *
+ * Every autosave names the draft it started from (If-Match). When somebody else saved the draft
+ * since, it is refused and the editor stops autosaving: `conflict` says who and when, and the
+ * person picks `reloadDraft` (theirs) or `overwriteDraft` (mine). Never a silent overwrite.
  */
 
 const AUTOSAVE_MS = 800;
@@ -35,7 +39,15 @@ export function useSiteEditor(name: string) {
   const serverDraft = draftQ.data?.site as Partial<Site> | undefined;
 
   const [local, setLocal] = useState<Partial<Site> | null>(null);
-  const [saving, setSaving] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'failed'>('idle');
+  const [saving, setSaving] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'failed' | 'conflict'>('idle');
+  const [conflict, setConflict] = useState<DraftConflict | null>(null);
+  // The draft etag the next autosave names: the loaded draft's, then each autosave's answer. A
+  // refetch is adopted only with no edits of mine in hand — taking the etag of a draft somebody
+  // else saved meanwhile would let my next autosave overwrite theirs without a word.
+  const etag = useRef<string | undefined>(undefined);
+  const editing = local !== null;
+  useEffect(() => { if (!editing) etag.current = draftQ.data?.etag; }, [draftQ.data, editing]);
+  const conflicted = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -49,19 +61,29 @@ export function useSiteEditor(name: string) {
   const inflight = useRef<Promise<void> | null>(null);
   const generation = useRef(0);
 
-  const flush = useCallback(async (next: Partial<Site>) => {
+  const flush = useCallback(async (next: Partial<Site>, ifMatch: string | undefined = etag.current) => {
     const gen = generation.current;
     setSaving('saving');
     const p = (async () => {
       try {
-        const d = await sitesApi.putDraft(name, next, detail.data?.version ?? draftQ.data?.baseVersion);
+        const d = await sitesApi.putDraft(name, next, detail.data?.version ?? draftQ.data?.baseVersion, ifMatch);
         if (gen !== generation.current) return;
+        etag.current = d.etag;
         qc.setQueryData(siteKeys.draft(name), d);
         void qc.invalidateQueries({ queryKey: siteKeys.list() });
+        conflicted.current = false;
+        setConflict(null);
         setSaving('saved');
         setSaveError(null);
       } catch (err) {
         if (gen !== generation.current) return;
+        const c = draftConflictOf(err);
+        if (c) {
+          conflicted.current = true;
+          setConflict(c);
+          setSaving('conflict');
+          return;
+        }
         setSaving('failed');
         setSaveError((err as Error).message);
       }
@@ -76,6 +98,8 @@ export function useSiteEditor(name: string) {
       if (!isComplete(base)) return prev;
       const next = fn(base);
       clearTimeout(timer.current);
+      // Held while the draft is in conflict: the next write is the person's choice, not a timer's.
+      if (conflicted.current) return next;
       setSaving('pending');
       timer.current = setTimeout(() => void flush(next), AUTOSAVE_MS);
       return next;
@@ -86,12 +110,33 @@ export function useSiteEditor(name: string) {
 
   const saveNow = useCallback(async () => {
     clearTimeout(timer.current);
-    if (local) await flush(local);
+    if (local && !conflicted.current) await flush(local);
   }, [local, flush]);
+
+  /** The conflict settled their way: my unsaved edits are dropped, their draft is loaded. */
+  const reloadDraft = useCallback(async () => {
+    clearTimeout(timer.current);
+    generation.current += 1;
+    conflicted.current = false;
+    setConflict(null);
+    setLocal(null);
+    setSaving('idle');
+    await qc.invalidateQueries({ queryKey: siteKeys.draft(name) });
+  }, [name, qc]);
+
+  /** The conflict settled my way: my edits replace the draft they saved (If-Match: theirs). */
+  const overwriteDraft = useCallback(async () => {
+    if (!conflict || !local) return;
+    clearTimeout(timer.current);
+    await flush(local, conflict.etag || undefined);
+  }, [conflict, local, flush]);
 
   const discard = useCallback(async () => {
     clearTimeout(timer.current);
     await sitesApi.deleteDraft(name);
+    etag.current = undefined;
+    conflicted.current = false;
+    setConflict(null);
     setLocal(null);
     setSaving('idle');
     qc.setQueryData(siteKeys.draft(name), null);
@@ -112,6 +157,9 @@ export function useSiteEditor(name: string) {
   const reset = useCallback(() => {
     generation.current += 1;
     clearTimeout(timer.current);
+    etag.current = undefined;
+    conflicted.current = false;
+    setConflict(null);
     setLocal(null);
     setSaving('idle');
   }, []);
@@ -146,7 +194,7 @@ export function useSiteEditor(name: string) {
 
   return {
     name, detail, draftQuery: draftQ, saved, current, site, hasDraft, changes, update, saveNow, discard, reset, settle,
-    saving, saveError, preview, system, loading, missing,
+    saving, saveError, conflict, reloadDraft, overwriteDraft, preview, system, loading, missing,
     neverSaved: !saved && !!current,
   };
 }

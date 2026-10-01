@@ -100,6 +100,20 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
       )}
       {perms.canApply && !ed.system && <PendingRequests name={name} onApplied={() => invalidate(name)} />}
       {!ed.system && <SiteDeletionPending name={name} onDeleted={() => { invalidate(); goSites(sitesHref({ view: 'list' })); }} />}
+      {ed.conflict && !readOnly && (
+        <Callout
+          tone="danger"
+          icon={I.alert}
+          title="Someone else saved this draft"
+          className="mb-12"
+          actions={<>
+            <Button size="sm" onClick={() => void ed.reloadDraft()}>Reload</Button>
+            <Button size="sm" variant="danger" onClick={() => void ed.overwriteDraft()} loading={ed.saving === 'saving'}>Overwrite</Button>
+          </>}
+        >
+          {ed.conflict.updatedBy} saved it{ed.conflict.updatedAt ? ` ${timeAgo(ed.conflict.updatedAt)}` : ''}, after you opened it. Your latest edits are not saved. Reload to see theirs (yours are dropped), or overwrite theirs with yours.
+        </Callout>
+      )}
       {ed.hasDraft && !readOnly && tab !== 'review' && (
         <Callout
           tone="warning"
@@ -112,7 +126,7 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
         >
           {ed.neverSaved ? 'Draft — this site has never been applied.' : `${ed.changes.length || 'Some'} unapplied change${ed.changes.length === 1 ? '' : 's'}${ed.changes.length ? ` (${ed.changes.join(', ')})` : ''} — visitors still see version ${liveVersion ?? d?.version ?? '—'}.`}
           {ed.draftQuery.data?.updatedBy && <span className="muted"> By {ed.draftQuery.data.updatedBy}{ed.draftQuery.data.updatedAt ? `, ${timeAgo(ed.draftQuery.data.updatedAt)}` : ''}.</span>}
-          <span className="muted small"> {ed.saving === 'pending' || ed.saving === 'saving' ? 'Saving…' : ed.saving === 'failed' ? `Not saved: ${ed.saveError}` : ed.saving === 'saved' ? 'Saved.' : ''}</span>
+          <span className="muted small"> {ed.saving === 'pending' || ed.saving === 'saving' ? 'Saving…' : ed.saving === 'failed' ? `Not saved: ${ed.saveError}` : ed.saving === 'conflict' ? 'Not saved: someone else saved this draft.' : ed.saving === 'saved' ? 'Saved.' : ''}</span>
         </Callout>
       )}
 
