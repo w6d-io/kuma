@@ -30,11 +30,11 @@ export function TwoFactorBadge(props: TwoFactorBadgeProps) {
     case 'needs-enrol':
       return <Badge tone="danger" icon={I.shield} mono={false} title={props.title ?? NEEDS_ENROL_TITLE}>needs 2FA enrolled</Badge>;
     case 'site': {
+      // jinbe's `enforced: false` (list, detail, map) or the screen's own reading of the gates.
+      const notEnforced = props.notEnforced ?? (siteNotEnforced(props.site) && (props.site?.summary ?? siteNotEnforced(props.site)));
+      if (notEnforced) return <Badge tone="danger" icon={I.shield} mono={false} title={notEnforced}>2FA NOT enforced</Badge>;
       const label = siteScopeLabel(props.site);
       if (!label || !props.site) return null;
-      // jinbe's `enforced: false` (list, detail, map) or the screen's own reading of the gates.
-      const notEnforced = props.notEnforced ?? (siteNotEnforced(props.site) && (props.site.summary ?? siteNotEnforced(props.site)));
-      if (notEnforced) return <Badge tone="danger" icon={I.shield} mono={false} title={notEnforced}>2FA NOT enforced</Badge>;
       return <Badge tone="info" icon={I.shield} mono={false} title={props.title ?? siteScopeSentence(props.site)}>{label}</Badge>;
     }
   }
