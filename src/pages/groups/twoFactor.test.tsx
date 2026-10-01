@@ -90,5 +90,9 @@ describe('Members must use 2FA', () => {
     render(<GroupSecondFactor name="ops" rule={{ required: true }} />);
     expect(sw().disabled).toBe(true);
     expect(document.body.textContent).toContain('Only a super admin can change it.');
+    cleanup();
+    h.session.permissions = ['*'];
+    render(<GroupSecondFactor name="readers" rule={{ required: false, source: 'default', enrolBeforeJoining: false, defaultRequired: false }} />);
+    expect(document.body.textContent).toContain('Not set yet: it follows the default for its roles. Default for this group: off.');
   });
 });

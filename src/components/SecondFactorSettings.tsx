@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useAuthMethods, useSecondFactorGroups, useSetSecondFactorGroups } from '../api/hooks';
+import { useAuthMethods, useSecondFactorGroups, useSession, useSetSecondFactorGroups } from '../api/hooks';
 import { MultiSelectPills } from './ui/Primitives';
 import { I, Button, Callout, Card } from './ui';
 import { toastFor } from '../lib/apiError';
 import { stepUpAndResume, useResume } from '../lib/resume';
 import { sameGroups, secondFactorWarnings } from '../lib/secondFactor';
+import { mayChangeGroup2fa } from '../lib/twoFactor';
 
 /**
  * Settings · Two-step sign-in: the groups whose members must use a second factor. They are asked to
@@ -18,6 +19,8 @@ export function SecondFactorSettings() {
   const { data, isError } = useSecondFactorGroups();
   const save = useSetSecondFactorGroups();
   const { data: auth } = useAuthMethods();
+  const { data: session } = useSession();
+  const mayChange = mayChangeGroup2fa(session);
   const [draft, setDraft] = useState<string[] | null>(null);
 
   useEffect(() => { if (data) setDraft(data.groups); }, [data]);
@@ -67,10 +70,10 @@ export function SecondFactorSettings() {
       title="Two-step sign-in"
       sub="Members of these groups must use a second factor — an authenticator app or a security key. At their next sign-in they set one up before going anywhere, and nothing that needs a permission (this console included) works for them until they sign in with it."
     >
-      <MultiSelectPills options={options} selected={draft} onToggle={toggle} empty="No groups yet." />
+      <MultiSelectPills options={options} selected={draft} onToggle={mayChange ? toggle : () => {}} empty="No groups yet." />
       {warnings.includes('nobody') && (
         <Callout tone="warning" icon={I.alert} title="Nobody is required to use two-step sign-in" className="mt-12">
-          <div className="small">Administrator accounts would be protected by a password or an email code alone. The recommended minimum is <span className="mono">{data.defaultGroups.join(', ')}</span>.</div>
+          <div className="small">Administrator accounts would be protected by a password or an email code alone. By default every group that can change something requires it: <span className="mono">{data.defaultGroups.join(', ')}</span>.</div>
         </Callout>
       )}
       {warnings.includes('no-method') && (
@@ -79,13 +82,15 @@ export function SecondFactorSettings() {
         </Callout>
       )}
       <div className="row wrap gap-8 mt-12">
-        <Button variant="primary" onClick={() => submit()} disabled={!dirty} loading={save.isPending}>
+        <Button variant="primary" onClick={() => submit()} disabled={!dirty || !mayChange} loading={save.isPending}>
           Save
         </Button>
-        <Button variant="ghost" onClick={() => setDraft(data.defaultGroups)} disabled={sameGroups(draft, data.defaultGroups) || save.isPending}>
-          Reset to recommended
+        <Button variant="ghost" onClick={() => setDraft(data.defaultGroups)} disabled={!mayChange || sameGroups(draft, data.defaultGroups) || save.isPending}>
+          Reset to defaults
         </Button>
-        <span className="small muted">Saving needs a super admin who confirmed a second factor in the last 15 minutes.</span>
+        <span className="small muted">{mayChange
+          ? 'Each group has its own switch too, in the group editor. Saving needs a second factor confirmed in the last 15 minutes.'
+          : 'Only a super admin (groups.mfa:write) changes this; each group also shows it in its editor.'}</span>
       </div>
     </Card>
   );
