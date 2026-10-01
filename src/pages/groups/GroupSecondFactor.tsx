@@ -12,7 +12,7 @@ import { mayChangeGroup2fa, type GroupSecondFactor as Rule } from '../../lib/two
 
 /**
  * "Members must use 2FA", on one group (owner decision, wave 19): members enrol a second factor
- * before they can be added, and sign in with it on every app. Only a super admin changes it, through
+ * before they can be added, and sign in with it on every app. Only groups.mfa:write changes it, through
  * the group's own switch (PUT /admin/rbac/groups/:name/second-factor); a jinbe without that route
  * takes the Settings → Two-step sign-in list with this one name added or removed. Saved at once —
  * apart from the group's roles, which go through their own review.
@@ -25,7 +25,7 @@ export function GroupSecondFactor({ name, rule }: { name: string; rule: Rule | u
   const saveList = useSetSecondFactorGroups();
   const [pending, setPending] = useState(false);
   const [shown, setShown] = useState<boolean | null>(null);
-  const superAdmin = mayChangeGroup2fa(session);
+  const mayChange = mayChangeGroup2fa(session);
   const listed = setting.data?.groups;
   const on = shown ?? (rule ? rule.required : !!listed?.includes(name));
 
@@ -66,7 +66,7 @@ export function GroupSecondFactor({ name, rule }: { name: string; rule: Rule | u
     }
   };
   // Back from the step-up: the same choice, once, if the group is not already there.
-  useResume<{ want: boolean }>(superAdmin ? `group-2fa:${name}` : null, !!rule || !!listed, ({ want }) => { if (want !== on) void apply(want); });
+  useResume<{ want: boolean }>(mayChange ? `group-2fa:${name}` : null, !!rule || !!listed, ({ want }) => { if (want !== on) void apply(want); });
 
   // A jinbe without the setting, or one this person may not read, and no rule on the group: nothing to show.
   if (setting.isError && !rule) return null;
@@ -76,12 +76,12 @@ export function GroupSecondFactor({ name, rule }: { name: string; rule: Rule | u
         <div className="fw-medium text-base row gap-8 items-center">Members must use 2FA {on && <TwoFactorBadge kind="required" />}</div>
         <div className="small muted">
           Covers both: a person must have enrolled a second factor before being added, and members sign in with it on every app.
-          {!superAdmin && ' Only a super admin can change it.'}
+          {!mayChange && ' Changing it needs groups.mfa:write.'}
           {rule?.source === 'default' && ' Not set yet: it follows the default for its roles.'}
           {rule?.defaultRequired !== undefined && ` Default for this group: ${rule.defaultRequired ? 'on' : 'off'}.`}
         </div>
       </div>
-      <Switch on={on} onChange={(v) => void apply(v)} label="Members must use 2FA" disabled={!superAdmin || (!rule && !listed) || pending} />
+      <Switch on={on} onChange={(v) => void apply(v)} label="Members must use 2FA" disabled={!mayChange || (!rule && !listed) || pending} />
     </div>
   );
 }

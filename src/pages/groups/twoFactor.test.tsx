@@ -3,11 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, click, render } from '../../components/ui/testing';
 
 // "Members must use 2FA": the badge follows each group's rule, a person who never enrolled cannot be
-// ticked into such a group, and only a super admin flips the switch.
+// ticked into such a group, and only groups.mfa:write flips the switch.
 
 const h = vi.hoisted(() => ({
   rules: {} as Record<string, { required: boolean; enrolBeforeJoining?: boolean; source?: string | null }>,
-  session: { permissions: ['*'] as string[] },
+  session: { permissions: ['groups.members:write', 'groups.mfa:write'] as string[] },
   setting: { data: { groups: ['super_admins'], defaultGroups: ['super_admins'] } as { groups: string[] } | undefined, isError: false },
   mutate: vi.fn(),
   setGroupRequired: vi.fn(),
@@ -30,7 +30,7 @@ const rowOf = (name: string) => [...document.querySelectorAll('.people-sep')].fi
 
 beforeEach(() => {
   h.rules = { ops: { required: true }, platform: { required: false, enrolBeforeJoining: true }, readers: { required: false } };
-  h.session.permissions = ['*'];
+  h.session.permissions = ['groups.members:write', 'groups.mfa:write'];
   h.setting = { data: { groups: ['super_admins'] }, isError: false };
   h.mutate.mockReset().mockResolvedValue(undefined);
   h.setGroupRequired.mockReset().mockResolvedValue({ name: 'ops', secondFactor: { required: true } });
@@ -49,7 +49,7 @@ describe('group rows', () => {
     expect(rowOf('ops').textContent).toContain('needs 2FA enrolled');
     expect((rowOf('ops').querySelector('input') as HTMLInputElement).disabled).toBe(true);
     expect((rowOf('platform').querySelector('input') as HTMLInputElement).disabled).toBe(true);
-    expect(rowOf('platform').textContent).toContain('platform admin');
+    expect(rowOf('platform').textContent).toContain('platform');
     expect(rowOf('platform').textContent).not.toContain('2FA required');
     expect((rowOf('readers').querySelector('input') as HTMLInputElement).disabled).toBe(false);
   });
@@ -64,7 +64,7 @@ describe('group rows', () => {
 describe('Members must use 2FA', () => {
   const sw = () => document.querySelector('[aria-label="Members must use 2FA"]') as HTMLButtonElement;
 
-  it('switches the group on through its own route for a super admin, and explains both halves of the rule', async () => {
+  it('switches the group on through its own route for a groups.mfa:write holder, and explains both halves of the rule', async () => {
     render(<GroupSecondFactor name="ops" rule={{ required: false }} />);
     expect(document.body.textContent).toContain('enrolled a second factor before being added');
     expect(sw().getAttribute('aria-checked')).toBe('false');
@@ -85,14 +85,23 @@ describe('Members must use 2FA', () => {
     expect(h.mutate).toHaveBeenCalledWith(['super_admins']);
   });
 
-  it('is read-only for anybody but a super admin', () => {
-    h.session.permissions = ['admin:write'];
+  it('is read-only without groups.mfa:write', () => {
+    h.session.permissions = ['groups:write'];
     render(<GroupSecondFactor name="ops" rule={{ required: true }} />);
     expect(sw().disabled).toBe(true);
-    expect(document.body.textContent).toContain('Only a super admin can change it.');
+    expect(document.body.textContent).toContain('Changing it needs groups.mfa:write.');
     cleanup();
-    h.session.permissions = ['*'];
+    h.session.permissions = ['groups.members:write', 'groups.mfa:write'];
     render(<GroupSecondFactor name="readers" rule={{ required: false, source: 'default', enrolBeforeJoining: false, defaultRequired: false }} />);
     expect(document.body.textContent).toContain('Not set yet: it follows the default for its roles. Default for this group: off.');
+  });
+});
+
+describe('group rows under the holding rule', () => {
+  it('keeps a group that gives what the caller does not hold out of reach, and says what', () => {
+    render(<SiteGroupRows checked={[]} toggle={() => {}} targetMfa offered={['ops', 'readers']} mayAssign privileged={() => false} beyond={(g) => (g === 'ops' ? ['users:delete'] : [])} describe={() => ''} />);
+    expect((rowOf('ops').querySelector('input') as HTMLInputElement).disabled).toBe(true);
+    expect(rowOf('ops').getAttribute('title')).toContain('users:delete');
+    expect((rowOf('readers').querySelector('input') as HTMLInputElement).disabled).toBe(false);
   });
 });

@@ -46,7 +46,7 @@ export function OverviewTab({ ed, go }: { ed: SiteEditor; go: Go }) {
 
       <Card title="Who has access" actions={<Button size="sm" variant="ghost" onClick={() => go('access')}>Open</Button>}>
         {groups.length === 0 && orgGrantable.length === 0
-          ? <p className="m-0 small">Nobody but super admins can use {s.displayName} yet. Map a group or make it available to an organization.</p>
+          ? <p className="m-0 small">Nobody can use {s.displayName} yet. Map a group or make it available to an organization.</p>
           : (
             <dl className="site-kv">
               <dt>Groups</dt><dd>{groups.map(([g, roles]) => `${g} → ${roles.join(', ')}`).join(' · ') || '—'}</dd>

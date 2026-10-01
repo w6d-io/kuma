@@ -1,16 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useDeleteGroup, useSaveGroup } from '../../api/rbacWrites';
-import { describeApiError } from '../../lib/apiError';
+import { describeApiError, isDefinedInCode } from '../../lib/apiError';
 import { stepUpOnRefusal } from '../../lib/resume';
 import type { GroupMapping } from '../../api/types';
 import {
   Badge, Button, ButtonBase, Callout, Checkbox, ConfirmDialog, Drawer, EmptyHint, Field, I, Input, Tabs,
 } from '../../components/ui';
 import {
-  diffGroupSites, effectiveAccess, isEverything, isOrgGrantable, membersOf, validateGroupName, type RbacUser,
+  administersPlatform, diffGroupSites, effectiveAccess, membersOf, validateGroupName, type RbacUser,
 } from '../../lib/rbacEdit';
-import { PermChips } from '../access/shared';
+import { DefinedInCodeNote, PermChips } from '../access/shared';
 import { plural } from '../access/access';
 import { GroupSecondFactor } from './GroupSecondFactor';
 import { useGroupSecondFactors } from '../../api/twoFactor';
@@ -21,7 +21,7 @@ type Tab = 'access' | 'members';
  * One group: the roles it gives on each site (sites × roles), what that adds up to, and who is in it.
  * Changes go through a review — the roles gained and lost per site, and how many people they reach.
  */
-export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDeleted }: {
+export function GroupEditor({ name, canEdit: mayWrite, users, onClose, onCreated, onDeleted }: {
   /** null: a new group. */
   name: string | null;
   canEdit: boolean;
@@ -41,19 +41,20 @@ export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDelete
   const [confirmDelete, setConfirmDelete] = useState(false);
   const secondFactorOf = useGroupSecondFactors();
 
-  const system = !!(name && state.groupsMeta[name]?.system);
+  // Staff groups and super_admins are defined in code (a site's groups by its intent): jinbe answers
+  // 409 defined_in_code to any write, whoever asks. Known from the list's flag, or from that 409.
+  const [locked, setLocked] = useState(!!(name && state.groupsMeta[name]?.system));
+  const canEdit = mayWrite && !locked;
   const members = name && users ? membersOf(users, [name]) : [];
   const sites = [...state.services].sort((a, b) => Number(!!a.system) - Number(!!b.system) || a.name.localeCompare(b.name));
   const cleaned: GroupMapping = Object.fromEntries(Object.entries(draft).filter(([, r]) => r.length));
   const changes = diffGroupSites(before, cleaned);
   const nameError = name ? null : validateGroupName(newName, Object.keys(state.groups));
   const access = effectiveAccess(cleaned, state.roles);
-  const grantable = isOrgGrantable(cleaned, state.roles);
   const finalName = name ?? newName.trim();
-  // Everything on a system site or on `global`: the group administers the platform itself, so
-  // deleting it is typed out whoever is in it.
+  // Platform access (a permission on jinbe): deleting it is typed out whoever is in it.
   const systemSites = new Set(state.services.filter(s => s.system).map(s => s.name));
-  const administersPlatform = effectiveAccess(before, state.roles).some(a => a.everything && (a.site === 'global' || systemSites.has(a.site)));
+  const platform = administersPlatform(before, state.roles, systemSites);
 
   const toggle = (site: string, role: string, on: boolean) => setDraft(d => {
     const cur = d[site] ?? [];
@@ -66,6 +67,7 @@ export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDelete
       pipeline.run(name ? `group ${finalName}` : `new group ${finalName}`);
       if (name) onClose(); else onCreated(finalName);
     } catch (e) {
+      if (isDefinedInCode(e)) { setLocked(true); setStep('edit'); pushToast(`The group ${finalName} is defined in code`, { err: true, sub: 'Nothing was saved.' }); return; }
       if (stepUpOnRefusal(e, pushToast, { redo: `Save the group ${finalName} again: nothing was saved before the check.` })) return;
       pushToast('The group was not saved', { err: true, sub: describeApiError(e).detail, ttl: 8000 });
     }
@@ -77,6 +79,7 @@ export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDelete
       setConfirmDelete(false);
       onDeleted();
     } catch (e) {
+      if (isDefinedInCode(e)) { setLocked(true); setConfirmDelete(false); pushToast(`The group ${name} is defined in code`, { err: true, sub: 'Nothing was deleted.' }); return; }
       if (stepUpOnRefusal(e, pushToast, { redo: `Delete the group ${name} again: nothing was deleted before the check.` })) return;
       pushToast('The group was not deleted', { err: true, sub: describeApiError(e).detail, ttl: 8000 });
     }
@@ -84,7 +87,7 @@ export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDelete
 
   const footer = !canEdit ? <Button onClick={onClose}>Close</Button> : step === 'edit' ? (
     <>
-      {name && !system && <Button variant="danger" icon={I.trash} onClick={() => setConfirmDelete(true)}>Delete</Button>}
+      {name && <Button variant="danger" icon={I.trash} onClick={() => setConfirmDelete(true)}>Delete</Button>}
       <span className="spacer" />
       <Button onClick={onClose}>Cancel</Button>
       <Button variant="primary" disabled={!!nameError || (!!name && changes.length === 0)} onClick={() => setStep('review')}>Review changes</Button>
@@ -102,11 +105,7 @@ export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDelete
         <GroupReview name={finalName} changes={changes} people={name ? members.length : 0} creating={!name} />
       ) : (
         <div className="col gap-16">
-          {system && (
-            <Callout tone="warning" icon={I.lock}>
-              A system group: it cannot be deleted, and changing it may need a super admin.
-            </Callout>
-          )}
+          {locked && <DefinedInCodeNote what={`The group ${name}`} />}
           {!name && (
             <Field label="Name" htmlFor="group-name" error={newName && nameError} hint="Lowercase letters and _, e.g. payroll_editors" required>
               <Input id="group-name" mono value={newName} onChange={e => setNewName(e.target.value)} autoFocus />
@@ -132,7 +131,7 @@ export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDelete
                     <fieldset key={s.name} className="rb-site-row" disabled={!canEdit}>
                       <legend className="row gap-8">
                         <span className="mono fw-medium">{s.name}</span>
-                        {s.system && <Badge tone="warning">system</Badge>}
+                        {s.system && <Badge tone="neutral" mono={false}>{s.name === 'jinbe' ? 'platform' : 'site intent'}</Badge>}
                       </legend>
                       {!state.roles[s.name] ? <span className="small text-warning">its roles could not be read — reload to edit them</span>
                         : roles.length === 0 ? <span className="small muted">this site has no role</span> : (
@@ -144,7 +143,7 @@ export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDelete
                               onChange={on => toggle(s.name, r, on)}
                               disabled={!canEdit}
                               label={<span className="mono">{r}</span>}
-                              hint={isEverything(state.roles[s.name][r]) ? 'everything' : plural(state.roles[s.name][r].length, 'permission')}
+                              hint={plural(state.roles[s.name][r].length, 'permission')}
                             />
                           ))}
                         </div>
@@ -153,7 +152,7 @@ export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDelete
                   );
                 })}
               </div>
-              <WhoGetsWhat access={access} grantable={grantable} />
+              <WhoGetsWhat access={access} />
             </>
           )}
         </div>
@@ -164,9 +163,9 @@ export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDelete
         danger
         confirmLabel="Delete group"
         busy={remove.isPending}
-        requireText={members.length || administersPlatform ? name ?? undefined : undefined}
-        body={administersPlatform
-          ? 'This group gives everything on a system site: it administers the platform. Make sure another group still does before deleting it.'
+        requireText={members.length || platform ? name ?? undefined : undefined}
+        body={platform
+          ? 'This group gives platform permissions. Make sure the people who need them still hold them through another group.'
           : 'The group and the roles it gives are removed.'}
         blastRadius={members.length
           ? `${plural(members.length, 'person', 'people')} lose what it gave them, unless another group gives the same.`
@@ -178,23 +177,21 @@ export function GroupEditor({ name, canEdit, users, onClose, onCreated, onDelete
   );
 }
 
-function WhoGetsWhat({ access, grantable }: { access: ReturnType<typeof effectiveAccess>; grantable: ReturnType<typeof isOrgGrantable> }) {
+function WhoGetsWhat({ access }: { access: ReturnType<typeof effectiveAccess> }) {
   return (
     <div className="col gap-8">
       <div className="fw-medium">Who gets what</div>
       {access.length === 0 ? <EmptyHint>Members get nothing from this group yet.</EmptyHint> : access.map(a => (
         <div key={a.site} className="rb-access">
           <div className="small mono text-muted">{a.site}</div>
-          <PermChips perms={a.everything ? ['*'] : a.permissions} max={12} site={a.site} />
+          <PermChips perms={a.permissions} max={12} site={a.site} />
           {a.undefinedRoles.length > 0 && (
             <div className="small text-warning mt-4">{a.undefinedRoles.join(', ')} not defined on {a.site}: gives nothing.</div>
           )}
         </div>
       ))}
       <div className="small muted">
-        {grantable.ok
-          ? 'Org admins can hand this group out in their own organization.'
-          : `Org admins cannot hand it out: ${grantable.reasons.join(', ')}.`}
+        Adding somebody to it needs groups.members:write and every permission it gives.
       </div>
     </div>
   );

@@ -48,14 +48,14 @@ export interface AccessReviewIdentity {
   id: string;
   email: string;
   name?: string;
-  /** 0 = global super-admin, 1 = service wildcard, 2 = org-admin, 3 = broad reach. */
+  /** 0 = every permission, 1 = a whole service, 2 = organization owner, 3 = broad reach. */
   tier: number;
   tierLabel?: string;
   /** Distinct service count the identity can reach. */
   reach?: number;
   services?: string[];
   groups: string[];
-  /** Catalog flags: global-super-admin, wildcard, sprawl, self-granted, dormant,
+  /** Catalog flags: every-permission, whole-service, sprawl, self-granted, dormant,
    *  no-mfa, org-admin-broad-reach, inactive-retaining-power, orphaned-group,
    *  unaccounted-power, granted-but-unused. */
   flags: string[];

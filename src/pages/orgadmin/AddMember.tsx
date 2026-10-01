@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, type LookupHit } from '../../api/client';
 import { orgAccessApi } from '../../api/orgAccess';
-import { readMemberInput } from '../../lib/orgGrants';
+import { readMemberInput } from '../../lib/orgRoles';
 import { statusOf } from '../../lib/apiError';
 import { Button } from '../../components/ui';
 import { PersonFinder } from '../../components/PersonFinder';
@@ -43,7 +43,7 @@ export function AddMember({ org, orgName, pushToast }: { org: string; orgName: s
       setValue('');
       setPicked(null);
       qc.invalidateQueries({ queryKey: ['org-users', org] });
-      qc.invalidateQueries({ queryKey: ['org-grants', org] });
+      qc.invalidateQueries({ queryKey: ['org-member-roles', org] });
     } catch (err) {
       if ((err as { lookupRefused?: boolean }).lookupRefused) {
         setProblem('You cannot look people up by email here. Paste their user id instead.');

@@ -4,7 +4,7 @@ import { useStats } from '../../api/hooks';
 import { useRbacUsers } from '../../api/rbacWrites';
 import { Badge, Button, ButtonBase, Card, EmptyRow, I, Input, PageHeader, Table, Toolbar, TwoFactorBadge } from '../../components/ui';
 import { useGroupSecondFactors } from '../../api/twoFactor';
-import { isEverything, isOrgGrantable, membersOf } from '../../lib/rbacEdit';
+import { membersOf } from '../../lib/rbacEdit';
 import { ReadOnlyNote } from '../access/shared';
 import { useCanEditAccess } from '../access/access';
 import { GroupEditor } from './GroupEditor';
@@ -44,26 +44,25 @@ export function GroupsPage() {
             </Toolbar>
             <Table className="rb-stack">
               <thead>
-                <tr><th>Group</th><th>Gives</th><th className="num">Members</th><th>Org admins can hand it out</th></tr>
+                <tr><th>Group</th><th>Gives</th><th className="num">Members</th></tr>
               </thead>
               <tbody>
-                {shown.length === 0 && <EmptyRow colSpan={4}>{names.length ? 'No group matches.' : 'No group yet.'}</EmptyRow>}
+                {shown.length === 0 && <EmptyRow colSpan={3}>{names.length ? 'No group matches.' : 'No group yet.'}</EmptyRow>}
                 {shown.map(g => {
                   const def = state.groups[g];
                   const sites = Object.keys(def).filter(s => def[s]?.length).sort();
-                  const grantable = isOrgGrantable(def, state.roles);
                   return (
                     <tr key={g} className="row-click" onClick={() => setPage('groups', g)}>
                       <td className="nowrap" data-label="Group">
                         <ButtonBase className="rb-row-link mono fw-medium" onClick={e => { e.stopPropagation(); setPage('groups', g); }}>{g}</ButtonBase>
-                        {state.groupsMeta[g]?.system && <Badge tone="warning" icon={I.lock} className="ml-4">system</Badge>}
+                        {state.groupsMeta[g]?.system && <Badge tone="neutral" mono={false} icon={I.lock} className="ml-4" title="Defined in code: read-only here">defined in code</Badge>}
                         {secondFactorOf(g)?.required && <span className="ml-4"><TwoFactorBadge kind="required" /></span>}
                       </td>
                       <td data-label="Gives">
                         {sites.length === 0 ? <span className="small muted">no role</span> : (
                           <span className="row wrap gap-4">
                             {sites.map(s => def[s].map(r => (
-                              <Badge key={s + r} tone={isEverything(state.roles[s]?.[r]) ? 'accent' : 'info'} title={isEverything(state.roles[s]?.[r]) ? `everything in ${s}` : undefined}>
+                              <Badge key={s + r} tone="info">
                                 {s} · {r}
                               </Badge>
                             )))}
@@ -71,11 +70,6 @@ export function GroupsPage() {
                         )}
                       </td>
                       <td className="num" data-label="Members">{count(g)}</td>
-                      <td data-label="Org admins can hand it out">
-                        {grantable.ok
-                          ? <Badge tone="success" mono={false}>yes</Badge>
-                          : <span className="small muted">no — {grantable.reasons.join(', ')}</span>}
-                      </td>
                     </tr>
                   );
                 })}

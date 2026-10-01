@@ -5,7 +5,7 @@ import { api, type BackupList } from '../api/client';
 import { stepUpOnRefusal } from '../lib/resume';
 import { I, Badge, Button, Card, CodeView, ConfirmDialog, EmptyRow, LoadingRows, PageHeader, Table } from '../components/ui';
 import { ExportBundleModal } from '../components/ExportBundleModal';
-import { PRIVILEGED_MUTATION, permits } from '../policy/model';
+import { holds } from '../policy/model';
 
 // Deploy-time flag (envsubst → window.__BACKUP_ENABLED__). A stable module
 // constant — the conditional render in BackupPage never flips at runtime, so
@@ -64,8 +64,8 @@ jinbe:
 function BackupEnabled() {
   const { pushToast, refetch } = useApp();
   const { data: session } = useSession();
-  // The permission the restore checks. A role name this model does not define greyed it for all.
-  const mayRestore = permits(session?.permissions, PRIVILEGED_MUTATION);
+  // The permission the restore checks.
+  const mayRestore = holds(session, 'policy.bundle:write');
 
   const [list, setList] = useState<BackupList | null>(null);
   const [loading, setLoading] = useState(true);
@@ -153,7 +153,7 @@ function BackupEnabled() {
 
   const backups = list?.backups ?? [];
   const latest = backups[0];
-  const gate = mayRestore ? undefined : 'Needs admin.membership:write';
+  const gate = mayRestore ? undefined : 'Needs policy.bundle:write';
 
   return (
     <>
@@ -185,7 +185,7 @@ function BackupEnabled() {
           </Button>
           <Button variant="ghost" size="sm" className="ml-auto" onClick={load} disabled={loading}>Refresh</Button>
         </div>
-        {!mayRestore && <p className="small muted mt-12">Restore and export need admin.membership:write.</p>}
+        {!mayRestore && <p className="small muted mt-12">Restore needs policy.bundle:write.</p>}
       </Card>
 
       {/* snapshots */}

@@ -10,22 +10,22 @@ import { SkeletonPanel } from '../components/ui/Skeleton';
 
 // Tier catalog — power class an identity resolves to (jinbe Part B resolver).
 const TIER_META: Record<number, { label: string; short: string; tone: BadgeTone; desc: string }> = {
-  0: { label: 'Global super-admin', short: 'T0', tone: 'danger',  desc: 'Can do anything, everywhere.' },
-  1: { label: 'Service wildcard',   short: 'T1', tone: 'danger',  desc: 'Full control (*) of one or more services.' },
-  2: { label: 'Organization admin', short: 'T2', tone: 'warning', desc: 'Administers one or more organizations.' },
+  0: { label: 'Every permission',   short: 'T0', tone: 'danger',  desc: 'Holds every platform permission the catalogue declares.' },
+  1: { label: 'Whole service',      short: 'T1', tone: 'danger',  desc: 'Holds every permission of one or more services.' },
+  2: { label: 'Organization owner', short: 'T2', tone: 'warning', desc: 'Assigns roles in one or more organizations (org.members:write there).' },
   3: { label: 'Broad reach',        short: 'T3', tone: 'info', desc: 'Elevated access across several services.' },
 };
 const tierMeta = (t: number) => TIER_META[t] || { label: `Tier ${t}`, short: `T${t}`, tone: 'neutral' as BadgeTone, desc: '' };
 
 // Flag catalog — the risk markers a power holder can carry.
 const FLAG_META: Record<string, { label: string; tone: BadgeTone; desc: string }> = {
-  'global-super-admin':        { label: 'super-admin',      tone: 'danger',  desc: 'Holds the global super_admin role.' },
-  'wildcard':                  { label: 'wildcard (*)',     tone: 'danger',  desc: 'A service role grants the * permission.' },
+  'every-permission':          { label: 'every permission', tone: 'danger',  desc: 'Holds every platform permission the catalogue declares.' },
+  'whole-service':             { label: 'whole service',    tone: 'danger',  desc: 'Holds every permission one service declares.' },
   'sprawl':                    { label: 'sprawl',           tone: 'warning', desc: 'Broad reach across many services.' },
   'self-granted':              { label: 'self-granted',     tone: 'danger',  desc: 'Granted itself this power (actor == target).' },
   'dormant':                   { label: 'dormant',          tone: 'warning', desc: 'No recent activity while retaining power.' },
   'no-mfa':                    { label: 'no MFA',           tone: 'danger',  desc: 'Privileged without a second factor.' },
-  'org-admin-broad-reach':     { label: 'org-admin reach',  tone: 'warning', desc: 'Org-admin spanning many services.' },
+  'org-admin-broad-reach':     { label: 'owner reach',      tone: 'warning', desc: 'An organization owner who also reaches many services.' },
   'inactive-retaining-power':  { label: 'inactive',         tone: 'warning', desc: 'Deactivated identity still holds power.' },
   'orphaned-group':            { label: 'orphaned group',   tone: 'warning', desc: 'Member of a group with no definition.' },
   'unaccounted-power':         { label: 'unaccounted',      tone: 'warning', desc: 'Power with no traceable grant path.' },

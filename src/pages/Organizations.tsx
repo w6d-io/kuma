@@ -1,39 +1,31 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
 import { MultiSelectPills } from '../components/ui/Primitives';
-import { Avatar, Badge, Button, ButtonBase, Card, ConfirmDialog, Drawer, EmptyHint, EmptyRow, Field, Input, LoadingRows, PageHeader, Table, cx } from '../components/ui';
-import { kratosToUser } from '../api/transforms';
-import {
-  useAllOrganizations,
-  useOrgUsers,
-  useAssignableGroups,
-  useOrgAdminMap,
-  useSetOrgAdmins,
-  useSession,
-} from '../api/hooks';
-import { InviteDrawer } from './orgadmin/InviteDrawer';
-import { AddMember } from './orgadmin/AddMember';
+import { Badge, Button, ButtonBase, Card, Drawer, EmptyHint, Field, Input, PageHeader, cx } from '../components/ui';
+import { useAllOrganizations, useOrgUsers, useSession } from '../api/hooks';
+import { useMyOrgPermissions, useOrgMemberRoles, useOrgRoles } from '../api/orgRoles';
+import { OrgMembers } from './orgadmin/OrgMembers';
 import { CreateOrgDialog, DeleteOrgDialog, EditOrgDialog } from './organizations/OrgDialogs';
-import { orgAccessApi } from '../api/orgAccess';
+import { orgAccessApi, OWNER_ROLE } from '../api/orgAccess';
+import { entitledSites, ownersOf } from '../lib/orgRoles';
 import { toastFor } from '../lib/apiError';
 import { ApiErrorState } from '../components/ApiErrorState';
-import { PRIVILEGED_MUTATION, permits } from '../policy/model';
+import { holds, holdsIn } from '../policy/model';
 import { stepUpAndResume, useResume } from '../lib/resume';
 
-// The Organizations hub — the platform-level view of EVERY tenant, as opposed to the delegated
-// "Org Admin" tab (a member's self-service view of only the orgs they administer). jinbe owns the
-// records (the registry: name, tenant, applications) and the memberships (on each identity); this
-// screen creates, renames and deletes organisations, sets what they run, and manages their people
-// and their administrators in one place.
-
-/** Creating, renaming and deleting organisations — the record, not who belongs to it. */
-const ORG_WRITE = 'admin.organisation:write';
+// The Organizations hub — the platform-level view of EVERY tenant, as opposed to "My org" (one
+// organization from the inside). jinbe owns the records (name, tenant), the memberships and the org
+// roles; this screen creates, renames and deletes organisations, names their owners, and shows their
+// people and roles in one place. Which sites an organization may use is each site's intent, shown here
+// read-only. Each control asks the permission its route declares, exactly.
 
 export function OrganizationsPage() {
   const { pageParam, setPage, pushToast } = useApp();
   const { data: session } = useSession();
-  const mayWrite = permits(session?.permissions, ORG_WRITE);
+  const mayWrite = holds(session, 'orgs:write');
+  const mayDelete = holds(session, 'orgs:delete');
   const [creating, setCreating] = useState(false);
   // EVERY organisation, from the route that answers that question and refuses when the caller may
   // not ask it. This page used to call `/me/organizations`, which widened to everything for an
@@ -43,15 +35,8 @@ export function OrganizationsPage() {
     () => Object.fromEntries((orgsQ.data?.organizations ?? []).map((o) => [o.id, o.name])),
     [orgsQ.data],
   );
-  // Which applications each organisation actually has, from the directory that records them. This
-  // page read a map from Redis that nothing populates any more, so it reported "no services bundled"
-  // for all eight — while `organisation_deployments` held the answer the whole time.
   const tenants = useMemo(
     () => Object.fromEntries((orgsQ.data?.organizations ?? []).map((o) => [o.id, o.tenant])),
-    [orgsQ.data],
-  );
-  const applications = useMemo(
-    () => Object.fromEntries((orgsQ.data?.organizations ?? []).map((o) => [o.id, o.applications ?? []])),
     [orgsQ.data],
   );
   const orgs = useMemo(
@@ -81,7 +66,7 @@ export function OrganizationsPage() {
   const header = (
     <PageHeader
       title="Organizations"
-      sub={<>Every organization, the sites it runs and its members — in one place{orgs ? ` · ${orgs.length} org${orgs.length === 1 ? '' : 's'}` : ''}</>}
+      sub={<>Every organization, its owners, its members and their roles — in one place{orgs ? ` · ${orgs.length} org${orgs.length === 1 ? '' : 's'}` : ''}</>}
       actions={mayWrite && !orgsQ.isError ? <Button variant="primary" icon={I.plus} onClick={() => setCreating(true)}>Create organization</Button> : undefined}
     />
   );
@@ -103,7 +88,7 @@ export function OrganizationsPage() {
         <Card className="p-32">
           <EmptyHint>
             {mayWrite
-              ? <>No organization yet. Create one, then add its people and choose its administrators.</>
+              ? <>No organization yet. Create one, then name its owners.</>
               : <>No organization yet. Somebody who may manage organizations can create one.</>}
           </EmptyHint>
           {mayWrite && (
@@ -121,13 +106,12 @@ export function OrganizationsPage() {
     <>
       {header}
       <div className="list-detail">
-        {/* Left rail — one row per org, with a bundle summary */}
+        {/* Left rail — one row per org */}
         <Card>
           <div className="p-8 border-b">
             <Input placeholder="Search organizations…" value={q} onChange={e => setQ(e.target.value)} />
           </div>
           {filtered.map((o) => {
-            const svcs = applications[o] ?? [];
             const on = o === activeOrg;
             return (
               <ButtonBase key={o} onClick={() => setSel(o)} className={cx('org-rail-item', on && 'on')}>
@@ -142,13 +126,7 @@ export function OrganizationsPage() {
                   {names[o] && (
                     <div className="small muted mono break-anywhere">{o}</div>
                   )}
-                  <div className="small muted mt-4">
-                    {svcs.length > 0
-                      ? <>{svcs.join(' · ')}</>
-                      /* Not a warning: an organisation running nothing is a fact about a tenant,
-                         not a setup step somebody forgot. */
-                      : <span className="muted">no applications</span>}
-                  </div>
+                  {tenants[o] && <div className="small muted mt-4 mono">{tenants[o]}</div>}
                 </div>
               </ButtonBase>
             );
@@ -164,8 +142,8 @@ export function OrganizationsPage() {
               org={activeOrg}
               name={names[activeOrg]}
               tenant={tenants[activeOrg]}
-              services={applications[activeOrg] ?? []}
               mayWrite={mayWrite}
+              mayDelete={mayDelete}
               onDeleted={() => setPage('organizations', null)}
             />
           )}
@@ -177,39 +155,41 @@ export function OrganizationsPage() {
   );
 }
 
-function OrgDetail({ org, name, tenant, services, mayWrite, onDeleted }: {
-  org: string; name?: string; tenant?: string; services: string[]; mayWrite: boolean; onDeleted: () => void;
+
+function OrgDetail({ org, name, tenant, mayWrite, mayDelete, onDeleted }: {
+  org: string; name?: string; tenant?: string; mayWrite: boolean; mayDelete: boolean; onDeleted: () => void;
 }) {
-  const { setUserDrawer, pushToast, setPage } = useApp();
+  const { pushToast, setPage } = useApp();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [leaving, setLeaving] = useState<{ id: string; label: string } | null>(null);
-  const [leaveBusy, setLeaveBusy] = useState(false);
   const { data: session } = useSession();
-  // The permission the mutation checks, not a role NAME. `super_admin` is not a role this model
-  // defines, so this test was false for everybody and greyed the control for its only holders.
-  const mayAdminister = permits(session?.permissions, PRIVILEGED_MUTATION);
-  const usersQ = useOrgUsers(org);
-  const assignableQ = useAssignableGroups(org);
-  const assignable = useMemo(() => assignableQ.data ?? [], [assignableQ.data]);
-  const adminMapQ = useOrgAdminMap();
-  const orgAdminMap = useMemo(() => adminMapQ.data ?? {}, [adminMapQ.data]);
-  const roster = orgAdminMap[org] ?? [];
-  const [invite, setInvite] = useState(false);
-  const [editAdmins, setEditAdmins] = useState(false);
-  const [resumeAdmins, setResumeAdmins] = useState<{ admins: string[]; auto: boolean } | undefined>();
-  // Back from the step-up a roster save needed: the same roster saved again, once, if nobody changed
-  // it meanwhile. Otherwise the drawer opens on what was chosen, to be checked and saved by hand.
-  useResume<AdminsResume>(mayAdminister ? `${ORG_ADMINS}:${org}` : null, adminMapQ.isSuccess, (p) => {
-    setResumeAdmins({ admins: p.admins, auto: sameSet(roster, p.was) });
-    setEditAdmins(true);
-    if (!sameSet(roster, p.was)) pushToast('The administrators changed meanwhile', { sub: 'Nothing was saved. Your choice is back in the drawer — check it and save.', ttl: 8000 });
-  });
+  const mayNameOwners = holds(session, 'orgs.owners:write');
+  const orgPermissions = useMyOrgPermissions().data;
+  // Inside the org the platform list means nothing: what the caller holds HERE decides (the org
+  // roles assigned to them, or the every-org map). An org their answer does not list is left to jinbe.
+  const unlisted = !!orgPermissions && !(org in orgPermissions);
+  const mayManage = holdsIn(orgPermissions, org, 'org.members:write');
+  const mayReadMembers = holdsIn(orgPermissions, org, 'org.members:read') || unlisted;
+  const mayKeys = holdsIn(orgPermissions, org, 'org.keys:read') || unlisted;
 
-  const users = usersQ.data?.data ?? [];
+  const usersQ = useOrgUsers(org);
+  const users = useMemo(() => usersQ.data?.data ?? [], [usersQ.data]);
   const total = usersQ.data?.total ?? users.length;
-  const hasBundle = services.length > 0;
-  const memberEmails = users.map(u => u.traits?.email).filter((e): e is string => !!e);
+  const rolesQ = useOrgRoles(org, mayReadMembers);
+  const memberRoles = useOrgMemberRoles(org, users.map((u) => u.id), mayReadMembers);
+  const owners = ownersOf(memberRoles.byId);
+  const sites = entitledSites(rolesQ.data ?? []);
+  const label = (id: string) => users.find((u) => u.id === id)?.traits?.email ?? id;
+
+  const [editOwners, setEditOwners] = useState(false);
+  const [resumeOwners, setResumeOwners] = useState<{ owners: string[]; auto: boolean } | undefined>();
+  // Back from the step-up an owners save needed: the same list saved again, once, if nobody changed
+  // it meanwhile. Otherwise the drawer opens on what was chosen, to be checked and saved by hand.
+  useResume<OwnersResume>(mayNameOwners ? `${ORG_OWNERS}:${org}` : null, !memberRoles.isLoading && usersQ.isSuccess, (p) => {
+    setResumeOwners({ owners: p.owners, auto: sameSet(owners, p.was) });
+    setEditOwners(true);
+    if (!sameSet(owners, p.was)) pushToast('The owners changed meanwhile', { sub: 'Nothing was saved. Your choice is back in the drawer — check it and save.', ttl: 8000 });
+  });
 
   return (
     <>
@@ -217,118 +197,66 @@ function OrgDetail({ org, name, tenant, services, mayWrite, onDeleted }: {
         <div className="min-w-0">
           <h3 className="row gap-8">
             <span className={name ? '' : 'mono'}>{name ?? org}</span>
-            {!hasBundle && <Badge tone="warning" title="Runs no site yet — members can't be given site roles here">no sites</Badge>}
           </h3>
           <div className="sub">
-            {total} member{total === 1 ? '' : 's'}{hasBundle ? <> · {services.length} site{services.length === 1 ? '' : 's'}</> : ''}
+            {total} member{total === 1 ? '' : 's'}
             {name && <> · <span className="mono">{org}</span></>}
           </div>
         </div>
         <div className="row gap-8">
           {mayWrite && <Button size="sm" variant="ghost" icon={I.edit} onClick={() => setEditing(true)}>Edit</Button>}
-          {mayWrite && <Button size="sm" variant="ghost" icon={I.trash} onClick={() => setDeleting(true)}>Delete</Button>}
-          <Button size="sm" onClick={() => setPage('apikeys', org)}>API keys</Button>
-          <Button size="sm" variant="primary" icon={I.plus} onClick={() => setInvite(true)}>Invite person</Button>
+          {mayDelete && <Button size="sm" variant="ghost" icon={I.trash} onClick={() => setDeleting(true)}>Delete</Button>}
+          {mayKeys && <Button size="sm" onClick={() => setPage('apikeys', org)}>API keys</Button>}
         </div>
       </div>
 
-      {/* What this organisation runs, from the directory. Changed with Edit, as a whole set. */}
+      {/* Which sites' roles this organization may hold: each site's intent lists the orgs it serves.
+          Read-only here — it changes by publishing the site. */}
       <Card pad="md" className="mb-12">
-        <div className="min-w-0">
-          <div className="fw-medium text-base">Applications</div>
-          <div className="small muted mt-2">
-            {hasBundle
-              ? <>The sites this organization runs. Only what is enabled.</>
-              : <>This organisation runs nothing that the directory records.</>}
-          </div>
-          <div className="row wrap gap-4 mt-8">
-            {hasBundle
-              ? services.map(s => <Badge key={s} tone="success">{s}</Badge>)
-              : <span className="small muted">none</span>}
-          </div>
+        <div className="fw-medium text-base">Sites</div>
+        <div className="small muted mt-2">
+          The sites whose roles can be assigned here. Each site&apos;s intent lists the organizations it serves; change it on the site.
+        </div>
+        <div className="row wrap gap-4 mt-8">
+          {rolesQ.isLoading
+            ? <span className="small muted">reading…</span>
+            : sites.length
+              ? sites.map((s) => <Badge key={s} tone="success">{s}</Badge>)
+              : <span className="small muted">none — only this organization&apos;s own roles</span>}
         </div>
       </Card>
 
-      {/* Administrators — the org's per-org admin roster (data.org_admin_map). An
-          admin manages this org's members, scoped to its bundle. Assigning is
-          Gated on admin.membership:write plus a recent second factor, enforced by jinbe. */}
+      {/* Owners: the members holding jinbe:owner here — every org permission, assigning roles
+          included. Named from the platform (orgs.owners:write, a recent second factor). */}
       <Card pad="md" className="mb-12">
         <div className="row justify-between items-start gap-12">
           <div className="min-w-0 flex-1">
-            <div className="fw-medium text-base">Administrators</div>
+            <div className="fw-medium text-base">Owners</div>
             <div className="small muted mt-2">
-              Org admins manage this organization's members, within the sites it runs. Changing them needs permission to manage members.
+              Owners hold every permission of this organization and assign its roles to its members.
             </div>
             <div className="row wrap gap-4 mt-8">
-              {roster.length === 0
-                ? <span className="small muted">No admins yet — nobody can manage this org's members.</span>
-                : roster.map(a => <Badge key={a} tone="accent">{a}</Badge>)}
+              {!mayReadMembers
+                ? <span className="small muted">You cannot see this organization&apos;s members.</span>
+                : memberRoles.isLoading
+                  ? <span className="small muted">reading…</span>
+                  : owners.length === 0
+                    ? <span className="small muted">No owner yet — nobody assigns roles here.</span>
+                    : owners.map((id) => <Badge key={id} tone="accent">{label(id)}</Badge>)}
             </div>
           </div>
-          {mayAdminister && (
-            <Button variant="ghost" size="sm" onClick={() => setEditAdmins(true)}>{roster.length ? 'Edit admins' : 'Add admins'}</Button>
+          {mayNameOwners && (
+            <Button variant="ghost" size="sm" onClick={() => setEditOwners(true)}>{owners.length ? 'Change owners' : 'Name owners'}</Button>
           )}
         </div>
       </Card>
 
-      {/* Members */}
-      <Card title="People" sub="Click a person to see their site and org access" pad="none" className="pf-host">
-        <div className="p-12 border-b">
-          <AddMember org={org} orgName={name ?? org} pushToast={pushToast} />
-        </div>
-        <Table>
-          <thead><tr><th>Identity</th><th>Groups</th><th></th></tr></thead>
-          <tbody>
-            {usersQ.isLoading && <LoadingRows rows={4} cols={3} />}
-            {!usersQ.isLoading && users.length === 0 && <EmptyRow colSpan={3}><EmptyHint>No people in this organization yet — invite someone.</EmptyHint></EmptyRow>}
-            {!usersQ.isLoading && users.map(u => {
-              const groups = u.metadata_admin?.groups ?? [];
-              return (
-                <tr key={u.id} className="row-click" onClick={() => setUserDrawer({ mode: 'edit', user: kratosToUser(u) })}>
-                  <td>
-                    <div className="row gap-8">
-                      <Avatar name={u.traits?.name || u.traits?.email} />
-                      <div>
-                        <div className="fw-medium">{u.traits?.name || u.traits?.email}{roster.includes(u.traits?.email || '') && <> <Badge tone="accent" title="Administrator of this organization">admin</Badge></>}{u.state !== 'active' && <> <Badge tone="warning">inactive</Badge></>}</div>
-                        <div className="small muted mono">{u.traits?.email}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    {groups.length === 0
-                      ? <span className="small muted">— no groups —</span>
-                      : <span className="row wrap gap-4">{groups.map(g => <Badge key={g}>{g}</Badge>)}</span>}
-                  </td>
-                  <td className="org-chev-cell text-right">
-                    <span className="row gap-4 justify-end">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Remove ${u.traits?.email ?? u.id} from this organization`}
-                        onClick={(e) => { e.stopPropagation(); setLeaving({ id: u.id, label: u.traits?.name || u.traits?.email || u.id }); }}
-                      >Remove</Button>
-                      <span className="text-disabled">{I.chev}</span>
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      </Card>
-
-      {invite && (
-        <InviteDrawer
-          org={org}
-          assignable={assignable}
-          pushToast={pushToast}
-          onClose={() => setInvite(false)}
-          onDone={() => { setInvite(false); usersQ.refetch(); }}
-        />
-      )}
+      {mayReadMembers
+        ? <OrgMembers org={org} orgName={name ?? org} mayManage={mayManage} pushToast={pushToast} />
+        : <Card className="p-32"><EmptyHint>Its members and their roles are visible to whoever holds org.members:read in this organization.</EmptyHint></Card>}
 
       {editing && (
-        <EditOrgDialog org={org} name={name} tenant={tenant} applications={services} pushToast={pushToast} onClose={() => setEditing(false)} />
+        <EditOrgDialog org={org} name={name} tenant={tenant} pushToast={pushToast} onClose={() => setEditing(false)} />
       )}
 
       {deleting && (
@@ -342,113 +270,90 @@ function OrgDetail({ org, name, tenant, services, mayWrite, onDeleted }: {
         />
       )}
 
-      {leaving && (
-        <ConfirmDialog
-          open
-          danger
-          title={`Remove ${leaving.label} from ${name ?? org}?`}
-          body="Only this organization: their account, their other organizations and their site access stay."
-          confirmLabel="Remove from organization"
-          busy={leaveBusy}
-          onCancel={() => setLeaving(null)}
-          onConfirm={async () => {
-            setLeaveBusy(true);
-            try {
-              await orgAccessApi.removeFromOrg(org, leaving.id);
-              pushToast(`Removed ${leaving.label}`, { sub: 'Their other organizations and site access are unchanged.' });
-              setLeaving(null);
-              usersQ.refetch();
-            } catch (e) {
-              pushToast(...toastFor(e));
-            } finally {
-              setLeaveBusy(false);
-            }
-          }}
-        />
-      )}
-
-      {editAdmins && (
-        <AdminsDrawer
+      {editOwners && (
+        <OwnersDrawer
           org={org}
           name={name}
-          current={roster}
-          members={memberEmails}
-          resume={resumeAdmins}
-          onClose={() => { setEditAdmins(false); setResumeAdmins(undefined); }}
+          current={owners}
+          members={users.map((u) => ({ id: u.id, label: u.traits?.email ?? u.id }))}
+          resume={resumeOwners}
+          onClose={() => { setEditOwners(false); setResumeOwners(undefined); }}
         />
       )}
-
     </>
   );
 }
 
-// The org admin ROSTER editor (data.org_admin_map). A PUT replaces the org's
-// ENTIRE roster with the selected emails; an empty roster is allowed (it clears
-// the org's admins). admin.membership:write + a recent second factor are enforced by jinbe;
-// a stale factor returns 422 reauth_required, handled here with a step-up bounce.
-// The picker offers the org's members (you can't administer an org you don't
-// belong to — jinbe's manageable_orgs also enforces this), unioned with any
-// already-rostered email so a stale entry can still be removed.
-const ORG_ADMINS = 'org-admins';
-type AdminsResume = { admins: string[]; was: string[] };
+// The owners editor. A PUT names the org's owners by identity id: each joins the org if needed and
+// holds jinbe:owner there, everyone else loses it. orgs.owners:write and a recent second factor are
+// enforced by jinbe; a stale factor returns reauth_required, handled with a step-up bounce. The
+// picker offers the members, plus anyone already an owner, plus an identity id typed in (onboarding
+// an org that has nobody yet).
+const ORG_OWNERS = 'org-owners';
+type OwnersResume = { owners: string[]; was: string[] };
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(x => b.includes(x));
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** `resume`: back from the step-up — the roster chosen, saved once by itself on open when `auto`. */
-function AdminsDrawer({ org, name, current, members, onClose, resume }: {
-  org: string; name?: string; current: string[]; members: string[]; onClose: () => void; resume?: { admins: string[]; auto: boolean };
+/** `resume`: back from the step-up — the owners chosen, saved once by itself on open when `auto`. */
+function OwnersDrawer({ org, name, current, members, onClose, resume }: {
+  org: string; name?: string; current: string[]; members: { id: string; label: string }[];
+  onClose: () => void; resume?: { owners: string[]; auto: boolean };
 }) {
   const { pushToast } = useApp();
-  const setAdmins = useSetOrgAdmins();
-  const options = useMemo(() => [...new Set([...members, ...current])], [members, current]);
-  const [selected, setSelected] = useState<string[]>(resume?.admins ?? current);
+  const qc = useQueryClient();
+  const [selected, setSelected] = useState<string[]>(resume?.owners ?? current);
+  const [extra, setExtra] = useState('');
+  const [busy, setBusy] = useState(false);
+  const labels = useMemo(() => new Map(members.map((m) => [m.id, m.label])), [members]);
+  const options = useMemo(() => [...new Set([...members.map((m) => m.id), ...current, ...selected])], [members, current, selected]);
   const resumed = useRef(false);
   useEffect(() => {
     if (!resume?.auto || resumed.current) return;
     resumed.current = true;
-    save();
+    void save();
   });
-  const busy = setAdmins.isPending;
-  const dirty = selected.length !== current.length || selected.some(a => !current.includes(a));
+  const dirty = !sameSet(selected, current);
 
-  const toggle = (email: string) =>
-    setSelected(prev => (prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email]));
+  const toggle = (id: string) => setSelected(prev => (prev.includes(id) ? prev.filter(e => e !== id) : [...prev, id]));
 
-  const save = () => {
+  async function save() {
     if (!dirty || busy) return;
-    setAdmins.mutate({ organizationId: org, admins: selected }, {
-      onSuccess: () => { pushToast(`Updated administrators for ${org}`, { sub: `${selected.length} admin${selected.length === 1 ? '' : 's'}` }); onClose(); },
-      onError: (e: unknown) => {
-        const err = e as Error & { code?: string; details?: { hint?: string } };
-        // Step-up (R2): re-verify a recent second factor, then return to retry.
-        if (err.code === 'reauth_required') {
-          const going = stepUpAndResume(`${ORG_ADMINS}:${org}`, { admins: selected, was: current } satisfies AdminsResume);
-          pushToast('Two-factor re-verification required', { err: true, sub: going
-            ? 'Nothing was saved yet. You will be sent to re-verify your second factor; back here the administrators are saved by themselves. This is not a sign-out.'
-            : 'Nothing was saved. Re-verify your second factor, then save again.' });
-          return;
-        }
-        if (err.code === 'privilege_escalation_blocked' || err.code === 'mfa_required') {
-          pushToast(err.message, { err: true, sub: err.details?.hint });
-          return;
-        }
-        pushToast(err.message || 'Failed to update administrators', { err: true });
-      },
-    });
-  };
+    setBusy(true);
+    try {
+      await orgAccessApi.setOwners(org, selected);
+      pushToast(`Owners of ${name ?? org} updated`, { sub: `${selected.length} owner${selected.length === 1 ? '' : 's'}` });
+      qc.invalidateQueries({ queryKey: ['org-member-roles', org] });
+      qc.invalidateQueries({ queryKey: ['org-users', org] });
+      onClose();
+    } catch (e) {
+      const err = e as Error & { code?: string };
+      // Step-up: re-verify a recent second factor, then return to retry.
+      if (err.code === 'reauth_required') {
+        const going = stepUpAndResume(`${ORG_OWNERS}:${org}`, { owners: selected, was: current } satisfies OwnersResume);
+        pushToast('Two-factor re-verification required', { err: true, sub: going
+          ? 'Nothing was saved yet. You will be sent to re-verify your second factor; back here the owners are saved by themselves. This is not a sign-out.'
+          : 'Nothing was saved. Re-verify your second factor, then save again.' });
+        return;
+      }
+      pushToast(...toastFor(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <Drawer
       open
       onClose={onClose}
       size="lg"
-      eyebrow="Org admins"
-      title="Edit administrators"
+      eyebrow="Organization owners"
+      title="Name owners"
       footer={
         <>
-          <span className="small muted">Needs permission to manage members and a recent second factor.</span>
+          <span className="small muted">Needs orgs.owners:write and a recent second factor.</span>
           <div className="row">
             <Button onClick={onClose} disabled={busy}>Cancel</Button>
-            <Button variant="primary" onClick={save} disabled={!dirty || busy}>{busy ? 'Saving…' : 'Save admins'}</Button>
+            <Button variant="primary" onClick={() => void save()} disabled={!dirty || busy}>{busy ? 'Saving…' : `Save ${OWNER_ROLE.split(':')[1]}s`}</Button>
           </div>
         </>
       }
@@ -458,19 +363,22 @@ function AdminsDrawer({ org, name, current, members, onClose, resume }: {
         <div className={cx('text-base', !name && 'mono')}>{name ?? org}</div>
       </div>
       <Field
-        label="Administrators (org members)"
-        hint="Each selected member becomes an org admin and can manage this organization's people, within the sites it runs. Saving replaces the whole list; deselect everyone to remove all org admins."
+        label="Owners"
+        hint="Each selected person holds jinbe:owner here (joining the organization if needed). Saving replaces the whole list; deselect everyone to leave it without an owner."
       >
         <Card pad="sm">
           <MultiSelectPills
-            options={options}
-            selected={selected}
-            onToggle={toggle}
-            empty="No members in this organization yet — invite someone first."
+            options={options.map((id) => labels.get(id) ?? id)}
+            selected={selected.map((id) => labels.get(id) ?? id)}
+            onToggle={(l) => toggle(options.find((id) => (labels.get(id) ?? id) === l) ?? l)}
+            empty="No members yet — add an owner by identity id below."
           />
         </Card>
       </Field>
+      <form className="row gap-8 mt-8" onSubmit={(e) => { e.preventDefault(); const v = extra.trim().toLowerCase(); if (UUID.test(v)) { setSelected((s) => [...new Set([...s, v])]); setExtra(''); } }}>
+        <Input size="sm" mono aria-label="Add an owner by identity id" placeholder="identity id (not yet a member)" value={extra} onChange={(e) => setExtra(e.target.value)} />
+        <Button size="sm" type="submit" disabled={!UUID.test(extra.trim())}>Add</Button>
+      </form>
     </Drawer>
   );
 }
-

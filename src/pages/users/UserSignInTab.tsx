@@ -4,7 +4,7 @@ import { useSession } from '../../api/hooks';
 import { recoveryApi } from '../../api/recovery';
 import { ApiErrorState } from '../../components/ApiErrorState';
 import { Badge, Button, Card } from '../../components/ui';
-import { permits } from '../../policy/model';
+import { holds } from '../../policy/model';
 import { FACTOR_LABELS } from '../../lib/recovery';
 import { RemoveSecondFactorDialog } from './RemoveSecondFactorDialog';
 import { SendLoginLinkDialog } from './SendLoginLinkDialog';
@@ -13,7 +13,7 @@ import type { User } from '../../api/types';
 /**
  * Getting somebody back in: their two-step sign-in (and removing it when they lost it), and a
  * one-click sign-in link when the email code does not arrive. Each action shows to whoever holds its
- * fine permission or the coarse admin:write it refines; jinbe decides either way.
+ * permission; jinbe decides either way.
  */
 export function UserSignInTab({ user }: { user: User }) {
   const { data: session } = useSession();
@@ -22,9 +22,8 @@ export function UserSignInTab({ user }: { user: User }) {
   const q = useQuery({ queryKey: key, queryFn: () => recoveryApi.secondFactors(user.id), staleTime: 10_000 });
   const [dialog, setDialog] = useState<'link' | 'remove' | null>(null);
 
-  const may = (fine: string) => permits(session?.permissions, 'admin:write') || permits(session?.permissions, fine);
-  const maySendLink = may('users:send_login_link');
-  const mayRemove = may('users:reset_second_factor');
+  const maySendLink = holds(session, 'users:send_login_link');
+  const mayRemove = holds(session, 'users:reset_second_factor');
   const methods = q.data?.methods ?? [];
   const required = q.data?.required ?? null;
 

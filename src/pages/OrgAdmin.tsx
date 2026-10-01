@@ -1,33 +1,28 @@
-import { useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { emptyOrganisationsHint, organisationsSourceNote } from '../auth/authority';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
-import { Button, Callout, Card, ConfirmDialog, EmptyHint, PageHeader, Select } from '../components/ui';
+import { Button, Card, EmptyHint, PageHeader, Select } from '../components/ui';
 import { SkeletonPanel } from '../components/ui/Skeleton';
 import { OrgPicker } from '../components/OrgPicker';
-import { ApiErrorState } from '../components/ApiErrorState';
-import type { KratosIdentity } from '../api/client';
-import { useMyOrganizationNames, useMyOrganizationsScope, useOrgUsers } from '../api/hooks';
-import { orgAccessApi, isNotAvailable } from '../api/orgAccess';
+import { useMyOrganizationNames, useMyOrganizationsScope } from '../api/hooks';
 import { useOrgCatalog } from '../api/orgCatalog';
 import { orgLabel } from '../lib/orgOptions';
+import { holdsIn } from '../policy/model';
 import { useMyOrg } from '../hooks/useMyOrg';
-import { GrantsMatrix } from './orgadmin/GrantsMatrix';
-import { AddMember } from './orgadmin/AddMember';
-import { InviteDrawer } from './orgadmin/InviteDrawer';
-import { makeToastErr } from './orgadmin/toastErr';
+import { OrgMembers } from './orgadmin/OrgMembers';
 
 /**
- * "My org": an org admin hands out their own org's groups to its members.
+ * "My org": one organization from the inside — its members and the org roles they hold there.
  *
- * What is granted here counts only on this org's routes, and never takes away what somebody holds on
- * the sites through their own groups. Removing somebody removes them from this org only. The org is
- * the address (`#/orgadmin/<org id>`), so the Access view in a person's drawer can link straight here.
+ * What the caller may do here is what they hold IN this org (`orgPermissions`): org.members:write to
+ * assign roles (only roles whose every permission they hold), org.keys:read for its API keys. A role
+ * assigned here counts only on this org's routes, and never touches what somebody holds on the
+ * platform through their groups. The org is the address (`#/orgadmin/<org id>`), so the Access view in
+ * a person's drawer can link straight here.
  */
 export function OrgAdminPage() {
   const { pushToast, pageParam, setPage } = useApp();
-  const { show, pickAny, administered, isLoading } = useMyOrg();
+  const { show, pickAny, administered, orgPermissions, isLoading } = useMyOrg();
   const scope = useMyOrganizationsScope().data ?? 'delegated';
   const names = useMyOrganizationNames().data ?? {};
   const { orgs: catalog } = useOrgCatalog();
@@ -38,7 +33,7 @@ export function OrgAdminPage() {
   if (isLoading) {
     return (
       <>
-        <PageHeader title="My org" sub="Reading the organizations you administer…" />
+        <PageHeader title="My org" sub="Reading the organizations you belong to…" />
         <div aria-busy="true"><SkeletonPanel lines={4} /></div>
       </>
     );
@@ -47,17 +42,22 @@ export function OrgAdminPage() {
   if (!show) {
     return (
       <>
-        <PageHeader title="My org" sub={organisationsSourceNote(scope) ?? 'Hand out your organization\'s groups to its members'} />
+        <PageHeader title="My org" sub={organisationsSourceNote(scope) ?? 'Your organization\'s members and their roles'} />
         <Card className="p-32"><EmptyHint>{emptyOrganisationsHint(scope).message}</EmptyHint></Card>
       </>
     );
   }
 
+  const mayManage = holdsIn(orgPermissions, active, 'org.members:write');
+  // An org picked from every org that the caller's answer does not list: let jinbe decide (the
+  // every-org map may reach it), and say its refusal rather than guessing one.
+  const mayRead = holdsIn(orgPermissions, active, 'org.members:read') || (pickAny && !(active in orgPermissions));
+
   return (
     <>
       <PageHeader
         title="My org"
-        sub={<>Groups you grant here count on this organization&apos;s routes only — members keep their site access</>}
+        sub={<>Roles you assign here count on this organization&apos;s routes only — members keep their platform access</>}
         actions={<>
           {pickAny
             ? <span className="orgs-picker"><OrgPicker value={active} onChange={(id) => setPage('orgadmin', id || null)} /></span>
@@ -66,99 +66,14 @@ export function OrgAdminPage() {
                 {administered.map((o) => <option key={o} value={o}>{names[o] ?? o}</option>)}
               </Select>
             )}
-          {active && <Button icon={I.key} onClick={() => setPage('apikeys', active)}>API keys</Button>}
+          {active && holdsIn(orgPermissions, active, 'org.keys:read') && <Button icon={I.key} onClick={() => setPage('apikeys', active)}>API keys</Button>}
         </>}
       />
-      {active
-        ? <OrgMembers key={active} org={active} orgName={orgName} pushToast={pushToast} />
-        : <Card className="p-32"><EmptyHint>Choose an organization to manage its members.</EmptyHint></Card>}
-    </>
-  );
-}
-
-function OrgMembers({ org, orgName, pushToast }: { org: string; orgName: string; pushToast: ReturnType<typeof useApp>['pushToast'] }) {
-  const qc = useQueryClient();
-  const usersQ = useOrgUsers(org);
-  const grantsQ = useQuery({ queryKey: ['org-grants', org], queryFn: () => orgAccessApi.grants(org), retry: false });
-  const assignableQ = useQuery({ queryKey: ['org-assignable', org], queryFn: () => orgAccessApi.assignable(org), retry: false });
-  const [invite, setInvite] = useState(false);
-  const [removing, setRemoving] = useState<KratosIdentity | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const grantsMissing = isNotAvailable(grantsQ.error);
-  const saved = useMemo(() => grantsQ.data ?? {}, [grantsQ.data]);
-  const assignable = useMemo(() => assignableQ.data ?? [], [assignableQ.data]);
-  const members = usersQ.data?.data ?? [];
-
-  const remove = async (m: KratosIdentity) => {
-    setBusy(true);
-    try {
-      await orgAccessApi.removeFromOrg(org, m.id);
-      pushToast(`Removed ${m.traits?.email} from ${orgName}`, { sub: 'Their account, site access and other organizations stay.' });
-      qc.invalidateQueries({ queryKey: ['org-users', org] });
-      qc.invalidateQueries({ queryKey: ['org-grants', org] });
-      setRemoving(null);
-    } catch (err) {
-      makeToastErr(pushToast)(err);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const hardError = usersQ.error ?? (grantsMissing ? null : grantsQ.error) ?? assignableQ.error;
-
-  return (
-    <>
-      {grantsMissing && (
-        <div className="mb-12" role="status">
-          <Callout tone="warning" icon={I.info}>
-            <span className="small">Org grants are not available yet on this server. Members are listed; granting is off until it is.</span>
-          </Callout>
-        </div>
-      )}
-      {hardError && <div className="mb-12"><ApiErrorState compact error={hardError} what="this organization" onRetry={() => { usersQ.refetch(); grantsQ.refetch(); assignableQ.refetch(); }} /></div>}
-
-      <Card className="pf-host">
-        <div className="row wrap gap-8 px-12 py-8 border-b">
-          <AddMember org={org} orgName={orgName} pushToast={pushToast} />
-          <div className="flex-1" />
-          <Button variant="primary" size="sm" icon={I.plus} onClick={() => setInvite(true)}>Invite new person</Button>
-        </div>
-        <GrantsMatrix
-          org={org}
-          orgName={orgName}
-          members={members}
-          loading={usersQ.isLoading || grantsQ.isLoading || assignableQ.isLoading}
-          saved={saved}
-          assignable={assignable}
-          readOnly={grantsMissing || !!grantsQ.error}
-          onRemove={setRemoving}
-          pushToast={pushToast}
-        />
-      </Card>
-
-      {invite && (
-        <InviteDrawer
-          org={org}
-          assignable={[]}
-          pushToast={pushToast}
-          onClose={() => setInvite(false)}
-          onDone={() => { setInvite(false); usersQ.refetch(); }}
-        />
-      )}
-      <ConfirmDialog
-        open={!!removing}
-        title={`Remove from ${orgName}?`}
-        body={<>
-          <strong>{removing?.traits?.email}</strong> leaves <strong>{orgName}</strong> and loses the groups granted here.
-          Only this organization: their account, their site access from their own groups, and their other organizations stay.
-        </>}
-        confirmLabel="Remove from this org"
-        danger
-        busy={busy}
-        onConfirm={() => { if (removing) void remove(removing); }}
-        onCancel={() => setRemoving(null)}
-      />
+      {!active
+        ? <Card className="p-32"><EmptyHint>Choose an organization to see its members.</EmptyHint></Card>
+        : mayRead
+          ? <OrgMembers key={active} org={active} orgName={orgName} mayManage={mayManage} pushToast={pushToast} />
+          : <Card className="p-32"><EmptyHint>You hold no role here that shows its members (org.members:read in {orgName}).</EmptyHint></Card>}
     </>
   );
 }

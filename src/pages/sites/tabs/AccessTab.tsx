@@ -95,7 +95,7 @@ function RolesView({ site, readOnly, set }: { site: Site; readOnly: boolean; set
         </Select>
       </Field>
       <Table className="site-matrix mt-12" aria-label="Roles and permissions">
-        <thead><tr><Th scope="col">Role</Th>{perms.map((p) => <Th key={p} scope="col" align="center" className="mono small">{p}</Th>)}<Th scope="col" align="center">Everything</Th></tr></thead>
+        <thead><tr><Th scope="col">Role</Th>{perms.map((p) => <Th key={p} scope="col" align="center" className="mono small">{p}</Th>)}<Th scope="col" align="center"><span className="sr-only">Fill</span></Th></tr></thead>
         <tbody>
           {Object.entries(roles).map(([role, held]) => (
             <tr key={role}>
@@ -105,12 +105,15 @@ function RolesView({ site, readOnly, set }: { site: Site; readOnly: boolean; set
                   <Checkbox className="bare" label={<span className="sr-only">{role} {p}</span>} checked={held.includes('*') || held.includes(p)} disabled={readOnly || preset !== 'custom' || held.includes('*')} onChange={(on) => toggle(role, p, on)} />
                 </td>
               ))}
-              <td className="align-center"><Checkbox className="bare" label={<span className="sr-only">{role} everything</span>} checked={held.includes('*')} disabled={readOnly || preset !== 'custom'} onChange={(on) => toggle(role, '*', on)} /></td>
+              <td className="align-center">
+                {/* By name, never `*`: a role reaches exactly what it lists. */}
+                <Button size="sm" variant="ghost" disabled={readOnly || preset !== 'custom' || perms.every((p) => held.includes(p))} aria-label={`${role}: all permissions of this site`} onClick={() => setRoles({ ...roles, [role]: [...perms] })}>All</Button>
+              </td>
             </tr>
           ))}
         </tbody>
       </Table>
-      <p className="small muted">“Everything” covers every permission on this site, not org-scoped routes of other organizations.</p>
+      <p className="small muted">A role reaches exactly the permissions it lists. “All” ticks every permission this site declares today; one added later must be ticked too.</p>
       {preset === 'custom' && !readOnly && (
         <div className="row gap-8 wrap">
           <Input size="sm" mono placeholder="new-role" aria-label="New role" value={newRole} onChange={(e) => setNewRole(e.target.value.toLowerCase())} />
@@ -135,7 +138,7 @@ function GroupsView({ site, readOnly, set }: { site: Site; readOnly: boolean; se
   return (
     <div className="stack gap-16">
       <Card title="Platform groups" sub="Shared groups (people everywhere). Only this site’s part of a group changes here.">
-        {Object.keys(site.groups.platform).length === 0 && <EmptyHint>No group mapped: nobody but super admins can use {site.displayName}.</EmptyHint>}
+        {Object.keys(site.groups.platform).length === 0 && <EmptyHint>No group mapped: nobody can use {site.displayName}.</EmptyHint>}
         <ul className="site-list">
           {Object.entries(site.groups.platform).map(([g, rs]) => (
             <li key={g} className="row gap-8 items-center wrap">

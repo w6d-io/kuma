@@ -3,14 +3,14 @@ import { useApp } from '../../contexts/AppContext';
 import { useServicePermissions } from '../../api/hooks';
 import { useRbacUsers, useSaveSiteRoles } from '../../api/rbacWrites';
 import { formatHash, parseHash } from '../../lib/route';
-import { describeApiError } from '../../lib/apiError';
+import { describeApiError, isDefinedInCode } from '../../lib/apiError';
 import { stepUpOnRefusal } from '../../lib/resume';
 import {
   Badge, Button, Callout, Card, ConfirmDialog, EmptyRow, Field, I, PageHeader, Select, Table, Tabs,
 } from '../../components/ui';
 import { groupsUsingRole, membersOf, type SiteRoles } from '../../lib/rbacEdit';
-import { PermChips, ReadOnlyNote } from './shared';
-import { plural, useCanEditAccess } from './access';
+import { DefinedInCodeNote, PermChips, ReadOnlyNote } from './shared';
+import { definedWhere, plural, useCanEditAccess } from './access';
 import { RoleEditor, type RoleDraft } from './RoleEditor';
 import { PermissionsOverview } from './PermissionsOverview';
 
@@ -53,11 +53,10 @@ export function RolesPage() {
       <div className="row wrap gap-12 mb-12 items-end">
         <Field label="Site" htmlFor="roles-site" className="rb-site-pick">
           <Select id="roles-site" value={site} onChange={e => go(e.target.value, tab)}>
-            {sites.map(s => <option key={s.name} value={s.name}>{s.name}{s.system ? ' (system)' : ''}</option>)}
+            {sites.map(s => <option key={s.name} value={s.name}>{s.name}{s.system ? ` (${definedWhere(s.name)})` : ''}</option>)}
           </Select>
         </Field>
-        {meta?.system && <Badge tone="warning" icon={I.lock}>system site</Badge>}
-        {site === 'global' && <Badge tone="info">applies on every site</Badge>}
+        {meta?.system && <Badge tone="neutral" mono={false} icon={I.lock}>{definedWhere(site)}</Badge>}
       </div>
       <Tabs
         label="View"
@@ -82,7 +81,11 @@ export function RolesPage() {
 
 function RolesTab({ site, system }: { site: string; system: boolean }) {
   const { state, pushToast, pipeline } = useApp();
-  const canEdit = useCanEditAccess();
+  // Defined in code (jinbe) or by a site's intent: nobody edits it here, whatever they hold. Known
+  // from the list's flag, or from jinbe's 409 on a save when the flag did not say.
+  const [locked, setLocked] = useState(system);
+  const mayWrite = useCanEditAccess();
+  const canEdit = mayWrite && !locked;
   const users = useRbacUsers();
   const known = useServicePermissions(site);
   const save = useSaveSiteRoles();
@@ -100,6 +103,7 @@ function RolesTab({ site, system }: { site: string; system: boolean }) {
       pipeline.run(draft.summary);
       setEditing(null);
     } catch (e) {
+      if (isDefinedInCode(e)) { setLocked(true); setEditing(null); pushToast(`The roles of ${site} are ${definedWhere(site)}`, { err: true, sub: 'Nothing was saved. They change with a release or the site\'s intent.' }); return; }
       if (stepUpOnRefusal(e, pushToast, { redo: `Save the roles of ${site} again: nothing was saved before the check.` })) return;
       pushToast('The roles were not saved', { err: true, sub: describeApiError(e).detail });
     }
@@ -112,6 +116,7 @@ function RolesTab({ site, system }: { site: string; system: boolean }) {
       pipeline.run(`role ${deleting} deleted on ${site}`);
       setDeleting(null);
     } catch (e) {
+      if (isDefinedInCode(e)) { setLocked(true); setDeleting(null); pushToast(`The roles of ${site} are ${definedWhere(site)}`, { err: true, sub: 'Nothing was deleted.' }); return; }
       if (stepUpOnRefusal(e, pushToast, { redo: `Delete the role ${deleting} on ${site} again: nothing was deleted before the check.` })) return;
       pushToast('The role was not deleted', { err: true, sub: describeApiError(e).detail });
     }
@@ -122,13 +127,7 @@ function RolesTab({ site, system }: { site: string; system: boolean }) {
 
   return (
     <>
-      {!canEdit && <ReadOnlyNote what="roles" />}
-      {system && canEdit && (
-        <Callout tone="warning" icon={I.alert} className="mb-12">
-          {site} is a system site: its roles decide who can administer the platform itself. Keep one
-          role with everything, held by a group you are in.
-        </Callout>
-      )}
+      {locked ? <DefinedInCodeNote what={`The roles of ${site}`} where={definedWhere(site)} plural /> : !mayWrite && <ReadOnlyNote what="roles" />}
       {unknown && (
         <Callout tone="danger" icon={I.alert} className="mb-12" title="The roles of this site could not be read">
           Editing is off: saving on top of an unknown list would replace the real roles. Reload to retry.
@@ -136,7 +135,7 @@ function RolesTab({ site, system }: { site: string; system: boolean }) {
       )}
       <Card
         title={`Roles on ${site}`}
-        sub="Everything in this site covers every route except the organization routes."
+        sub="Each role lists its permissions by name: no role reaches a permission it does not name."
         actions={canEdit && !unknown && <Button size="sm" variant="primary" icon={I.plus} onClick={() => setEditing({ role: null })}>New role</Button>}
         pad="none"
       >

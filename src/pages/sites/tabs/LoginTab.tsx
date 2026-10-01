@@ -28,7 +28,7 @@ export function LoginTab({ ed, readOnly }: { ed: SiteEditor; readOnly: boolean }
         One account and one sign-in page for every site here — that’s what lets people move between sites without signing in again. Sign-in methods, sign-up, recovery, session length and the bot check are platform settings (Settings → Sign-in). Each site can ask for a second step and show its own name and logo.
       </Callout>
 
-      <Card title="Two-factor sign-in" sub="Applies to everyone, super admins included.">
+      <Card title="Two-factor sign-in" sub="Applies to everyone, whatever their groups.">
         <div className="stack gap-12">
           <RadioGroup<'none' | 'writes' | 'all' | 'routes'> label="Two-factor sign-in" name="tf-scope" value={tf.scope} disabled={readOnly} onChange={(scope) => setLogin((l) => ({ ...l, twoFactor: { ...l.twoFactor, scope } }))} options={[
             { value: 'none', label: 'Not required' },

@@ -1,18 +1,16 @@
 import { useState } from 'react';
-import { useCreateOrganization, useDeleteOrganization, useServices, useUpdateOrganization } from '../../api/hooks';
+import { useCreateOrganization, useDeleteOrganization, useUpdateOrganization } from '../../api/hooks';
 import type { OrganizationRecord } from '../../api/client';
 import { toastFor } from '../../lib/apiError';
 import { stepUpOnRefusal } from '../../lib/resume';
 import { orgFormProblem, tenantFrom } from '../../lib/orgTenant';
-import { MultiSelectPills } from '../../components/ui/Primitives';
-import { Button, Card, ConfirmDialog, Dialog, Field, Input } from '../../components/ui';
+import { Button, ConfirmDialog, Dialog, Field, Input } from '../../components/ui';
 
 type PushToast = (msg: string, opts?: { err?: boolean; sub?: string }) => void;
 
 /**
- * Creating, changing and deleting an organisation. The record is a name and a tenant; which
- * applications it has is a whole set, set here too. Who belongs to it is changed on the people
- * list, never here.
+ * Creating, changing and deleting an organisation. The record is a name and a tenant. Which sites it
+ * may use is each site's intent; who belongs to it, and their roles, is changed on the people list.
  */
 
 export function CreateOrgDialog({ onClose, onCreated, pushToast }: {
@@ -63,33 +61,26 @@ export function CreateOrgDialog({ onClose, onCreated, pushToast }: {
   );
 }
 
-export function EditOrgDialog({ org, name, tenant, applications, onClose, pushToast }: {
+/** Name and tenant only: which sites an organization may use is each site's intent (`orgs`), not this record. */
+export function EditOrgDialog({ org, name, tenant, onClose, pushToast }: {
   org: string;
   name?: string;
   tenant?: string;
-  applications: string[];
   onClose: () => void;
   pushToast: PushToast;
 }) {
   const update = useUpdateOrganization();
-  const services = useServices();
   const [nextName, setNextName] = useState(name ?? '');
   const [nextTenant, setNextTenant] = useState(tenant ?? '');
-  const [apps, setApps] = useState<string[]>(applications);
   const [tried, setTried] = useState(false);
   const problem = orgFormProblem(nextName, nextTenant);
-  const options = [...new Set([...(services.data ?? []).map((s) => s.name), ...applications])].sort();
-
-  const toggle = (app: string) => setApps((prev) => (prev.includes(app) ? prev.filter((a) => a !== app) : [...prev, app]));
 
   const save = () => {
     setTried(true);
     if (problem || update.isPending) return;
-    const body: { id: string; name?: string; tenant?: string; applications?: string[] } = { id: org };
+    const body: { id: string; name?: string; tenant?: string } = { id: org };
     if (nextName.trim() !== (name ?? '')) body.name = nextName.trim();
     if (nextTenant.trim() && nextTenant.trim() !== (tenant ?? '')) body.tenant = nextTenant.trim();
-    const sameApps = apps.length === applications.length && apps.every((a) => applications.includes(a));
-    if (!sameApps) body.applications = apps;
     if (Object.keys(body).length === 1) { onClose(); return; }
     update.mutate(body, {
       onSuccess: (saved) => { pushToast(`Saved ${saved.name}`); onClose(); },
@@ -115,11 +106,6 @@ export function EditOrgDialog({ org, name, tenant, applications, onClose, pushTo
         </Field>
         <Field label="Tenant" error={tried && problem && !problem.includes('name') ? problem : undefined}>
           <Input id="org-edit-tenant" mono value={nextTenant} onChange={(e) => setNextTenant(e.target.value)} />
-        </Field>
-        <Field label="Applications" hint="The sites this organization runs. Saving replaces the whole set.">
-          <Card pad="sm">
-            <MultiSelectPills options={options} selected={apps} onToggle={toggle} empty="No sites are declared yet." />
-          </Card>
         </Field>
       </form>
     </Dialog>

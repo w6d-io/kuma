@@ -5,7 +5,7 @@ import { cleanup, click, render, type } from '../../components/ui/testing';
 import { takeResume } from '../../lib/resume';
 
 const h = vi.hoisted(() => ({
-  session: { permissions: ['admin:read', 'admin:write'] } as { permissions: string[]; effective_permissions?: string[] },
+  session: { permissions: ['users:read', 'users:update', 'users:update_email', 'users:verify'] } as { permissions: string[]; effective_permissions?: string[] },
   identity: null as unknown,
   toasts: [] as unknown[],
 }));
@@ -47,7 +47,7 @@ const identity = (verified: boolean) => ({
 });
 
 beforeEach(() => {
-  h.session = { permissions: ['admin:read', 'admin:write'] };
+  h.session = { permissions: ['users:read', 'users:update', 'users:update_email', 'users:verify'] };
   h.identity = identity(true);
   h.toasts = [];
   sessionStorage.clear();
@@ -151,7 +151,7 @@ describe('UserProfileTab', () => {
     click(button('Change email'));
     expect(text()).toContain('Change the sign-in address of bob@example.com?');
     cleanup();
-    h.session = { permissions: ['admin:write'], effective_permissions: ['users:read', 'users:update'] };
+    h.session = { permissions: ['raw'], effective_permissions: ['users:read', 'users:update'] };
     mount();
     expect(button('Change email')).toBeNull();
   });

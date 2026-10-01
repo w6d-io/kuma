@@ -77,7 +77,7 @@ describe('QueueItem', () => {
 
   it('says who it waits for when the viewer cannot act', () => {
     const { container } = render(<QueueItem severity="warning" title="Apply request" href="#/sites" actionable={false} />);
-    expect(container.textContent).toContain('Waiting for a super admin');
+    expect(container.textContent).toContain('Waiting for an approver');
   });
 });
 

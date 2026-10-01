@@ -9,7 +9,7 @@ vi.mock('../contexts/AppContext', () => ({ useApp: () => ({ setPage: vi.fn(), pu
 vi.mock('../api/hooks', async () => {
   const { useQuery } = await import('@tanstack/react-query');
   return {
-    useSession: () => ({ data: { permissions: ['admin:read'] } }),
+    useSession: () => ({ data: { permissions: ['audit:read'] } }),
     useMyOrganizationNames: () => ({ data: { acme: 'Acme' } }),
     useUserIdentity: (id: string | undefined, enabled = true) =>
       useQuery({ queryKey: ['user-identity', id], queryFn: async () => { throw new Error('unused'); }, enabled: !!id && enabled }),

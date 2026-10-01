@@ -1,31 +1,30 @@
 import { useState } from 'react';
-import { Button, Card, Checkbox, Drawer, EmptyHint, Field, FormGrid, Input, Switch, TwoFactorBadge, cx } from '../../components/ui';
-import { useGroupSecondFactors } from '../../api/twoFactor';
+import { Button, Card, Checkbox, Drawer, Field, FormGrid, Input, Switch, cx } from '../../components/ui';
+import { refusalWords, refusedOf, type OrgRole, type RefusedRole } from '../../api/orgAccess';
+import { roleLabel } from '../../lib/orgRoles';
 import { makeToastErr, type PushToast } from './toastErr';
 import { useCreateOrgUser } from '../../api/hooks';
 
-/**
- * Checkbox list limited to the caller's assignable groups (never the full catalog). A new account has
- * no second factor yet, so a group whose members must use one is shown but cannot be ticked.
- */
-function GroupPicker({ assignable, checked, toggle }: { assignable: string[]; checked: string[]; toggle: (g: string) => void }) {
-  const secondFactorOf = useGroupSecondFactors();
-  if (assignable.length === 0) {
-    return <EmptyHint>No groups you may assign here — the user keeps base access.</EmptyHint>;
-  }
+/** Checkbox list limited to the org roles the caller may assign here (never the whole catalogue). */
+function RolePicker({ assignable, checked, toggle }: { assignable: OrgRole[]; checked: string[]; toggle: (r: string) => void }) {
   return (
     <Card>
-      {assignable.map((g) => {
-        const on = checked.includes(g);
-        const needs2fa = !on && !!secondFactorOf(g)?.required;
+      {assignable.map((r) => {
+        const on = checked.includes(r.role);
+        const { name, site } = roleLabel(r.role);
         return (
           <Checkbox
-            key={g}
+            key={r.role}
             className={cx('orgs-pick', on && 'on')}
             checked={on}
-            disabled={needs2fa}
-            onChange={() => { if (!needs2fa) toggle(g); }}
-            label={<span className="row wrap gap-4 fw-medium text-base">{g}{needs2fa && <TwoFactorBadge kind="needs-enrol" title="A new account has no second factor yet. Add them to this group once they have enrolled one." />}</span>}
+            onChange={() => toggle(r.role)}
+            label={
+              <span className="row wrap gap-4">
+                <span className="fw-medium text-base">{name}</span>
+                {site && <span className="small muted">on {site}</span>}
+                <span className="small muted mono">{r.permissions.join(' · ')}</span>
+              </span>
+            }
           />
         );
       })}
@@ -34,29 +33,35 @@ function GroupPicker({ assignable, checked, toggle }: { assignable: string[]; ch
 }
 
 export function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
-  org: string; assignable: string[]; onClose: () => void; onDone: () => void; pushToast: PushToast;
+  org: string; assignable: OrgRole[]; onClose: () => void; onDone: () => void; pushToast: PushToast;
 }) {
   const toastErr = makeToastErr(pushToast);
   const createUser = useCreateOrgUser(org);
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [sendInvite, setSendInvite] = useState(true);
-  const [groups, setGroups] = useState<string[]>([]);
+  const [roles, setRoles] = useState<string[]>([]);
+  const [refused, setRefused] = useState<RefusedRole[]>([]);
   const busy = createUser.isPending;
-  const toggle = (g: string) => setGroups(gs => (gs.includes(g) ? gs.filter(x => x !== g) : [...gs, g]));
+  const toggle = (r: string) => setRoles(rs => (rs.includes(r) ? rs.filter(x => x !== r) : [...rs, r]));
 
   const submit = () => {
     if (!email || busy) return;
+    setRefused([]);
     createUser.mutate(
       {
         email: email.trim(),
         name: name.trim() || undefined,
         sendInvite,
-        groups: groups.length ? groups : undefined,
+        roles: roles.length ? roles : undefined,
       },
       {
         onSuccess: () => { pushToast(`Invited ${email.trim()}`, { sub: sendInvite ? 'recovery email sent' : undefined }); onDone(); },
-        onError: toastErr,
+        onError: (err) => {
+          const list = refusedOf(err);
+          if (list.length) setRefused(list);
+          else toastErr(err);
+        },
       },
     );
   };
@@ -65,7 +70,7 @@ export function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
     <Drawer
       open
       onClose={onClose}
-      eyebrow="Org admin"
+      eyebrow="Organization"
       title="Invite user"
       footer={
         <>
@@ -84,11 +89,19 @@ export function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
       <Field label={<>Name <span className="muted">(optional)</span></>}>
         <Input placeholder="Jane Doe" value={name} onChange={e => setName(e.target.value)} />
       </Field>
-      {/* No list at all where there is nothing to hand out on invite: My org grants after joining. */}
+      {/* No list at all where there is nothing to hand out on invite: roles are assigned after joining. */}
       {assignable.length > 0 && (
-        <Field label={<>Groups <span className="muted">(optional · only groups you may assign)</span></>}>
-          <GroupPicker assignable={assignable} checked={groups} toggle={toggle} />
+        <Field label={<>Roles <span className="muted">(optional · only roles you may assign here)</span></>}>
+          <RolePicker assignable={assignable} checked={roles} toggle={toggle} />
         </Field>
+      )}
+      {refused.length > 0 && (
+        <div role="alert" className="orgs-refused">
+          <div className="small fw-medium text-danger">Nobody was invited. Refused:</div>
+          <ul className="small orgs-refused-list">
+            {refused.map((r) => <li key={r.role}><span className="mono">{r.role}</span> — {refusalWords(r)}</li>)}
+          </ul>
+        </div>
       )}
       <Field label="Send invite email" inline hint="Emails them a link to set their password">
         <Switch on={sendInvite} onChange={setSendInvite} label="Send invite email" />

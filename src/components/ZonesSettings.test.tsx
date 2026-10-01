@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render } from './ui/testing';
 
-const h = vi.hoisted(() => ({ toasts: [] as unknown[][], permissions: ['admin:read', 'admin:write'] as string[] }));
+const h = vi.hoisted(() => ({ toasts: [] as unknown[][], permissions: ['zones:read', 'zones:write', 'sites:read'] as string[] }));
 vi.mock('../auth/session', () => ({ bearerToken: async () => null }));
 vi.mock('../contexts/AppContext', () => ({ useApp: () => ({ pushToast: (...a: unknown[]) => h.toasts.push(a) }) }));
 
@@ -28,7 +28,7 @@ const gateway = {
 beforeEach(() => {
   calls = [];
   h.toasts = [];
-  h.permissions = ['admin:read', 'admin:write'];
+  h.permissions = ['zones:read', 'zones:write', 'sites:read'];
   dnsOnGateway = false;
   gateways = [gateway];
   zone = { name: 'dev', suffix: 'dev.example.com', wildcard: '*.dev.example.com', cookieDomain: '.dev.example.com', sso: true, tls: 'wildcard', ingress: 'per-site', gateway: 'envoy-gateway-system/eg', ready: true, source: 'zone' };
@@ -101,7 +101,7 @@ describe('Settings · Zones', () => {
   });
 
   it('offers no create or edit to somebody who may only read', async () => {
-    h.permissions = ['admin:read'];
+    h.permissions = ['zones:read', 'sites:read'];
     mount();
     await settle();
     expect(text()).toContain('Unprotected');

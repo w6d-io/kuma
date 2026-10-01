@@ -47,7 +47,6 @@ export function explain(r: AccessCheckResult): Explanation {
     };
   }
   if (r.allow) {
-    if (r.superAdmin) return { verdict, tie, text: 'Allowed: they are a super admin, who may do everything.' };
     return {
       verdict,
       tie,

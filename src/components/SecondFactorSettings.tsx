@@ -90,7 +90,7 @@ export function SecondFactorSettings() {
         </Button>
         <span className="small muted">{mayChange
           ? 'Each group has its own switch too, in the group editor. Saving needs a second factor confirmed in the last 15 minutes.'
-          : 'Only a super admin (groups.mfa:write) changes this; each group also shows it in its editor.'}</span>
+          : 'Only groups.mfa:write changes this; each group also shows it in its editor.'}</span>
       </div>
     </Card>
   );

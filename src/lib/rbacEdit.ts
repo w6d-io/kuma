@@ -8,9 +8,6 @@ import type { GroupMapping, GroupsMap, RouteEntry } from '../api/types';
  * before anything is sent.
  */
 
-/** The role permission that means "everything on this site" (not the org-scoped routes). */
-export const EVERYTHING = '*';
-
 export type SiteRoles = Record<string, string[]>;
 export type RolesBySite = Record<string, SiteRoles>;
 
@@ -24,8 +21,14 @@ export interface RbacUser {
 
 const uniqSorted = (xs: Iterable<string>) => [...new Set(xs)].sort();
 
-export function isEverything(perms: readonly string[] | undefined): boolean {
-  return !!perms?.includes(EVERYTHING);
+/**
+ * Whether a role carries every permission this site's routes declare — "all permissions of this
+ * site", read off the content. Explicit names only: a role is never a wildcard, and one that covers
+ * the site today does not reach a permission a route adds tomorrow.
+ */
+export function coversWholeSite(perms: readonly string[] | undefined, routes: readonly RouteEntry[] | undefined): boolean {
+  const needed = uniqSorted((routes ?? []).map(r => r.permission).filter((p): p is string => !!p));
+  return needed.length > 0 && needed.every(p => !!perms?.includes(p));
 }
 
 /** Groups that give `role` on `site`, sorted. */
@@ -83,8 +86,7 @@ export function validateGroupName(name: string, existing: readonly string[]): st
 
 /**
  * Every permission worth offering in a role editor: what the site's routes ask for, what its roles
- * already carry, and whatever else jinbe knows for the site. Never the wildcard — that one has its
- * own control.
+ * already carry, and whatever else jinbe knows for the site. Never a wildcard: it means nothing.
  */
 export function permissionCatalogue(routes: readonly RouteEntry[] | undefined, roles: SiteRoles | undefined, known: readonly string[] = []): string[] {
   const all = [
@@ -92,7 +94,7 @@ export function permissionCatalogue(routes: readonly RouteEntry[] | undefined, r
     ...Object.values(roles ?? {}).flat(),
     ...known,
   ];
-  return uniqSorted(all.filter(p => p !== EVERYTHING));
+  return uniqSorted(all.filter(p => p !== '*'));
 }
 
 export interface RolesDiff {
@@ -128,23 +130,8 @@ export function diffGroupSites(before: GroupMapping, after: GroupMapping) {
     .filter(d => d.added.length || d.removed.length);
 }
 
-/**
- * Whether an org admin could hand this group out inside their organisation: one site only, at least
- * one role, and no role that gives everything. Each failed check is named, so the screen can say why.
- */
-export function isOrgGrantable(group: GroupMapping, roles: RolesBySite): { ok: boolean; reasons: string[] } {
-  const sites = Object.keys(group).filter(s => group[s]?.length);
-  const reasons: string[] = [];
-  if (sites.length === 0) reasons.push('gives no role');
-  else if (sites.length > 1) reasons.push(`spans ${sites.length} sites`);
-  else if (!roles[sites[0]]) reasons.push(`roles of ${sites[0]} unknown`);
-  else if (group[sites[0]].some(r => isEverything(roles[sites[0]][r]))) reasons.push(`gives everything on ${sites[0]}`);
-  return { ok: reasons.length === 0, reasons };
-}
-
 export interface SiteAccess {
   site: string;
-  everything: boolean;
   permissions: string[];
   /** Roles the group names that the site does not define: they give nothing. */
   undefinedRoles: string[];
@@ -157,8 +144,7 @@ export function effectiveAccess(group: GroupMapping, roles: RolesBySite): SiteAc
     const perms = group[site].flatMap(r => defined[r] ?? []);
     return {
       site,
-      everything: perms.includes(EVERYTHING),
-      permissions: uniqSorted(perms.filter(p => p !== EVERYTHING)),
+      permissions: uniqSorted(perms),
       undefinedRoles: group[site].filter(r => !(r in defined)),
     };
   });
@@ -167,12 +153,10 @@ export function effectiveAccess(group: GroupMapping, roles: RolesBySite): SiteAc
 export interface PermissionRow {
   permission: string;
   routes: RouteEntry[];
-  /** Roles on this site granting it, the everything role included. */
+  /** Roles on this site granting it. */
   roles: string[];
   /** Groups giving one of those roles on this site. */
   groups: string[];
-  /** Only a role carrying everything grants it — nobody holds it on purpose. */
-  onlyEverything: boolean;
 }
 
 /**
@@ -186,7 +170,7 @@ export function permissionOverview(site: string, routes: readonly RouteEntry[], 
     if (!r.permission) { open.push(r); continue; }
     byPerm.set(r.permission, [...(byPerm.get(r.permission) ?? []), r]);
   }
-  const grants = (perm: string) => Object.keys(roles).filter(role => roles[role].includes(perm) || isEverything(roles[role])).sort();
+  const grants = (perm: string) => Object.keys(roles).filter(role => roles[role].includes(perm)).sort();
   const rows: PermissionRow[] = [...byPerm.keys()].sort().map(permission => {
     const granting = grants(permission);
     return {
@@ -194,7 +178,6 @@ export function permissionOverview(site: string, routes: readonly RouteEntry[], 
       routes: byPerm.get(permission)!,
       roles: granting,
       groups: uniqSorted(granting.flatMap(role => groupsUsingRole(groups, site, role))),
-      onlyEverything: granting.length > 0 && granting.every(role => isEverything(roles[role]) && !roles[role].includes(permission)),
     };
   });
   const needed = new Set(byPerm.keys());
@@ -205,24 +188,34 @@ export function permissionOverview(site: string, routes: readonly RouteEntry[], 
 }
 
 /**
- * Whether a group administers the platform: everything on `global` or on a system site (jinbe,
- * kuma). Handing one out is an escalation, so it is gated and flagged wherever groups are given.
+ * Whether a group gives platform access: any permission on a system site (jinbe). Flagged wherever
+ * groups are given, so nobody hands one out without noticing.
  */
 export function administersPlatform(group: GroupMapping | undefined, roles: RolesBySite, systemSites: ReadonlySet<string>): boolean {
   if (!group) return false;
-  return effectiveAccess(group, roles).some(a => a.everything && (a.site === 'global' || systemSites.has(a.site)));
+  return effectiveAccess(group, roles).some(a => systemSites.has(a.site) && a.permissions.length > 0);
+}
+
+/**
+ * The holding rule, as far as the console can see it: what a group gives on `site` that the caller
+ * does not hold there. jinbe decides the grant (every site, not just this one); this only greys a
+ * control the API would refuse and says why. The caller's own permissions are known for jinbe only.
+ */
+export function beyondHeld(group: GroupMapping | undefined, roles: RolesBySite, held: readonly string[], site = 'jinbe'): string[] {
+  const access = effectiveAccess(group ?? {}, roles).find(a => a.site === site);
+  return (access?.permissions ?? []).filter(p => !held.includes(p));
 }
 
 /** A group in one line, and every permission it gives qualified by its site (`jinbe:db:read`). */
 export function groupOutcome(group: GroupMapping | undefined, roles: RolesBySite) {
   const access = effectiveAccess(group ?? {}, roles);
   const summary = access.length === 0 ? 'gives nothing' : Object.keys(group!).sort()
-    .map(site => `${site}: ${group![site].join(', ')}${access.find(a => a.site === site)?.everything ? ' (everything)' : ''}`)
+    .map(site => `${site}: ${group![site].join(', ')}`)
     .join(' · ');
   return {
     access,
     summary,
-    permissions: access.flatMap(a => [...(a.everything ? [EVERYTHING] : []), ...a.permissions].map(p => `${a.site}:${p}`)).sort(),
+    permissions: access.flatMap(a => a.permissions.map(p => `${a.site}:${p}`)).sort(),
     unknownRoles: access.flatMap(a => a.undefinedRoles.map(r => `${a.site}/${r}`)),
   };
 }
@@ -235,7 +228,6 @@ export interface ChainBranch {
     roles: {
       role: string;
       known: boolean;
-      everything: boolean;
       permissions: { permission: string; routes: { method: string; path: string }[] }[];
     }[];
   }[];
@@ -256,8 +248,7 @@ export function siteChain(userGroups: readonly string[], groups: GroupsMap, role
           return {
             role,
             known: perms !== undefined,
-            everything: isEverything(perms),
-            permissions: (perms ?? []).filter(p => p !== EVERYTHING).map(permission => ({
+            permissions: (perms ?? []).map(permission => ({
               permission,
               routes: (routeMaps[site] ?? []).filter(r => r.permission === permission).map(r => ({ method: r.method, path: r.path })),
             })),

@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { orgAccessApi, isNotAvailable, type UserAccess } from '../../api/orgAccess';
+import { orgAccessApi, isNotAvailable, OWNER_ROLE, type UserAccess } from '../../api/orgAccess';
 import { useOrgCatalog } from '../../api/orgCatalog';
 import { useUserIdentity } from '../../api/hooks';
 import { membershipsOf } from '../../api/transforms';
 import { orgLabel } from '../../lib/orgOptions';
-import { sameGroups } from '../../lib/orgGrants';
+import { roleLabel, sameSet } from '../../lib/orgRoles';
 import { Badge, Button, Card, TwoFactorBadge } from '../../components/ui';
 import { ApiErrorState } from '../../components/ApiErrorState';
 import { I } from '../../components/ui/Icons';
@@ -19,8 +19,9 @@ type SiteRowsProps = Omit<React.ComponentProps<typeof SiteGroupRows>, 'checked' 
  * A person's access in one place, in its two layers side by side.
  *
  * Site access (left) comes from their own groups and holds everywhere — edited here. Org access
- * (right) is what each org's admin granted them in that org; it counts on that org's routes only and
- * never removes site access — edited on that org's My org page, linked from each row. Membership of
+ * (right) is the org roles assigned to them in each org and the org permissions those give; it counts
+ * on that org's routes only and never removes site access — edited on that org's My org page, linked
+ * from each row. Membership of
  * orgs is changed at the bottom of the right column (it used to be a tab of its own).
  */
 export function UserAccessTab({ user, groups, toggle, siteRows, onOpenOrg }: {
@@ -32,7 +33,7 @@ export function UserAccessTab({ user, groups, toggle, siteRows, onOpenOrg }: {
 }) {
   const accessQ = useQuery({ queryKey: ['user-access', user.id], queryFn: () => orgAccessApi.userAccess(user.id), retry: false });
   const missing = isNotAvailable(accessQ.error);
-  const changed = !sameGroups(groups, user.groups);
+  const changed = !sameSet(groups, user.groups);
 
   return (
     <div className="drawer-split">
@@ -42,7 +43,7 @@ export function UserAccessTab({ user, groups, toggle, siteRows, onOpenOrg }: {
         {accessQ.data?.secondFactor && <TheirSecondFactor sf={accessQ.data.secondFactor} />}
         {!siteRows.mayAssign ? (
           <div className="small muted mb-8">
-            You cannot assign groups: your roles do not include managing members. Below is what this person already holds.
+            You cannot assign groups (groups.members:write). Below is what this person already holds.
           </div>
         ) : null}
         <Card className="mb-12">
@@ -58,7 +59,7 @@ export function UserAccessTab({ user, groups, toggle, siteRows, onOpenOrg }: {
 
       <section aria-labelledby="org-access-h">
         <h3 id="org-access-h" className="mt-0 mb-2 text-base">Org access</h3>
-        <div className="small muted mb-8">Granted by each org&apos;s admin. Counts on that org&apos;s routes only; never removes site access.</div>
+        <div className="small muted mb-8">Roles assigned in each org by its owners. Count on that org&apos;s routes only; never remove site access.</div>
         {missing
           ? <OrgsWithoutGrants user={user} />
           : accessQ.isError
@@ -100,31 +101,36 @@ function OrgList({ orgs, onOpenOrg }: { orgs: UserAccess['orgs']; onOpenOrg: (or
           <div className="row gap-8 justify-between">
             <span className="row gap-8 min-w-0">
               <span className="fw-medium" title={o.orgId}>{o.name}</span>
-              <Badge tone={o.admin ? 'accent' : 'plain'} mono={false}>{o.admin ? 'org admin' : 'member'}</Badge>
+              <Badge tone={o.roles.includes(OWNER_ROLE) ? 'accent' : 'plain'} mono={false}>{o.roles.includes(OWNER_ROLE) ? 'owner' : 'member'}</Badge>
             </span>
-            <Button variant="ghost" size="sm" trailing={I.chev} onClick={() => onOpenOrg(o.orgId)} title="Grant or remove groups in this org">
+            <Button variant="ghost" size="sm" trailing={I.chev} onClick={() => onOpenOrg(o.orgId)} title="Assign or remove roles in this org">
               Manage
             </Button>
           </div>
           <div className="row wrap gap-4 mt-8">
-            {o.grants.length
-              ? o.grants.map((g) => <Badge key={g}>{g}</Badge>)
-              : <span className="small muted">No groups granted in this org — site access only.</span>}
+            {o.roles.length
+              ? o.roles.map((r) => { const l = roleLabel(r); return <Badge key={r} title={r}>{l.site ? `${l.site} · ${l.name}` : l.name}</Badge>; })
+              : <span className="small muted">No role assigned in this org — site access only.</span>}
           </div>
+          {o.permissions.length > 0 && (
+            <div className="small muted mt-4 mono" title="Org permissions held here, as the policy decides them (assigned roles and the every-org map)">
+              {o.permissions.join(' · ')}
+            </div>
+          )}
         </div>
       ))}
     </Card>
   );
 }
 
-/** Before the server answers org grants: the orgs they belong to, without what is granted in each. */
+/** Before the server answers org access: the orgs they belong to, without the roles in each. */
 function OrgsWithoutGrants({ user }: { user: User }) {
   const identity = useUserIdentity(user.id).data;
   const { orgs: catalog } = useOrgCatalog();
   const ids = identity ? membershipsOf(identity) : [];
   return (
     <Card pad="md">
-      <div className="small mb-8">Org grants are not available yet on this server.</div>
+      <div className="small mb-8">Org roles are not available yet on this server.</div>
       {ids.length
         ? <div className="row wrap gap-4">{ids.map((o) => <Badge key={o} mono={false} title={o}>{orgLabel(o, catalog)} · member</Badge>)}</div>
         : <span className="small muted">Not in any org.</span>}

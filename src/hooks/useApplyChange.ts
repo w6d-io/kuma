@@ -2,7 +2,7 @@ import { useApp } from '../contexts/AppContext';
 import { bounceToStepUp } from '../lib/stepUp';
 import { stepUpAndAskToRedo } from '../lib/resume';
 import { rememberPendingChange, type PendingIntent } from '../lib/pendingChange';
-import { toastFor } from '../lib/apiError';
+import { isDefinedInCode, toastFor } from '../lib/apiError';
 
 export function useApplyChange() {
   const { pushToast, pipeline, refreshAudit } = useApp();
@@ -50,10 +50,10 @@ export function useApplyChange() {
             );
             return;
           }
-          if (err.code === 'privilege_escalation_blocked') {
+          if (isDefinedInCode(err)) {
             pushToast(
-              'Privilege escalation blocked · needs admin.membership:write',
-              { err: true, sub: (err.details?.hint || err.message) + nothingApplied },
+              'Defined in code · not editable here',
+              { err: true, sub: `${err.message} It changes with a jinbe release or the site's intent.` },
             );
             return;
           }

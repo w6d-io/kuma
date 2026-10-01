@@ -200,7 +200,7 @@ export function describeImportError(err: unknown): string {
   if (e.status === 429) return 'Too many previews in a minute (10 at most). Wait a moment, then try again.';
   if (e.status === 422 && e.code) return `The document could not be read: ${e.message ?? e.code}`;
   if (e.status === 404) return 'This server cannot import OpenAPI documents yet.';
-  if (e.status === 403) return refusalDetail(err) ?? 'Importing routes needs a super admin.';
+  if (e.status === 403) return refusalDetail(err) ?? 'Importing routes needs sites:write.';
   if (e.status === 503) return 'A service the import needs did not answer, so nothing was changed. Try again in a moment.';
   return e.message || 'The request failed.';
 }

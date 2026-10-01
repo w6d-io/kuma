@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
-  EVERYTHING,
+  beyondHeld,
+  coversWholeSite,
   diffGroupSites,
   diffRoles,
   effectiveAccess,
   groupsUsingRole,
-  isOrgGrantable,
   membersOf,
   permissionCatalogue,
   permissionOverview,
@@ -105,8 +105,8 @@ describe('permissionCatalogue', () => {
 describe('diffRoles', () => {
   it('names added, removed and changed roles with their permission deltas', () => {
     const d = diffRoles(
-      { admin: ['*'], viewer: ['read'], old: ['x'] },
-      { admin: ['*'], viewer: ['read', 'list'], fresh: ['y'] },
+      { admin: ['read', 'write'], viewer: ['read'], old: ['x'] },
+      { admin: ['read', 'write'], viewer: ['read', 'list'], fresh: ['y'] },
     );
     expect(d.added).toEqual(['fresh']);
     expect(d.removed).toEqual(['old']);
@@ -128,28 +128,29 @@ describe('diffGroupSites', () => {
   });
 });
 
-describe('isOrgGrantable', () => {
-  const roles = { kuma: { admin: ['*'], viewer: ['read'] }, jinbe: { viewer: ['databases:read'] } };
-  it('holds for one site, with roles, none of them everything', () => {
-    expect(isOrgGrantable({ kuma: ['viewer'] }, roles)).toEqual({ ok: true, reasons: [] });
-  });
-  it('explains each failed check', () => {
-    expect(isOrgGrantable({ kuma: ['admin'] }, roles).reasons).toEqual(['gives everything on kuma']);
-    expect(isOrgGrantable({ kuma: ['viewer'], jinbe: ['viewer'] }, roles).reasons).toEqual(['spans 2 sites']);
-    expect(isOrgGrantable({}, roles).reasons).toEqual(['gives no role']);
-  });
-  it('does not claim yes when the site roles could not be read', () => {
-    expect(isOrgGrantable({ payroll: ['viewer'] }, roles).reasons).toEqual(['roles of payroll unknown']);
+describe('effectiveAccess', () => {
+  it('resolves permissions per site, by name only', () => {
+    const roles = { payroll: { admin: ['read', 'write'], viewer: ['read'] }, jinbe: { viewer: ['b', 'a'], ed: ['a', 'c'] } };
+    expect(effectiveAccess({ payroll: ['admin', 'viewer'], jinbe: ['viewer', 'ed', 'ghost'] }, roles)).toEqual([
+      { site: 'jinbe', permissions: ['a', 'b', 'c'], undefinedRoles: ['ghost'] },
+      { site: 'payroll', permissions: ['read', 'write'], undefinedRoles: [] },
+    ]);
   });
 });
 
-describe('effectiveAccess', () => {
-  it('resolves permissions per site and flags everything', () => {
-    const roles = { kuma: { admin: ['*'], viewer: ['read'] }, jinbe: { viewer: ['b', 'a'], ed: ['a', 'c'] } };
-    expect(effectiveAccess({ kuma: ['admin', 'viewer'], jinbe: ['viewer', 'ed', 'ghost'] }, roles)).toEqual([
-      { site: 'jinbe', everything: false, permissions: ['a', 'b', 'c'], undefinedRoles: ['ghost'] },
-      { site: 'kuma', everything: true, permissions: ['read'], undefinedRoles: [] },
-    ]);
+describe('coversWholeSite', () => {
+  const routes: RouteEntry[] = [
+    { method: 'GET', path: '/a', permission: 'a:read' },
+    { method: 'POST', path: '/a', permission: 'a:write' },
+    { method: 'GET', path: '/h' },
+  ];
+  it('holds when the role names every permission the routes declare', () => {
+    expect(coversWholeSite(['a:read', 'a:write', 'x:y'], routes)).toBe(true);
+    expect(coversWholeSite(['a:read'], routes)).toBe(false);
+  });
+  it('gives a wildcard nothing, and holds for no site without permissions', () => {
+    expect(coversWholeSite(['*'], routes)).toBe(false);
+    expect(coversWholeSite(['a:read'], [{ method: 'GET', path: '/h' }])).toBe(false);
   });
 });
 
@@ -161,7 +162,7 @@ describe('permissionOverview', () => {
     { method: 'DELETE', path: '/api/db/:id', permission: 'db:delete' },
     { method: 'GET', path: '/health' },
   ];
-  const roles = { admin: [EVERYTHING], editor: ['db:read', 'db:write', 'reports:run'], viewer: ['db:read'] };
+  const roles = { admin: ['db:read', 'db:write', 'db:delete'], editor: ['db:read', 'db:write', 'reports:run'], viewer: ['db:read'] };
   const siteGroups: GroupsMap = { admins: { s: ['admin'] }, devs: { s: ['editor'] }, other: { t: ['editor'] } };
   const o = permissionOverview('s', routes, roles, siteGroups);
 
@@ -171,10 +172,10 @@ describe('permissionOverview', () => {
     expect(read.roles).toEqual(['admin', 'editor', 'viewer']);
     expect(read.groups).toEqual(['admins', 'devs']);
   });
-  it('flags a permission only the everything role grants', () => {
+  it('grants a permission only through the roles that name it', () => {
     const del = o.rows.find(r => r.permission === 'db:delete')!;
     expect(del.roles).toEqual(['admin']);
-    expect(del.onlyEverything).toBe(true);
+    expect(del.groups).toEqual(['admins']);
   });
   it('counts routes needing no permission, and permissions no route needs', () => {
     expect(o.open).toHaveLength(1);
@@ -183,25 +184,35 @@ describe('permissionOverview', () => {
 });
 
 describe('administersPlatform', () => {
-  const roles = { global: { super_admin: ['*'] }, kuma: { admin: ['*'], viewer: ['read'] }, payroll: { admin: ['*'] } };
-  const system = new Set(['kuma']);
-  it('holds for everything on global or on a system site', () => {
-    expect(administersPlatform({ global: ['super_admin'] }, roles, system)).toBe(true);
-    expect(administersPlatform({ kuma: ['admin'] }, roles, system)).toBe(true);
+  const roles = { jinbe: { support: ['users:read'], empty: [] }, payroll: { admin: ['pay:read', 'pay:write'] } };
+  const system = new Set(['jinbe']);
+  it('holds for any permission on a system site', () => {
+    expect(administersPlatform({ jinbe: ['support'] }, roles, system)).toBe(true);
   });
-  it('does not for a tenant site or a narrow role', () => {
+  it('does not for a tenant site or a role carrying nothing', () => {
     expect(administersPlatform({ payroll: ['admin'] }, roles, system)).toBe(false);
-    expect(administersPlatform({ kuma: ['viewer'] }, roles, system)).toBe(false);
+    expect(administersPlatform({ jinbe: ['empty'] }, roles, system)).toBe(false);
     expect(administersPlatform(undefined, roles, system)).toBe(false);
+  });
+});
+
+describe('beyondHeld', () => {
+  const roles = { jinbe: { support: ['users:read', 'users:recovery'] }, payroll: { admin: ['pay:write'] } };
+  it('names what the group gives on jinbe that the caller does not hold', () => {
+    expect(beyondHeld({ jinbe: ['support'] }, roles, ['users:read'])).toEqual(['users:recovery']);
+    expect(beyondHeld({ jinbe: ['support'] }, roles, ['users:read', 'users:recovery'])).toEqual([]);
+  });
+  it('says nothing about a site whose holdings it cannot see', () => {
+    expect(beyondHeld({ payroll: ['admin'] }, roles, [])).toEqual([]);
   });
 });
 
 describe('groupOutcome', () => {
   it('summarises a group per site, with site-qualified permissions', () => {
-    const roles = { kuma: { admin: ['*'] }, jinbe: { viewer: ['db:read', 'db:list'] } };
-    const o = groupOutcome({ kuma: ['admin'], jinbe: ['viewer', 'ghost'] }, roles);
-    expect(o.summary).toBe('jinbe: viewer, ghost · kuma: admin (everything)');
-    expect(o.permissions).toEqual(['jinbe:db:list', 'jinbe:db:read', 'kuma:*']);
+    const roles = { payroll: { admin: ['pay:read'] }, jinbe: { viewer: ['db:read', 'db:list'] } };
+    const o = groupOutcome({ payroll: ['admin'], jinbe: ['viewer', 'ghost'] }, roles);
+    expect(o.summary).toBe('jinbe: viewer, ghost · payroll: admin');
+    expect(o.permissions).toEqual(['jinbe:db:list', 'jinbe:db:read', 'payroll:pay:read']);
     expect(o.unknownRoles).toEqual(['jinbe/ghost']);
     expect(groupOutcome(undefined, roles).summary).toBe('gives nothing');
   });
@@ -221,8 +232,8 @@ describe('siteChain', () => {
     ]);
     expect(missing).toEqual({ group: 'nope', declared: false, sites: [] });
   });
-  it('shows everything as one line covering every declared route', () => {
-    const [b] = siteChain(['a'], { a: { k: ['admin'] } }, { k: { admin: ['*'] } }, { k: [{ method: 'GET', path: '/x', permission: 'x:read' }] });
-    expect(b.sites[0].roles[0]).toEqual({ role: 'admin', known: true, everything: true, permissions: [] });
+  it('lists a role by the permissions it names, nothing implied', () => {
+    const [b] = siteChain(['a'], { a: { k: ['admin'] } }, { k: { admin: ['x:read'] } }, { k: [{ method: 'GET', path: '/x', permission: 'x:read' }] });
+    expect(b.sites[0].roles[0]).toEqual({ role: 'admin', known: true, permissions: [{ permission: 'x:read', routes: [{ method: 'GET', path: '/x' }] }] });
   });
 });

@@ -8,7 +8,7 @@ import { ApiErrorState } from '../../components/ApiErrorState';
 import { useApplyChange } from '../../hooks/useApplyChange';
 import { membershipsOf } from '../../api/transforms';
 import { orgLabel } from '../../lib/orgOptions';
-import { PRIVILEGED_MUTATION, permits } from '../../policy/model';
+import { holds } from '../../policy/model';
 import type { User } from '../../api/types';
 
 // Multi-organization membership editor (Users drawer · Organizations tab).
@@ -32,9 +32,8 @@ export function UserOrgsTab({ user }: { user: User }) {
   const { apiSetUserOrganization, apiSetUserOrganizations } = useApp();
   const applyChange = useApplyChange();
   const { data: session } = useSession();
-  // Editing somebody's organisations is gated on the permission the mutation checks. A role NAME
-  // this model does not define greyed the whole tab for the very people who may change it.
-  const mayEditMemberships = permits(session?.permissions, PRIVILEGED_MUTATION);
+  // Editing somebody's organisations is gated on the permission the mutation checks.
+  const mayEditMemberships = holds(session, 'orgs.members:write');
 
   const identityQ = useUserIdentity(user.id);
   const identity = identityQ.data;

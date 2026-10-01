@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../auth/session', () => ({ bearerToken: async () => null }));
 
-import { orgAccessApi, refusedOf, isNotAvailable } from './orgAccess';
+import { orgAccessApi, refusedOf, refusalWords, isNotAvailable } from './orgAccess';
 
 type Call = [string, RequestInit | undefined];
 let calls: Call[] = [];
@@ -22,43 +22,46 @@ function answer(status: number, body: unknown) {
 beforeEach(() => { calls = []; });
 
 describe('orgAccessApi', () => {
-  it('reads an org\'s grants keyed by email', async () => {
-    answer(200, { grants: { 'bob@acme.io': ['fleet-viewers'] } });
-    await expect(orgAccessApi.grants('o 1')).resolves.toEqual({ 'bob@acme.io': ['fleet-viewers'] });
-    expect(calls[0][0]).toBe('/api/organizations/o%201/grants');
+  it('reads an org\'s roles, each marked assignable or not', async () => {
+    answer(200, { roles: [{ role: 'jinbe:owner', permissions: ['org.members:write'], assignable: false }, { role: 'payroll:editor', permissions: ['pay:write'], assignable: true }, { nope: 1 }] });
+    await expect(orgAccessApi.roles('o 1')).resolves.toEqual([
+      { role: 'jinbe:owner', permissions: ['org.members:write'], assignable: false },
+      { role: 'payroll:editor', permissions: ['pay:write'], assignable: true },
+    ]);
+    expect(calls[0][0]).toBe('/api/organizations/o%201/roles');
   });
 
-  it('reads a missing grants map as empty', async () => {
-    answer(200, {});
-    await expect(orgAccessApi.grants('o1')).resolves.toEqual({});
-  });
-
-  it('writes one member\'s grants with PUT and the groups body', async () => {
-    answer(200, { email: 'bob@acme.io', groups: ['a'] });
-    await expect(orgAccessApi.setGrants('o1', 'u1', ['a'])).resolves.toEqual({ email: 'bob@acme.io', groups: ['a'] });
-    expect(calls[0][0]).toBe('/api/organizations/o1/users/u1/grants');
+  it('reads and writes one member\'s roles', async () => {
+    answer(200, { id: 'u1', roles: ['jinbe:viewer'] });
+    await expect(orgAccessApi.memberRoles('o1', 'u1')).resolves.toEqual(['jinbe:viewer']);
+    expect(calls[0][0]).toBe('/api/organizations/o1/users/u1/roles');
+    answer(200, { id: 'u1', roles: ['jinbe:auditor'] });
+    await expect(orgAccessApi.setMemberRoles('o1', 'u1', ['jinbe:auditor'])).resolves.toEqual(['jinbe:auditor']);
     expect(calls[0][1]?.method).toBe('PUT');
-    expect(JSON.parse(String(calls[0][1]?.body))).toEqual({ groups: ['a'] });
+    expect(JSON.parse(String(calls[0][1]?.body))).toEqual({ roles: ['jinbe:auditor'] });
   });
 
-  it('carries the refused groups of a 403 onto the error', async () => {
-    answer(403, { error: 'Forbidden', message: 'not yours', refused: [{ group: 'fleet-admins', reason: 'carries *' }] });
-    const err = await orgAccessApi.setGrants('o1', 'u1', ['fleet-admins']).catch((e) => e);
-    expect(err.status).toBe(403);
-    expect(refusedOf(err)).toEqual([{ group: 'fleet-admins', reason: 'carries *' }]);
+  it('carries the refused roles of a 403 onto the error, with what is missing', async () => {
+    answer(403, { error: 'Forbidden', message: 'Not allowed to assign: jinbe:owner', refused: [{ role: 'jinbe:owner', reason: 'grant_exceeds_own', missing: ['org.keys:write'] }, { role: 'x:y', reason: 'unknown_role' }] });
+    const err = await orgAccessApi.setMemberRoles('o1', 'u1', ['jinbe:owner']).catch((e: unknown) => e);
+    expect((err as { status: number }).status).toBe(403);
+    expect(refusedOf(err)).toEqual([
+      { role: 'jinbe:owner', reason: 'grant_exceeds_own', missing: ['org.keys:write'] },
+      { role: 'x:y', reason: 'unknown_role', missing: [] },
+    ]);
   });
 
-  it('reads assignable groups in the new shape and the older list of names', async () => {
-    answer(200, { groups: [{ name: 'viewers', services: { fleet: ['viewer'] } }] });
-    await expect(orgAccessApi.assignable('o1')).resolves.toEqual([{ name: 'viewers', services: { fleet: ['viewer'] } }]);
-    answer(200, { groups: ['viewers'] });
-    await expect(orgAccessApi.assignable('o1')).resolves.toEqual([{ name: 'viewers', services: {} }]);
+  it('names an org\'s owners from the platform route', async () => {
+    answer(200, { owners: ['id-1'] });
+    await expect(orgAccessApi.setOwners('o1', ['id-1'])).resolves.toEqual(['id-1']);
+    expect(calls[0][0]).toBe('/api/admin/organizations/o1/owners');
+    expect(JSON.parse(String(calls[0][1]?.body))).toEqual({ owners: ['id-1'] });
   });
 
   it('reads a person\'s two layers of access', async () => {
     const body = {
-      site: { groups: ['devs'], byService: { kuma: ['viewer'] } },
-      orgs: [{ orgId: 'o1', name: 'Acme', admin: true, grants: ['fleet-viewers'] }],
+      site: { groups: ['devs'], byService: { jinbe: ['support'] } },
+      orgs: [{ orgId: 'o1', name: 'Acme', roles: ['jinbe:owner'], permissions: ['org.members:read'] }],
     };
     answer(200, body);
     await expect(orgAccessApi.userAccess('u1')).resolves.toEqual(body);
@@ -69,12 +72,12 @@ describe('orgAccessApi', () => {
     answer(200, { site: {}, orgs: [{ orgId: 'o1' }] });
     await expect(orgAccessApi.userAccess('u1')).resolves.toEqual({
       site: { groups: [], byService: {} },
-      orgs: [{ orgId: 'o1', name: 'o1', admin: false, grants: [] }],
+      orgs: [{ orgId: 'o1', name: 'o1', roles: [], permissions: [] }],
     });
   });
 
   it('asks the access check with the form, leaving an empty site out', async () => {
-    answer(200, { allow: true, reason: 'ok', app: 'kuma', owners: ['kuma'], matchingRules: [], groups: [], roles: [], permissions: [], superAdmin: false });
+    answer(200, { allow: true, reason: 'ok', app: 'kuma', owners: ['kuma'], matchingRules: [], groups: [], roles: [], permissions: [] });
     await orgAccessApi.accessCheck({ email: 'a@b.c', method: 'get', path: '/api/x', app: '' });
     expect(calls[0][0]).toBe('/api/admin/rbac/access-check');
     expect(JSON.parse(String(calls[0][1]?.body))).toEqual({ email: 'a@b.c', method: 'GET', path: '/api/x' });
@@ -108,8 +111,17 @@ describe('refusedOf', () => {
     expect(refusedOf({ details: { refused: 'nope' } })).toEqual([]);
   });
 
-  it('drops malformed entries', () => {
-    expect(refusedOf({ details: { refused: [{ group: 'a', reason: 'r' }, { reason: 'no group' }, 7] } }))
-      .toEqual([{ group: 'a', reason: 'r' }]);
+  it('drops malformed entries and keeps grantedBy when jinbe says', () => {
+    expect(refusedOf({ details: { refused: [{ role: 'a:b', reason: 'r', grantedBy: 'x@example.com' }, { reason: 'no role' }, 7] } }))
+      .toEqual([{ role: 'a:b', reason: 'r', missing: [], grantedBy: 'x@example.com' }]);
+  });
+});
+
+describe('refusalWords', () => {
+  it('says each reason in words, with what is missing', () => {
+    expect(refusalWords({ role: 'a:b', reason: 'unknown_role', missing: [] })).toBe('no such role');
+    expect(refusalWords({ role: 'p:e', reason: 'org_not_entitled', missing: [] })).toMatch(/not entitled/);
+    expect(refusalWords({ role: 'j:o', reason: 'grant_permission_missing', missing: ['org.members:write'] })).toMatch(/may not assign roles.*org\.members:write/);
+    expect(refusalWords({ role: 'j:o', reason: 'grant_exceeds_own', missing: ['org.keys:write'] })).toMatch(/do not hold here.*org\.keys:write/);
   });
 });

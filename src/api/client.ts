@@ -238,10 +238,6 @@ export const api = {
     request<{ service: string; rules: JinbeRouteRule[] }>(`/admin/rbac/services/${serviceName}/routes`),
 
   /**
-   * The groups the caller may hand out, and whether they may at all — from the model the engine
-   * decides against, not from the previous one.
-   */
-  /**
    * Every organisation, for the screen that administers them.
    *
    * Not `/me/organizations`: that one answers with MINE, whoever asks. It used to widen to every
@@ -263,8 +259,8 @@ export const api = {
   createOrganization: (body: { name: string; tenant?: string }) =>
     request<OrganizationRecord>('/admin/organizations', { method: 'POST', body: JSON.stringify(body) }),
 
-  /** Rename, re-tenant, or set the whole set of applications. Only what is sent changes. */
-  updateOrganization: (id: string, body: { name?: string; tenant?: string; applications?: string[] }) =>
+  /** Rename or re-tenant. Only what is sent changes. */
+  updateOrganization: (id: string, body: { name?: string; tenant?: string }) =>
     request<OrganizationRecord>(`/admin/organizations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
   /** Only an organisation nobody belongs to: jinbe answers 409 organisation_in_use otherwise. */
@@ -366,37 +362,6 @@ export const api = {
   backupNow: () =>
     request<{ success: boolean; key: string }>('/admin/rbac/bundle/backups/now', { method: 'POST' }),
 
-  // ─── Org → Service bundle map (J14 org-service entitlement) ───
-  // Array-valued: each org bundles a SET of services. GET returns the whole
-  // map; PUT replaces one org's entire bundle (jinbe enforces >=1 service);
-  // DELETE clears an org's bundle entirely.
-  getOrgServiceMap: () =>
-    request<{ mappings: Record<string, string[]> }>('/admin/rbac/org-service-map').then(r => r.mappings),
-
-  setOrgServiceBundle: (organizationId: string, services: string[]) =>
-    request<{ success: boolean; message: string }>('/admin/rbac/org-service-map', {
-      method: 'PUT',
-      body: JSON.stringify({ organizationId, services }),
-    }),
-
-  deleteOrgServiceMapping: (organizationId: string) =>
-    request<{ success: boolean; message: string }>(`/admin/rbac/org-service-map/${encodeURIComponent(organizationId)}`, {
-      method: 'DELETE',
-    }),
-
-  // ─── Org → Admin roster (per-org admin list) ───
-  // Symmetric with the org→service map: each org has an admin roster (emails).
-  // GET returns the whole map; PUT replaces one org's entire roster (empty list
-  // clears it). super_admin + a recent second factor (15-min step-up) required.
-  getOrgAdminMap: () =>
-    request<{ mappings: Record<string, string[]> }>('/admin/rbac/org-admin-map').then(r => r.mappings),
-
-  setOrgAdmins: (organizationId: string, admins: string[]) =>
-    request<{ success: boolean; message: string }>('/admin/rbac/org-admin-map', {
-      method: 'PUT',
-      body: JSON.stringify({ organizationId, admins }),
-    }),
-
   // ─── Kratos auth-method toggles (hot-reload; kratos.yml via jinbe) ───
   // GET: state per method. PUT: partial patch — only the methods present in
   // the body are touched. webauthn/passkey/oidc can only be enabled once
@@ -451,8 +416,8 @@ export const api = {
   // ─── Impact preview — who gains/loses access if this change is applied ───
 
 
-  // ─── Delegated org-admin (self-service; scoped to the caller's orgs) ───
-  // The organizations the caller may administer (delegation manageable_orgs).
+  // ─── One organization from the inside (scoped to the caller's orgs) ───
+  // The organizations the caller belongs to; what they may do in each is /me/permissions orgPermissions.
   // The scope is kept, not dropped: it says WHICH authority answered. `claim` means the deployment
   // reads organisations from the verified token, so nobody administers them here and a screen that
   // advised asking an administrator would be advising the impossible.
@@ -465,11 +430,6 @@ export const api = {
       names?: Record<string, string>
       scope?: 'delegated' | 'claim' | 'all'
     }>('/me/organizations'),
-
-  // Groups the caller may assign within an org — already narrowed by jinbe to the
-  // org's service + containment (never the full catalog).
-  getAssignableGroups: (orgId: string) =>
-    request<{ groups: string[] }>(`/organizations/${orgId}/assignable-groups`).then(r => r.groups),
 
   // Users in an org (scoped). credentials_identifier is an exact-match filter.
   getOrgUsers: (orgId: string, opts?: { search?: string; pageSize?: number }) => {
@@ -484,7 +444,7 @@ export const api = {
 
   createOrgUser: (
     orgId: string,
-    payload: { email: string; name?: string; sendInvite?: boolean; groups?: string[] },
+    payload: { email: string; name?: string; sendInvite?: boolean; roles?: string[] },
   ) =>
     request<KratosIdentity>(`/organizations/${orgId}/users`, {
       method: 'POST',
@@ -512,7 +472,7 @@ export interface ImportHistoryEntry {
   takenAt: string;
   actor: string | null;
   reason: 'pre-import' | 'pre-restore' | 'pre-rollback';
-  counts: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number; orgServiceMap: number };
+  counts: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number; orgSites?: number; orgAssignments?: number };
 }
 
 // Gateway sign-in methods per service — ordered fallback cookie → bearer →
@@ -681,8 +641,8 @@ export interface WhoamiResponse {
   roles: string[];
   permissions: string[];
   /**
-   * The catalogue permissions `permissions` amount to, as jinbe expands them (legacy aliases, `*`).
-   * Absent on an older jinbe: see policy/model.ts mayUse.
+   * The catalogue permissions held (policy/catalog.ts): what every gate reads, exactly.
+   * Absent on an older jinbe: see policy/model.ts holds.
    */
   effective_permissions?: string[];
   /**
@@ -743,7 +703,7 @@ export interface KratosIdentity {
 export interface JinbeGroup {
   name: string;
   services: Record<string, string[]>;
-  /** True when this group is bootstrap-protected (cannot be deleted, may need super_admin to mutate). */
+  /** True when this group is defined in code (staff groups, super_admins) or by a site intent: read-only here (409 defined_in_code). */
   system?: boolean;
   description?: string;
   /** Whether members must use two-step sign-in (lib/twoFactor.ts). Absent on an older jinbe. */
@@ -757,7 +717,7 @@ export interface JinbeService {
   routeMapFilePath: string;
   rolesCount: number;
   routesCount: number;
-  /** True when this service is bootstrap-protected. */
+  /** True when its roles and routes are defined in code (jinbe) or by a site intent: read-only here (409 defined_in_code). */
   system?: boolean;
   description?: string;
 }

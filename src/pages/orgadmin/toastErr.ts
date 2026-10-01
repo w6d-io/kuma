@@ -2,9 +2,9 @@ import { stepUpAndAskToRedo } from '../../lib/resume';
 import { edgeBlocked, refusalDetail, toastFor } from '../../lib/apiError';
 
 export type PushToast = (msg: string, opts?: { err?: boolean; sub?: string; ttl?: number }) => void;
-type ApiErr = Error & { code?: string; status?: number; details?: { hint?: string } };
+type ApiErr = Error & { code?: string; status?: number; details?: { hint?: string; code?: string } };
 
-// Map jinbe's delegation error codes to friendly toasts (mirrors useApplyChange).
+// Map jinbe's refusal codes to friendly toasts (mirrors useApplyChange).
 export function makeToastErr(pushToast: PushToast) {
   return (err: unknown) => {
     const e = err as ApiErr;
@@ -12,8 +12,8 @@ export function makeToastErr(pushToast: PushToast) {
       pushToast('MFA required · target user has no second factor', { err: true, sub: e.details?.hint || e.message });
       return;
     }
-    if (e.code === 'privilege_escalation_blocked') {
-      pushToast('Not allowed · that group is outside your delegation', { err: true, sub: e.details?.hint || e.message });
+    if (e.details?.code === 'grant_exceeds_own') {
+      pushToast('Not allowed · that grants what you do not hold', { err: true, sub: e.details?.hint || e.message });
       return;
     }
     // R2 step-up: re-verify a recent second factor, then return to retry.

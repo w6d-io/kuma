@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { KratosIdentity } from '../api/client';
 import { emailChangeFailure, emailChangeResult, signInAddress, verificationFailure } from './userAddress';
-import { mayUse } from '../policy/model';
 
 const identity = (email: string, addresses?: { value: string; verified: boolean }[]) =>
   ({ id: 'u-1', traits: { email }, verifiable_addresses: addresses }) as unknown as KratosIdentity;
@@ -64,19 +63,5 @@ describe('verificationFailure', () => {
     expect(verificationFailure({ status: 409, code: 'verification_link_unavailable' })).toEqual({ kind: 'unavailable' });
     expect(verificationFailure({ status: 422, code: 'unknown_address' })).toEqual({ kind: 'unknown_address' });
     expect(verificationFailure({ status: 500, message: 'boom' })).toEqual({ kind: 'failed', message: 'boom' });
-  });
-});
-
-describe('mayUse', () => {
-  it('trusts jinbe\'s expansion when it gives one', () => {
-    expect(mayUse({ permissions: ['admin:write'], effective_permissions: ['users:verify'] }, 'users:verify')).toBe(true);
-    expect(mayUse({ permissions: ['admin:write'], effective_permissions: ['users:verify'] }, 'users:update_email')).toBe(false);
-  });
-
-  it('on an older jinbe, the permission itself or admin:write', () => {
-    expect(mayUse({ permissions: ['admin:write'] }, 'users:update_email')).toBe(true);
-    expect(mayUse({ permissions: ['users:verify'] }, 'users:verify')).toBe(true);
-    expect(mayUse({ permissions: ['users:read'] }, 'users:verify')).toBe(false);
-    expect(mayUse(undefined, 'users:verify')).toBe(false);
   });
 });

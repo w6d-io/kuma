@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { cleanup, click, render, type } from '../../components/ui/testing';
 
-const h = vi.hoisted(() => ({ session: { permissions: ['admin:read', 'admin:write'] } as { permissions: string[]; effective_permissions?: string[] } }));
+const h = vi.hoisted(() => ({ session: { permissions: ['users:read', 'users:verify', 'users:create', 'users:recovery', 'groups.members:write'] } as { permissions: string[]; effective_permissions?: string[] } }));
 vi.mock('../../auth/session', () => ({ bearerToken: async () => null }));
 vi.mock('../../lib/stepUp', async (orig) => ({ ...(await orig<typeof import('../../lib/stepUp')>()), bounceToStepUp: () => true }));
 vi.mock('../../api/hooks', () => ({ useSession: () => ({ data: h.session }) }));
@@ -54,7 +54,7 @@ const JOB = (state: 'running' | 'done', status: 'pending' | 'done') => ({
   counts: { pending: status === 'pending' ? 1 : 0, done: status === 'done' ? 1 : 0, skipped: 1, refused: 1, failed: 0 },
 });
 
-beforeEach(() => { h.session = { permissions: ['admin:read', 'admin:write'] }; sessionStorage.clear(); });
+beforeEach(() => { h.session = { permissions: ['users:read', 'users:verify', 'users:create', 'users:recovery', 'groups.members:write'] }; sessionStorage.clear(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('SelectionBar', () => {
@@ -66,7 +66,7 @@ describe('SelectionBar', () => {
     expect(button('Add to groups')).not.toBeNull();
     expect(text()).not.toMatch(/delete/i);
     cleanup();
-    h.session = { permissions: ['admin:write'], effective_permissions: ['users:read', 'users:verify'] };
+    h.session = { permissions: ['raw'], effective_permissions: ['users:read', 'users:verify'] };
     withQuery(<SelectionBar selected={SELECTED} onClear={() => {}} />);
     expect(button('Resend verification')).not.toBeNull();
     expect(button('Add to groups')).toBeNull();
@@ -150,7 +150,7 @@ describe('InviteDialog', () => {
   });
 
   it('without users:recovery, invites go out without a mail and it says so', async () => {
-    h.session = { permissions: ['admin:write'], effective_permissions: ['users:create'] };
+    h.session = { permissions: ['raw'], effective_permissions: ['users:create'] };
     serve(() => [200, PLAN]);
     withQuery(<InviteDialog open onClose={() => {}} />);
     expect(text()).toContain('sending invites needs users:recovery');

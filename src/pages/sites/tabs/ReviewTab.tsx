@@ -138,7 +138,7 @@ export function ReviewTab({ ed, canApply, go, query = {} }: { ed: SiteEditor; ca
 
   return (
     <div className="stack gap-16">
-      {production && <Callout tone="danger" icon={I.alert} title="PRODUCTION · changes are live">High-risk changes may need a second super admin; a note is required.</Callout>}
+      {production && <Callout tone="danger" icon={I.alert} title="PRODUCTION · changes are live">High-risk changes may need a second approver; a note is required.</Callout>}
       {query.imported && !result && <ImportedCallout counts={query.imported} onDismiss={() => go('review')} />}
 
       <Card title={first ? `Go live with ${site?.displayName ?? ed.name}` : `Review changes to ${site?.displayName ?? ed.name}`} sub={first ? 'First version' : `Draft based on v${ed.detail.data?.version}`}>

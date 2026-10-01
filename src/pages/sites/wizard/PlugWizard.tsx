@@ -38,7 +38,7 @@ export function PlugWizard({ step }: { step: WizardStep; query: Record<string, s
   useEffect(() => { if (at > 0 && problems.length > 0) to('address'); }, [at, problems.length]);
 
   if (!perms.canDraft) {
-    return <Callout tone="info" icon={I.lock} title="Plugging a site needs a platform admin">You can look at sites; creating one needs admin:write.</Callout>;
+    return <Callout tone="info" icon={I.lock} title="Plugging a site needs sites:write">You can look at sites; creating one needs sites:write.</Callout>;
   }
 
   const finish = async () => {

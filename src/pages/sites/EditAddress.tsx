@@ -15,7 +15,7 @@ import { goSites, sitesHref } from '../../lib/sites/route';
  * that may already be live. Every check jinbe has runs against the NEW address before anything is
  * saved — rule overlaps with every live rule, other Ingresses and sites on that host, the zone, the
  * landing page — grouped by severity, with what the move costs said in words. Save as a draft, or
- * save and apply at once (super admin, recent second factor).
+ * save and apply at once (sites:apply, recent second factor).
  */
 
 type PreviewState =
@@ -222,7 +222,7 @@ export function EditAddressDialog({ ed, open, onClose, canApply, onApplied }: {
         {others.length > 0 && (
           <Callout tone="info" icon={I.info}>This draft has other unapplied changes ({others.join(', ')}); they are saved{canApply ? ' and applied' : ''} with the address.</Callout>
         )}
-        {!canApply && changed && <p className="small muted m-0">Applying needs a super admin: save it as a draft, then request apply in Review.</p>}
+        {!canApply && changed && <p className="small muted m-0">Applying needs sites:apply: save it as a draft, then request apply in Review.</p>}
         {failure && (
           <Callout tone="danger" icon={I.alert} title="The address was not changed">
             {failure.message}

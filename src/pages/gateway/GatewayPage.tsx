@@ -7,7 +7,7 @@ import { gatewayHref, parseGatewayHash, rowsOf, type GatewayView } from '../../l
 import { HANDLER_KINDS, type HandlerChange, type HandlerKind } from '../../lib/gateway/types';
 import { QueryError } from '../sites/parts';
 import { useSession } from '../../api/hooks';
-import { permits } from '../../policy/model';
+import { holds } from '../../policy/model';
 import { HandlerPanel } from './HandlerPanel';
 import { ChangeReview, GATEWAY_APPLY, type GatewayResume } from './ChangeReview';
 import { useResume } from '../../lib/resume';
@@ -36,9 +36,8 @@ const go = (href: string) => { if (window.location.hash !== href) window.locatio
 export function GatewayPage() {
   const view = useGatewayView();
   const { data: session } = useSession();
-  // Changing the gateway is `sites:apply` at jinbe; platform write admins are let through to the
-  // server, which decides.
-  const perms = { canRead: permits(session?.permissions, 'admin:read'), canApply: permits(session?.permissions, 'sites:apply') || permits(session?.permissions, 'admin:write') };
+  // What the gateway routes declare: gateway:read looks, gateway:apply changes and rolls back.
+  const perms = { canRead: holds(session, 'gateway:read'), canApply: holds(session, 'gateway:apply') };
   const gw = useGateway();
   const rollout = useRollout();
   const [review, setReview] = useState<HandlerChange[] | null>(null);

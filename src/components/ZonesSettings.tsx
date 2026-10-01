@@ -3,7 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Badge, Button, Callout, Card, Checkbox, Dialog, EmptyHint, Field, FormGrid, I, Input, Select, Table, Th } from './ui';
 import { sitesApi, siteKeys, useGateways, useZones, type SiteError } from '../api/sites';
 import { useSiteAction } from '../pages/sites/useAction';
-import { useSitePerms } from '../pages/sites/usePerms';
+import { useSession } from '../api/hooks';
+import { holds } from '../policy/model';
 import { useResume } from '../lib/resume';
 import type { Check, GatewayInfo, Zone, ZoneIngress } from '../lib/sites/types';
 import { ENTRY_LABEL, INGRESS_LABEL, anyProtected, defaultGateway, entryOf, gatewayProblem, nextStep, protectionOf } from '../lib/sites/zones';
@@ -331,7 +332,8 @@ function CreateZone({ gateways, onClose, resume }: { gateways: GatewayInfo[]; on
 export function ZonesSettings() {
   const zones = useZones();
   const gateways = useGateways();
-  const { canApply } = useSitePerms();
+  // Creating or changing a zone is its own permission (zones:write, a recent second factor).
+  const canApply = holds(useSession().data, 'zones:write');
   const [editing, setEditing] = useState<Zone | null>(null);
   const [creating, setCreating] = useState(false);
   const [resumeEdit, setResumeEdit] = useState<ExposureChoice | undefined>();

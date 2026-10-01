@@ -46,7 +46,7 @@ export function PermissionsOverview({ site }: { site: string }) {
         <Stat label="Routes" value={routes!.length} />
         <Stat label="Permissions asked for" value={o.rows.length} />
         <Stat label="Need no permission" value={o.open.length} sub="signed-in or public, as the gate decides" />
-        <Stat label="Granted by no role" value={nobody.length} tone={nobody.length ? 'warning' : undefined} sub={nobody.length ? 'only a super admin gets in' : undefined} />
+        <Stat label="Granted by no role" value={nobody.length} tone={nobody.length ? 'warning' : undefined} sub={nobody.length ? 'nobody gets in' : undefined} />
       </div>
 
       <div className="row wrap gap-8">
@@ -68,7 +68,6 @@ export function PermissionsOverview({ site }: { site: string }) {
                 <td className="nowrap" data-label="Permission">
                   <span className="row gap-4"><span className="mono fw-medium">{row.permission}</span><StepUpMark permission={row.permission} site={site} /></span>
                   {row.roles.length === 0 && <div><Badge tone="warning">no role grants it</Badge></div>}
-                  {row.onlyEverything && <div><Badge tone="neutral" mono={false}>only via everything</Badge></div>}
                 </td>
                 <td data-label="Routes">
                   <ul className="rb-routes">
@@ -83,7 +82,7 @@ export function PermissionsOverview({ site }: { site: string }) {
                 </td>
                 <td data-label="Granted by roles">
                   <span className="row wrap gap-4">
-                    {row.roles.map(r => <Badge key={r} tone={(state.roles[site]?.[r] ?? []).includes('*') ? 'accent' : 'info'}>{r}</Badge>)}
+                    {row.roles.map(r => <Badge key={r} tone="info">{r}</Badge>)}
                   </span>
                 </td>
                 <td data-label="Through groups">

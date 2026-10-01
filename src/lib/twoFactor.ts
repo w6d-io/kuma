@@ -4,13 +4,14 @@
  * recent one, on a site with its own bar, on the person who has not enrolled, and in a refusal. jinbe
  * enforces; this only says so.
  */
+import { holds } from '../policy/model';
 
 /** A group's rule (groups[].secondFactor). */
 export interface GroupSecondFactor {
   /** Members must sign in with a second factor on every permission-carrying route, and enrol before being added. */
   required: boolean;
   /**
-   * `group_setting`: stored (a super admin's choice, or the default pinned at boot); `default`: not
+   * `group_setting`: stored (a groups.mfa:write holder's choice, or the default pinned at boot); `default`: not
    * stored yet, computed from the group's roles. (`setting` is what an earlier jinbe said.)
    */
   source?: 'group_setting' | 'default' | 'setting' | null;
@@ -20,15 +21,15 @@ export interface GroupSecondFactor {
   defaultRequired?: boolean;
 }
 
-/** The catalogue permission that changes a group's switch; only a super admin holds it in practice. */
+/** The catalogue permission that changes a group's switch (no staff role carries it). */
 export const GROUP_2FA_PERMISSION = 'groups.mfa:write';
 
 /**
- * Whether the session may flip "Members must use 2FA": `groups.mfa:write` as jinbe expanded it on
- * /whoami, or `*`. Deliberately not the coarse admin:write fallback — no staff role holds it.
+ * Whether the session may flip "Members must use 2FA": `groups.mfa:write`, exactly. No staff role
+ * holds it; super_admin does, by listing it.
  */
 export function mayChangeGroup2fa(session: { permissions?: readonly string[]; effective_permissions?: readonly string[] } | undefined): boolean {
-  return !!session?.effective_permissions?.includes(GROUP_2FA_PERMISSION) || !!session?.permissions?.includes('*');
+  return holds(session, GROUP_2FA_PERMISSION);
 }
 
 /** A catalogue permission's step-up (catalog permissions[].stepUpRule). */

@@ -1,29 +1,31 @@
-// The two layers of access, as jinbe answers them: site access comes from a person's groups and
-// holds everywhere; org access is handed out by an org's admin and only counts on that org's routes.
-// One module for the calls behind the Access view, the access checker and the My org page, so the
-// shapes they read are written down once. Same `request` as client.ts — same errors.
+// The two layers of access, as jinbe answers them: platform access comes from a person's groups; org
+// access is the org roles assigned to them in ONE organization, and only counts on that org's routes.
+// One module for the calls behind the Access view, the access checker, My org and the Organizations
+// hub, so the shapes they read are written down once. Same `request` as client.ts — same errors.
 import { request } from './client';
 import type { UserSecondFactor } from '../lib/twoFactor';
 import { statusOf } from '../lib/apiError';
 
 const enc = encodeURIComponent;
 
-/** email → the groups granted to that person in one organisation. */
-export type OrgGrants = Record<string, string[]>;
+/** The org role every organization has from code: every org permission, `org.members:write` included. */
+export const OWNER_ROLE = 'jinbe:owner';
 
-export interface AssignableGroup {
-  name: string;
-  /** What the group grants, per site: site → roles. */
-  services: Record<string, string[]>;
+/** One org role an organization may hold (`svc:role`: jinbe's, or an entitled site's). */
+export interface OrgRole {
+  role: string;
+  permissions: string[];
+  /** Whether the caller may hand it out here: they hold org.members:write and every permission it carries. */
+  assignable: boolean;
 }
 
 export interface OrgAccessEntry {
   orgId: string;
   name: string;
-  /** Administers this organisation (on its admin roster). */
-  admin: boolean;
-  /** Groups granted in this organisation only. */
-  grants: string[];
+  /** Org roles assigned here (`svc:role`). */
+  roles: string[];
+  /** The org permissions held here, as the policy decides them (assigned roles and the every-org map). */
+  permissions: string[];
 }
 
 export interface UserAccess {
@@ -51,46 +53,65 @@ export interface AccessCheckResult {
   groups: string[];
   roles: string[];
   permissions: string[];
-  superAdmin: boolean;
 }
 
-export interface RefusedGroup {
-  group: string;
-  reason: string;
+/** Why jinbe would not assign an org role (403 `refused[]` on a roles write). */
+export type OrgRoleRefusalReason = 'unknown_role' | 'org_not_entitled' | 'grant_permission_missing' | 'grant_exceeds_own';
+
+export interface RefusedRole {
+  role: string;
+  reason: OrgRoleRefusalReason | string;
+  /** The permissions the caller would need to hold here to hand it out. */
+  missing: string[];
+  /** Who granted it, when jinbe says. */
+  grantedBy?: string;
 }
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
 
-function normaliseAccess(raw: Partial<{ site: Partial<UserAccess['site']>; orgs: Partial<OrgAccessEntry>[] }>): UserAccess {
+function normaliseAccess(raw: Partial<{ site: Partial<UserAccess['site']>; orgs: Partial<OrgAccessEntry>[]; secondFactor: UserSecondFactor | null }>): UserAccess {
   return {
     site: { groups: strings(raw.site?.groups), byService: raw.site?.byService ?? {} },
     orgs: (raw.orgs ?? []).filter((o) => typeof o?.orgId === 'string').map((o) => ({
       orgId: o.orgId as string,
       name: o.name || (o.orgId as string),
-      admin: o.admin === true,
-      grants: strings(o.grants),
+      roles: strings(o.roles),
+      permissions: strings(o.permissions),
     })),
+    ...(raw.secondFactor !== undefined ? { secondFactor: raw.secondFactor } : {}),
   };
 }
 
+const orgBase = (orgId: string) => `/organizations/${enc(orgId)}`;
+
 export const orgAccessApi = {
-  grants: (orgId: string) =>
-    request<{ grants?: OrgGrants }>(`/organizations/${enc(orgId)}/grants`).then((r) => r.grants ?? {}),
-
-  /** Replaces what this person is granted in this org. A 403 carries `refused` — read it with `refusedOf`. */
-  setGrants: (orgId: string, userId: string, groups: string[]) =>
-    request<{ email: string; groups: string[] }>(`/organizations/${enc(orgId)}/users/${enc(userId)}/grants`, {
-      method: 'PUT',
-      body: JSON.stringify({ groups }),
-    }),
-
-  // An older server answers a list of names; read either, so the page works across the rollout.
-  assignable: (orgId: string) =>
-    request<{ groups?: (string | AssignableGroup)[] }>(`/organizations/${enc(orgId)}/assignable-groups`).then((r) =>
-      (r.groups ?? []).map((g): AssignableGroup =>
-        typeof g === 'string' ? { name: g, services: {} } : { name: g.name, services: g.services ?? {} },
-      ),
+  /** This org's roles (jinbe's and its entitled sites'), each marked with whether the caller may assign it. */
+  roles: (orgId: string) =>
+    request<{ roles?: Partial<OrgRole>[] }>(`${orgBase(orgId)}/roles`).then((r) =>
+      (r.roles ?? []).filter((x) => typeof x?.role === 'string').map((x): OrgRole => ({
+        role: x.role as string,
+        permissions: strings(x.permissions),
+        assignable: x.assignable === true,
+      })),
     ),
+
+  /** One member's org roles here. */
+  memberRoles: (orgId: string, userId: string) =>
+    request<{ roles?: unknown }>(`${orgBase(orgId)}/users/${enc(userId)}/roles`).then((r) => strings(r.roles)),
+
+  /** Replaces one member's org roles here. A 403 carries `refused` — read it with `refusedOf`. */
+  setMemberRoles: (orgId: string, userId: string, roles: string[]) =>
+    request<{ id: string; roles?: unknown }>(`${orgBase(orgId)}/users/${enc(userId)}/roles`, {
+      method: 'PUT',
+      body: JSON.stringify({ roles }),
+    }).then((r) => strings(r.roles)),
+
+  /** Names the org's owners by identity id (platform, orgs.owners:write, step-up): everyone else loses the role. */
+  setOwners: (orgId: string, owners: string[]) =>
+    request<{ owners?: unknown }>(`/admin/organizations/${enc(orgId)}/owners`, {
+      method: 'PUT',
+      body: JSON.stringify({ owners }),
+    }).then((r) => strings(r.owners)),
 
   userAccess: (userId: string) =>
     request<Parameters<typeof normaliseAccess>[0]>(`/admin/users/${enc(userId)}/access`).then(normaliseAccess),
@@ -108,20 +129,37 @@ export const orgAccessApi = {
 
   /** This org only: the account and every other membership stay. */
   removeFromOrg: (orgId: string, userId: string) =>
-    request<void>(`/organizations/${enc(orgId)}/users/${enc(userId)}`, { method: 'DELETE' }),
+    request<void>(`${orgBase(orgId)}/users/${enc(userId)}`, { method: 'DELETE' }),
 
   /** Adds somebody who already has an account; their other memberships stay. */
   addMember: (orgId: string, userId: string) =>
-    request<unknown>(`/organizations/${enc(orgId)}/users/${enc(userId)}/membership`, { method: 'PUT' }),
+    request<unknown>(`${orgBase(orgId)}/users/${enc(userId)}/membership`, { method: 'PUT' }),
 };
 
-/** The groups a 403 on the grants write refused, each with why. Empty when there is no such list. */
-export function refusedOf(err: unknown): RefusedGroup[] {
+/** The roles a 403 on a roles write refused, each with why. Empty when there is no such list. */
+export function refusedOf(err: unknown): RefusedRole[] {
   const list = (err as { details?: { refused?: unknown } } | null)?.details?.refused;
   if (!Array.isArray(list)) return [];
-  return list.filter(
-    (r): r is RefusedGroup => !!r && typeof r === 'object' && typeof (r as RefusedGroup).group === 'string',
-  ).map((r) => ({ group: r.group, reason: typeof r.reason === 'string' ? r.reason : '' }));
+  return list
+    .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object' && typeof (r as { role?: unknown }).role === 'string')
+    .map((r) => ({
+      role: r.role as string,
+      reason: typeof r.reason === 'string' ? r.reason : '',
+      missing: strings(r.missing),
+      ...(typeof r.grantedBy === 'string' ? { grantedBy: r.grantedBy } : {}),
+    }));
+}
+
+/** A refusal in words: what stands in the way, not the code. */
+export function refusalWords(r: RefusedRole): string {
+  const missing = r.missing.length ? ` (missing here: ${r.missing.join(', ')})` : '';
+  switch (r.reason) {
+    case 'unknown_role': return 'no such role';
+    case 'org_not_entitled': return "this organization is not entitled to that site: the site's intent does not list it";
+    case 'grant_permission_missing': return `you may not assign roles in this organization${missing}`;
+    case 'grant_exceeds_own': return `it carries permissions you do not hold here${missing}`;
+    default: return `${r.reason || 'refused'}${missing}`;
+  }
 }
 
 /**

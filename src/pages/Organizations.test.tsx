@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({
   pageParam: null as string | null,
   toasts: [] as unknown[][],
   setPage: vi.fn(),
-  permissions: ['admin.organisation:read', 'admin.organisation:write'] as string[],
+  permissions: ['orgs:read', 'orgs:write', 'orgs:delete'] as string[],
 }));
 vi.mock('../auth/session', () => ({ bearerToken: async () => null }));
 vi.mock('../contexts/AppContext', () => ({
@@ -30,16 +30,24 @@ let orgs: Array<{ id: string; name: string; tenant: string; applications: string
 let members: Record<string, unknown>[] = [];
 let listStatus = 200;
 let listBody: unknown = null;
+let orgPermissions: Record<string, string[]> = {};
+let orgRoles: Array<{ role: string; permissions: string[]; assignable: boolean }> = [];
+let memberRoles: Record<string, string[]> = {};
+let rolesPut: { status: number; body: unknown } = { status: 200, body: null };
 
 beforeEach(() => {
   calls = [];
   h.toasts = [];
   h.pageParam = null;
-  h.permissions = ['admin.organisation:read', 'admin.organisation:write'];
+  h.permissions = ['orgs:read', 'orgs:write', 'orgs:delete'];
   orgs = [];
   members = [];
   listStatus = 200;
   listBody = null;
+  orgPermissions = {};
+  orgRoles = [];
+  memberRoles = {};
+  rolesPut = { status: 200, body: null };
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const c: Call = { method: init?.method ?? 'GET', url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined };
     calls.push(c);
@@ -59,8 +67,12 @@ beforeEach(() => {
       return ok(null, 204);
     }
     if (path === `/organizations/${ACME}/users`) return ok({ data: members, total: members.length });
-    if (path === '/admin/rbac/org-admin-map') return ok({ mappings: {} });
-    if (path === `/organizations/${ACME}/assignable-groups`) return ok({ groups: [] });
+    if (path === '/me/permissions') return ok({ permissions: h.permissions, orgPermissions });
+    if (path === `/organizations/${ACME}/roles`) return ok({ roles: orgRoles });
+    const member = path.match(new RegExp(`^/organizations/${ACME}/users/([^/]+)/roles$`));
+    if (member && c.method === 'GET') return ok({ id: member[1], roles: memberRoles[member[1]] ?? [] });
+    if (member && c.method === 'PUT') return rolesPut.status === 200 ? ok({ id: member[1], roles: (c.body as { roles: string[] }).roles }) : ok(rolesPut.body, rolesPut.status);
+    if (path === `/admin/organizations/${ACME}/owners` && c.method === 'PUT') return ok({ owners: (c.body as { owners: string[] }).owners });
     if (path === '/admin/rbac/services') return ok({ services: [] });
     return ok({}, 200);
   }));
@@ -127,7 +139,7 @@ describe('Organizations', () => {
   });
 
   it('offers no create, edit or delete to somebody who may only read', async () => {
-    h.permissions = ['admin.organisation:read'];
+    h.permissions = ['orgs:read'];
     orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', applications: [] }];
     mount();
     await settle();
@@ -162,5 +174,66 @@ describe('Organizations', () => {
     await settle();
     expect(calls.some((c) => c.method === 'DELETE' && c.url.endsWith(`/admin/organizations/${ACME}`))).toBe(true);
     expect(h.toasts.at(-1)?.[0]).toBe('Deleted Acme');
+  });
+
+  it('shows the owners and the entitled sites read from the org roles, and no applications editor', async () => {
+    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', applications: ['legacy-app'] }];
+    members = [{ id: BOB, traits: { email: 'bob@example.com' }, state: 'active', metadata_admin: {} }];
+    orgPermissions = { [ACME]: ['org.members:read'] };
+    orgRoles = [{ role: 'jinbe:owner', permissions: ['org.members:write'], assignable: false }, { role: 'payroll:editor', permissions: ['pay:write'], assignable: false }];
+    memberRoles = { [BOB]: ['jinbe:owner'] };
+    mount();
+    await settle();
+    expect(text()).toContain('Owners');
+    expect(text()).toContain('bob@example.com');
+    expect(text()).toContain('payroll');
+    expect(text()).not.toContain('legacy-app');
+    expect(text()).not.toMatch(/Administrators|org admin roster|Applications/);
+    // orgs:read alone: nobody's owners can be named from here.
+    expect(button('Change owners')).toBeNull();
+    // org.members:read but not :write here: the roles are shown, not editable.
+    const boxes = [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+    expect(boxes.length).toBeGreaterThan(0);
+    expect(boxes.every((b) => b.disabled)).toBe(true);
+    expect(calls.some((c) => c.url.includes('org-admin-map') || c.url.includes('assignable-groups') || c.url.includes('/grants'))).toBe(false);
+  });
+
+  it('names owners with orgs.owners:write: the whole list, by identity id', async () => {
+    h.permissions = ['orgs:read', 'orgs.owners:write'];
+    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', applications: [] }];
+    members = [{ id: BOB, traits: { email: 'bob@example.com' }, state: 'active', metadata_admin: {} }];
+    orgPermissions = { [ACME]: ['org.members:read'] };
+    mount();
+    await settle();
+    expect(text()).toContain('No owner yet');
+    click(button('Name owners'));
+    await settle();
+    click([...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'bob@example.com') ?? null);
+    await settle();
+    click(button('Save owners'));
+    await settle();
+    const put = calls.find((c) => c.method === 'PUT' && c.url.endsWith(`/admin/organizations/${ACME}/owners`));
+    expect(put?.body).toEqual({ owners: [BOB] });
+  });
+
+  it('assigns a role per member and says why jinbe refused each one', async () => {
+    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', applications: [] }];
+    members = [{ id: BOB, traits: { email: 'bob@example.com' }, state: 'active', metadata_admin: {} }];
+    orgPermissions = { [ACME]: ['org.members:read', 'org.members:write'] };
+    orgRoles = [{ role: 'jinbe:viewer', permissions: ['org.members:read'], assignable: true }, { role: 'jinbe:owner', permissions: ['org.keys:write'], assignable: false }];
+    rolesPut = { status: 403, body: { error: 'Forbidden', message: 'Not allowed to assign: jinbe:viewer', refused: [{ role: 'jinbe:viewer', reason: 'grant_exceeds_own', missing: ['org.keys:read'] }] } };
+    mount();
+    await settle();
+    const boxes = [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+    // owner is not assignable by this caller: not addable; viewer is.
+    expect(boxes.filter((b) => !b.disabled)).toHaveLength(1);
+    await act(async () => { boxes.find((b) => !b.disabled)!.click(); });
+    await settle();
+    click(button('Save'));
+    await settle();
+    const put = calls.find((c) => c.method === 'PUT' && c.url.endsWith(`/organizations/${ACME}/users/${BOB}/roles`));
+    expect(put?.body).toEqual({ roles: ['jinbe:viewer'] });
+    expect(text()).toContain('Nothing was saved for this person');
+    expect(text()).toMatch(/jinbe:viewer — it carries permissions you do not hold here \(missing here: org\.keys:read\)/);
   });
 });

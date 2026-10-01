@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeApiError, orgDirectoryNotConfigured, permissionRefusal, refusalDetail, toastFor, validationProblems } from './apiError';
+import { describeApiError, isDefinedInCode, orgDirectoryNotConfigured, permissionRefusal, refusalDetail, toastFor, validationProblems } from './apiError';
 
 const err = (status: number, message = 'x') => Object.assign(new Error(message), { status });
 // What the API client throws for a 503 body `{error, message?}` (src/api/client.ts errorFrom).
@@ -146,11 +146,11 @@ describe('permission refusal (jinbe 403 body)', () => {
     expect(toastFor(e)).toEqual(['Access denied', { err: true, sub: refusalDetail(e) }]);
   });
 
-  it('lists several missing permissions, says * in words, and falls back to the hint without groups', () => {
+  it('lists several missing permissions and falls back to the hint without groups', () => {
     expect(refusalDetail(refused({ code: 'grant_exceeds_own', missing: ['a:read', 'b:write', 'c:list'], grantedBy: ['ops'] })))
       .toBe('This grants what you do not hold. You need a:read, b:write and c:list. Ask an administrator to add you to one of: ops.');
-    expect(refusalDetail(refused({ permission: '*', grantedBy: [], hint: 'No group grants this on its own; ask a super admin.' })))
-      .toBe('You need full platform access (super admin). No group grants this on its own; ask a super admin.');
+    expect(refusalDetail(refused({ permission: 'groups.mfa:write', grantedBy: [], hint: 'No group grants this on its own.' })))
+      .toBe('You need groups.mfa:write. No group grants this on its own.');
     expect(refusalDetail(refused({ permission: 'x:y', grantedBy: [] }))).toBe('You need x:y. Ask an administrator for it.');
   });
 
@@ -203,5 +203,18 @@ describe('validation refusals (400/422)', () => {
 
   it('keeps a bare 400 to its message', () => {
     expect(toastFor(err(400, 'Say why.'))).toEqual(['Say why.', { err: true }]);
+  });
+});
+
+describe('isDefinedInCode', () => {
+  const conflict = (body: Record<string, unknown>, message = 'x') => Object.assign(new Error(message), { status: 409, details: body });
+  it('reads the code when the body carries one, the message when it does not', () => {
+    expect(isDefinedInCode(conflict({ code: 'defined_in_code' }))).toBe(true);
+    expect(isDefinedInCode(conflict({}, "The group 'staff_ops' is defined in code and cannot be changed here"))).toBe(true);
+    expect(isDefinedInCode(conflict({}, "The route map of 'jinbe' is generated from code and cannot be changed here"))).toBe(true);
+  });
+  it('is not another conflict or another status', () => {
+    expect(isDefinedInCode(conflict({}, 'Group already exists: ops'))).toBe(false);
+    expect(isDefinedInCode(Object.assign(new Error('defined in code'), { status: 403 }))).toBe(false);
   });
 });

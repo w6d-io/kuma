@@ -32,7 +32,7 @@ export function describeSiteError(err: unknown): string {
   }
   if (e.status === 503) return 'Checks are unavailable (gatekit or Kubernetes did not answer), so nothing was changed.';
   if (edgeBlocked(err)) return `${EDGE_BLOCKED.title}. ${EDGE_BLOCKED.detail}`;
-  if (e.status === 403) return refusalDetail(err) ?? 'Your roles do not allow this. Changing what the gateway serves needs a super admin.';
+  if (e.status === 403) return refusalDetail(err) ?? 'Your roles do not allow this. Changing what the gateway serves needs sites:apply.';
   const problems = validationProblems(err);
   if (problems.length && !e.message.includes(problems[0].message)) return `${e.message}: ${problemsSentence(problems)}`;
   return e.message || 'The request failed.';

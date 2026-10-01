@@ -1,7 +1,7 @@
 import { Button, Card, I, PageHeader, SkeletonText } from '../../components/ui';
 import { useSession } from '../../api/hooks';
 import { useApp } from '../../contexts/AppContext';
-import { permits } from '../../policy/model';
+import { holds } from '../../policy/model';
 import { eventPhrase } from '../../lib/audit/format';
 import { AuditEventDetail } from './AuditEventDetail';
 import { AuditError } from './AuditTimeline';
@@ -14,7 +14,7 @@ export function AuditEventPage({ id, ts }: { id: string; ts?: string }) {
   const e = q.data?.event;
   // The single-event response carries no scope. Grafana is platform-only, so the trace link is
   // offered to a platform reader, as on the list.
-  const platform = permits(useSession().data?.permissions, 'admin:read');
+  const platform = holds(useSession().data, 'audit:read');
   return (
     <>
       <PageHeader eyebrow="Audit" title={e ? eventPhrase(e.event) : 'Audit event'} sub={<span className="mono">{id}</span>}

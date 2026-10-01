@@ -44,8 +44,7 @@ export function SiteAccessTree({ user }: { user: { name: string; email: string; 
                   <span className="mono">{r.role}</span>
                   <div className="pt-perms">
                     {!r.known && <Badge tone="danger" title={`Not defined on ${s.site}`}>undefined role</Badge>}
-                    {r.everything && <Badge tone="accent" mono={false}>Everything in this site</Badge>}
-                    {r.known && !r.everything && r.permissions.length === 0 && <span className="small muted">&mdash; carries nothing &mdash;</span>}
+                    {r.known && r.permissions.length === 0 && <span className="small muted">&mdash; carries nothing &mdash;</span>}
                     {r.permissions.map((p) => (
                       <span key={p.permission} className="pt-perm">
                         <Badge>{p.permission}</Badge>

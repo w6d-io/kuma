@@ -203,7 +203,7 @@ export function SignInProtectionSettings() {
         <Button variant="ghost" onClick={() => setDraft(toDraft(data.settings))} disabled={!dirty || save.isPending}>
           Discard changes
         </Button>
-        <span className="small muted">Saving needs a super admin who confirmed a second factor in the last 15 minutes. Every change is audited.</span>
+        <span className="small muted">Saving needs settings.signin:write and a second factor confirmed in the last 15 minutes. Every change is audited.</span>
       </div>
     </Card>
   );

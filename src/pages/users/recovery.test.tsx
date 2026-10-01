@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, click, render, type } from '../../components/ui/testing';
 import { formatWait, linkFailure, resetFailure } from '../../lib/recovery';
 
-const h = vi.hoisted(() => ({ permissions: ['admin:read', 'admin:write'] as string[], toasts: [] as unknown[] }));
+const h = vi.hoisted(() => ({ permissions: ['users:read', 'users:send_login_link', 'users:reset_second_factor'] as string[], toasts: [] as unknown[] }));
 vi.mock('../../auth/session', () => ({ bearerToken: async () => null }));
 vi.mock('../../contexts/AppContext', () => ({ useApp: () => ({ pushToast: (...a: unknown[]) => h.toasts.push(a) }) }));
 vi.mock('../../api/hooks', () => ({ useSession: () => ({ data: { permissions: h.permissions } }) }));
@@ -35,7 +35,7 @@ const text = () => document.body.textContent ?? '';
 const button = (label: string) => [...document.body.querySelectorAll('button')].find(b => b.textContent?.trim() === label) ?? null;
 
 beforeEach(() => {
-  h.permissions = ['admin:read', 'admin:write'];
+  h.permissions = ['users:read', 'users:send_login_link', 'users:reset_second_factor'];
   h.toasts = [];
   (window as unknown as { __AUTH_DOMAIN__?: string }).__AUTH_DOMAIN__ = 'auth.example.com';
 });

@@ -1,11 +1,19 @@
 import { Badge, Callout, I, TwoFactorBadge } from '../../components/ui';
 import { useStepUpRules } from '../../api/twoFactor';
-import { isEverything } from '../../lib/rbacEdit';
 
 export function ReadOnlyNote({ what }: { what: string }) {
   return (
     <Callout tone="neutral" icon={I.lock} className="mb-12">
-      You can look around. Changing {what} needs an administrator with write access.
+      You can look around. Changing {what} needs groups:write.
+    </Callout>
+  );
+}
+
+/** Shown instead of edit buttons on what code or a site intent defines (jinbe answers 409 defined_in_code). */
+export function DefinedInCodeNote({ what, where = 'defined in code', plural = false }: { what: string; where?: string; plural?: boolean }) {
+  return (
+    <Callout tone="neutral" icon={I.lock} className="mb-12">
+      {what} {plural ? 'are' : 'is'} {where}: read-only here, whoever you are. It changes with a release, or by publishing the site.
     </Callout>
   );
 }
@@ -18,17 +26,10 @@ export function StepUpMark({ permission, site }: { permission: string; site?: st
 }
 
 /**
- * A role's permissions as chips, `*` spelt out as what it means. With `site`, each permission that
- * needs a recent second factor carries the mark.
+ * A role's permissions as chips. With `site`, each permission that needs a recent second factor
+ * carries the mark.
  */
 export function PermChips({ perms, max = 6, site }: { perms: readonly string[]; max?: number; site?: string }) {
-  if (isEverything(perms)) {
-    return (
-      <Badge tone="accent" mono={false} title="Every route of this site except the organization routes" icon={I.sparkle}>
-        Everything in this site
-      </Badge>
-    );
-  }
   if (perms.length === 0) return <span className="small muted">no permission</span>;
   const shown = perms.slice(0, max);
   return (

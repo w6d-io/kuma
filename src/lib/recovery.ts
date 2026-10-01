@@ -89,6 +89,6 @@ export function resetFailure(err: unknown): { title: string; detail: string; ste
       return { title: 'Stopped part-way', detail: `${e.message ?? 'Kratos refused part of the removal.'} Check their sign-in methods and try again.` };
   }
   if (edgeBlocked(err)) return { title: EDGE_BLOCKED.title, detail: EDGE_BLOCKED.detail };
-  if (e.status === 403) return { title: 'Access denied', detail: refusalDetail(err) ?? 'This needs users:reset_second_factor (admin:write).' };
+  if (e.status === 403) return { title: 'Access denied', detail: refusalDetail(err) ?? 'This needs users:reset_second_factor.' };
   return { title: 'Could not remove it', detail: e.message || 'The request failed.' };
 }

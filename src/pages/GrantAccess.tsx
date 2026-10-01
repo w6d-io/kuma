@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession, useUserSearch } from '../api/hooks';
+import { useUserSearch } from '../api/hooks';
 import { AccessLevel } from '../components/ui/Primitives';
 import { SiteAccessTree } from './access/SiteAccessTree';
 import { useSiteGroups } from './access/access';
@@ -13,7 +13,6 @@ import { useApplyChange } from '../hooks/useApplyChange';
 import { useDebounced } from '../hooks/useDebounced';
 import { searchedToUser } from '../api/transforms';
 import type { GroupsMap, RolesMap, User } from '../api/types';
-import { PRIVILEGED_MUTATION, permits } from '../policy/model';
 
 // Intent-first "Grant access" wizard. The RBAC data model is service → role →
 // group → user; the old assign drawer made an operator assemble that graph by
@@ -42,7 +41,7 @@ function outcomeOf(group: string, groups: GroupsMap, roles: RolesMap, privileged
     unknownRoles: o.unknownRoles,
     sites: o.access.map((a) => a.site),
     summary: o.summary,
-    level: o.permissions.length === 0 ? 'none' : o.access.some((a) => a.everything) ? 'admin' : accessLevelOf(o.permissions),
+    level: o.permissions.length === 0 ? 'none' : accessLevelOf(o.permissions),
     privileged: privileged(group),
   };
 }
@@ -50,11 +49,7 @@ function outcomeOf(group: string, groups: GroupsMap, roles: RolesMap, privileged
 export function GrantAccess() {
   const { grant, setGrant, apiSetUserGroups, setUserDrawer, state } = useApp();
   const applyChange = useApplyChange();
-  const { data: session } = useSession();
   const secondFactorOf = useGroupSecondFactors();
-  // Mirror of jinbe's escalation guard: handing out a group that administers the platform needs the
-  // permission below. jinbe refuses with 422 either way; this only greys the control and says why.
-  const mayGrantPrivileged = permits(session?.permissions, PRIVILEGED_MUTATION);
   // The same site groups Groups edits, so what is offered is what the mutation accepts.
   const siteGroups = useSiteGroups();
 
@@ -117,10 +112,10 @@ export function GrantAccess() {
   const removed = [...before].filter((g) => !groups.includes(g));
   const changed = added.length > 0 || removed.length > 0;
 
-  // A newly-added privileged group is what triggers the gates (holding one you
-  // already have is fine — this is about escalation, not the status quo).
-  const escalating = groups.filter((g) => !before.has(g) && siteGroups.privileged(g));
-  const actorBlock = escalating.length > 0 && !mayGrantPrivileged;
+  // The holding rule: a newly-added group giving what the caller does not hold is refused (keeping
+  // one somebody already has is fine — this is about escalation, not the status quo).
+  const escalating = groups.filter((g) => !before.has(g) && siteGroups.beyond(g).length > 0);
+  const actorBlock = escalating.length > 0;
   // Groups whose second-factor rule the person does not meet yet (never enrolled).
   const needsEnrol = added.filter((g) => { const r = secondFactorOf(g); return r ? blockedForEnrolment(r, user?.mfa) : siteGroups.privileged(g) && user?.mfa === false; });
   const mfaBlock = needsEnrol.length > 0;
@@ -278,13 +273,14 @@ export function GrantAccess() {
             )}
             {outcomes.map((o) => {
               const on = groups.includes(o.g);
-              const blockedByActor = o.privileged && !mayGrantPrivileged && !on;
+              const beyond = siteGroups.beyond(o.g);
+              const blockedByActor = !on && (!siteGroups.mayAssign || beyond.length > 0);
               // Follows the group's "members must use 2FA" rule; the privileged test only on a jinbe that does not say.
               const rule = secondFactorOf(o.g);
               const blockedByMfa = !on && (rule ? blockedForEnrolment(rule, user.mfa) : o.privileged && user.mfa === false);
               const blocked = blockedByActor || blockedByMfa;
               const title = blockedByActor
-                ? `“${o.g}” administers the platform. Assigning it needs admin.membership:write.`
+                ? (siteGroups.mayAssign ? `“${o.g}” gives what you do not hold: ${beyond.join(', ')}.` : 'Adding people to groups needs groups.members:write.')
                 : blockedByMfa
                 ? `Members of “${o.g}” must use two-step sign-in. ${user.name} must enrol a second factor (authenticator app, security key or backup codes) first.`
                 : undefined;
@@ -299,8 +295,8 @@ export function GrantAccess() {
                         <span className="row">
                           <span className="fw-medium text-base flex-1">
                             {o.g}
-                            {o.privileged && <Badge tone="warning" title="Gives everything on a system site"><span className="chip-ico">{I.lock}</span>platform admin</Badge>}
-                            {blockedByActor && <Badge tone="danger">needs admin.membership:write</Badge>}
+                            {o.privileged && <Badge tone="warning" title="Gives platform permissions (jinbe)"><span className="chip-ico">{I.lock}</span>platform</Badge>}
+                            {blockedByActor && <Badge tone="danger">{siteGroups.mayAssign ? 'beyond what you hold' : 'needs groups.members:write'}</Badge>}
                             {rule?.required && <TwoFactorBadge kind="required" />}
                             {blockedByMfa && !blockedByActor && <TwoFactorBadge kind="needs-enrol" />}
                           </span>
@@ -335,11 +331,11 @@ export function GrantAccess() {
       {step === 'review' && user && (
         <>
           {(actorBlock || mfaBlock) && (
-            <Callout tone="danger" icon={I.alert} title="Can't apply — privileged grant blocked" className="mb-12">
+            <Callout tone="danger" icon={I.alert} title="Can't apply — this grants what you do not hold" className="mb-12">
               <div className="small text-muted">
-                {actorBlock && <>Assigning <b>{escalating.join(', ')}</b> administers the platform; that needs admin.membership:write. </>}
+                {actorBlock && <>You may hand out only what you hold yourself: <b>{escalating.join(', ')}</b> gives {escalating.flatMap((g) => siteGroups.beyond(g)).join(', ')}. </>}
                 {mfaBlock && <>{user.name} must enrol a second factor before being added to <b>{needsEnrol.join(', ')}</b>: its members must use two-step sign-in. </>}
-                jinbe enforces this regardless (422).
+                jinbe enforces this regardless.
               </div>
             </Callout>
           )}
@@ -351,7 +347,7 @@ export function GrantAccess() {
                 {added.map((g) => (
                   <div key={g} className="row gap-8 mb-4">
                     <Badge tone="success">+ add</Badge><span className="mono small">{g}</span>
-                    {siteGroups.privileged(g) && <Badge tone="warning" title="Gives everything on a system site"><span className="chip-ico">{I.lock}</span></Badge>}
+                    {siteGroups.privileged(g) && <Badge tone="warning" title="Gives platform permissions (jinbe)"><span className="chip-ico">{I.lock}</span></Badge>}
                   </div>
                 ))}
                 {removed.map((g) => (

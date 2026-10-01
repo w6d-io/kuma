@@ -52,7 +52,7 @@ export function PendingRequests({ name, onApplied }: { name: string; onApplied: 
             <Button size="sm" variant="primary" loading={busy === 'Approve'} onClick={() => void approve(r.id, r.version)}>Approve &amp; apply</Button>
           </>}
         >
-          {timeAgo(r.requestedAt)}{r.note ? ` · “${r.note}”` : ''}{r.risk ? ` · ${r.risk.level} risk` : ''}{r.needsSecondApprover ? ' · needs another super admin (four-eyes)' : ''}
+          {timeAgo(r.requestedAt)}{r.note ? ` · “${r.note}”` : ''}{r.risk ? ` · ${r.risk.level} risk` : ''}{r.needsSecondApprover ? ' · needs a second approver (four-eyes)' : ''}
         </Callout>
       ))}
     </>

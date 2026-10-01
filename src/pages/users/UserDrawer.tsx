@@ -8,7 +8,7 @@ import { useApplyChange } from '../../hooks/useApplyChange';
 import { formatHash } from '../../lib/route';
 import { useResume } from '../../lib/resume';
 import { emailResumeAction, type EmailResume } from '../../lib/userAddress';
-import { permits } from '../../policy/model';
+import { holds } from '../../policy/model';
 import { SiteGroupRows } from './SiteGroupRows';
 import { UserAccessTab } from './UserAccessTab';
 import { UserTrail } from './UserTrail';
@@ -101,7 +101,7 @@ export function UserDrawer() {
     setPage('accesscheck');
     history.replaceState(null, '', `#${formatHash('accesscheck', null, { email })}`);
   });
-  const mayCheck = permits(session?.permissions, 'admin:write');
+  const mayCheck = holds(session, 'access:check');
 
   if (userDrawer.mode === 'create') {
     return (

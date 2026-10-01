@@ -6,7 +6,6 @@ import { api } from '../api/client';
 import { stepUpOnRefusal } from '../lib/resume';
 import type { BundleImportResult, AuthMethodName } from '../api/client';
 import { ExportBundleModal } from '../components/ExportBundleModal';
-import { OrgSitesSettings } from '../components/OrgSitesSettings';
 import { ZonesSettings } from '../components/ZonesSettings';
 import { SecondFactorSettings } from '../components/SecondFactorSettings';
 import { SignInProtectionSettings } from '../components/SignInProtectionSettings';
@@ -18,7 +17,7 @@ import { OwnSecondFactor } from '../components/OwnSecondFactor';
 interface PendingBundle {
   bundle: unknown;
   fileName: string;
-  counts: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number; orgServiceMap: number };
+  counts: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number; orgSites: number; orgAssignments: number };
 }
 
 // Section picker for import — mirrors ExportBundleModal. Keeping ALL selected is
@@ -37,13 +36,17 @@ const AUTH_METHODS: { id: AuthMethodName; label: string; hint: string; needsConf
   { id: 'lookup_secret', label: 'Backup codes',       hint: 'One-time recovery codes.' },
 ];
 
+/** Offered only when the file carries them: an older bundle has neither. */
+const OPTIONAL_SECTIONS: ReadonlySet<string> = new Set(['orgSites', 'orgAssignments']);
+
 const IMPORT_SECTIONS: { id: keyof PendingBundle['counts']; label: string }[] = [
   { id: 'services', label: 'Services' },
   { id: 'groups', label: 'Groups' },
   { id: 'roles', label: 'Roles' },
   { id: 'routeMaps', label: 'Route maps' },
   { id: 'oathkeeperRules', label: 'Oathkeeper rules' },
-  { id: 'orgServiceMap', label: 'Org → service map' },
+  { id: 'orgSites', label: 'Org → site entitlements' },
+  { id: 'orgAssignments', label: 'Org role assignments' },
 ];
 
 export function SettingsPage() {
@@ -142,19 +145,20 @@ export function SettingsPage() {
         roles:           Object.keys(rbac.roles ?? {}).length,
         routeMaps:       Object.keys(rbac.routeMaps ?? {}).length,
         oathkeeperRules: Array.isArray(rbac.oathkeeperRules) ? rbac.oathkeeperRules.length : 0,
-        orgServiceMap:   Object.keys(rbac.orgServiceMap ?? {}).length,
+        orgSites:        Object.keys(rbac.orgSites ?? {}).length,
+        orgAssignments:  Object.keys(rbac.orgAssignments ?? {}).length,
       };
       setPending({ bundle, fileName, counts });
       // Default to a full restore: every section available in the file is selected.
-      setImportSections(IMPORT_SECTIONS.filter(s => s.id !== 'orgServiceMap' || counts.orgServiceMap > 0).map(s => s.id));
+      setImportSections(IMPORT_SECTIONS.filter(s => !OPTIONAL_SECTIONS.has(s.id) || counts[s.id] > 0).map(s => s.id));
     } catch (err: any) {
       pushToast(err.message || 'Could not read bundle file', { err: true, sub: 'Not valid JSON?' });
     }
   }
 
-  // Sections offered for THIS file — orgServiceMap only when the file carries one.
+  // Sections offered for THIS file — the org sections only when the file carries them.
   const availableSections = pending
-    ? IMPORT_SECTIONS.filter(s => s.id !== 'orgServiceMap' || pending.counts.orgServiceMap > 0)
+    ? IMPORT_SECTIONS.filter(s => !OPTIONAL_SECTIONS.has(s.id) || pending.counts[s.id] > 0)
     : [];
   // Keeping every available section selected = full 1:1 restore (send no sections
   // param so the backend prunes); any deselection = selective override/add.
@@ -278,8 +282,6 @@ export function SettingsPage() {
       <SignInProtectionSettings />
 
       <McpSettings />
-
-      <OrgSitesSettings />
 
       <ZonesSettings />
 

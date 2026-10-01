@@ -9,7 +9,8 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: 'roles', label: 'Roles' },
   { id: 'routeMaps', label: 'Route maps' },
   { id: 'oathkeeperRules', label: 'Oathkeeper rules' },
-  { id: 'orgServiceMap', label: 'Org → service map' },
+  { id: 'orgSites', label: 'Org → site entitlements' },
+  { id: 'orgAssignments', label: 'Org role assignments' },
 ];
 
 /** Choose-what-to-export dialog. All selected = full 1:1 snapshot; deselect to

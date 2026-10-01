@@ -20,7 +20,7 @@ interface CatalogPermission { name: string; label?: string; stepUp?: boolean; st
 interface CatalogRole { name: string; permissions: string[]; stepUpPermissions?: string[] }
 
 export const twoFactorApi = {
-  /** One group's "Members must use 2FA" switch. Super admin, with a recent second factor. */
+  /** One group's "Members must use 2FA" switch. groups.mfa:write, with a recent second factor. */
   setGroupRequired: (name: string, required: boolean) =>
     request<{ name: string; secondFactor: GroupSecondFactor }>(`/admin/rbac/groups/${encodeURIComponent(name)}/second-factor`, {
       method: 'PUT',

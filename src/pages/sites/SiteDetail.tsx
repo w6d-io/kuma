@@ -96,7 +96,7 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
         </Callout>
       )}
       {!ed.system && !perms.canDraft && (
-        <Callout tone="info" icon={I.info} className="mb-12">You can look around. Changing sites needs a super admin.</Callout>
+        <Callout tone="info" icon={I.info} className="mb-12">You can look around. Changing sites needs sites:write.</Callout>
       )}
       {perms.canApply && !ed.system && <PendingRequests name={name} onApplied={() => invalidate(name)} />}
       {!ed.system && <SiteDeletionPending name={name} onDeleted={() => { invalidate(); goSites(sitesHref({ view: 'list' })); }} />}

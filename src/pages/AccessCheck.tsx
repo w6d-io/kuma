@@ -236,7 +236,7 @@ function Verdict({ r }: { r: AccessCheckResult }) {
           <tr><th>Required permission</th><td><Chips items={needs} none="none" /></td></tr>
           <tr><th>Their groups</th><td><Chips items={r.groups} none="no groups" /></td></tr>
           <tr><th>Their roles</th><td><Chips items={r.roles} none="no roles" /></td></tr>
-          <tr><th>Their permissions</th><td>{r.superAdmin ? <Badge tone="accent">super admin · everything</Badge> : <Chips items={r.permissions} none="no permissions" />}</td></tr>
+          <tr><th>Their permissions</th><td><Chips items={r.permissions} none="no permissions" /></td></tr>
         </tbody>
       </Table>
     </Card>

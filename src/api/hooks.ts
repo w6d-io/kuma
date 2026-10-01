@@ -138,56 +138,6 @@ export function useServicePermissions(serviceName: string) {
   });
 }
 
-// Org → service bundle map (J14). Array-valued: each org bundles a SET of
-// services. Cached instead of a per-mount fetch (PERF-4).
-export function useOrgServiceMap() {
-  return useQuery({
-    queryKey: ['org-service-map'],
-    queryFn: () => api.getOrgServiceMap(),
-    staleTime: CONFIG_STALE_TIME,
-  });
-}
-
-type OrgServiceMapCache = Record<string, string[]>;
-
-// Replace an org's ENTIRE service bundle (PUT). jinbe requires >=1 service, so
-// callers clear a bundle via useDeleteOrgServiceMapping — never an empty PUT.
-export function useSetOrgServiceBundle() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ organizationId, services }: { organizationId: string; services: string[] }) =>
-      api.setOrgServiceBundle(organizationId, services),
-    onMutate: async ({ organizationId, services }) => {
-      await qc.cancelQueries({ queryKey: ['org-service-map'] });
-      const snapshot = qc.getQueryData<OrgServiceMapCache>(['org-service-map']);
-      qc.setQueryData<OrgServiceMapCache>(['org-service-map'], (m) => ({ ...(m ?? {}), [organizationId]: services }));
-      return { snapshot };
-    },
-    onError: (_e, _v, ctx) => qc.setQueryData(['org-service-map'], ctx?.snapshot),
-    onSettled: () => qc.invalidateQueries({ queryKey: ['org-service-map'] }),
-  });
-}
-
-export function useDeleteOrgServiceMapping() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (organizationId: string) => api.deleteOrgServiceMapping(organizationId),
-    onMutate: async (organizationId) => {
-      await qc.cancelQueries({ queryKey: ['org-service-map'] });
-      const snapshot = qc.getQueryData<OrgServiceMapCache>(['org-service-map']);
-      qc.setQueryData<OrgServiceMapCache>(['org-service-map'], (m) => {
-        if (!m) return m;
-        const next = { ...m };
-        delete next[organizationId];
-        return next;
-      });
-      return { snapshot };
-    },
-    onError: (_e, _v, ctx) => qc.setQueryData(['org-service-map'], ctx?.snapshot),
-    onSettled: () => qc.invalidateQueries({ queryKey: ['org-service-map'] }),
-  });
-}
-
 // Kratos auth-method toggles (hot-reload via jinbe patching kratos.yml).
 // 501 = deployment has no KRATOS_CONFIG_PATH — surfaced as `unavailable`, not
 // an error, so the Settings panel can hide itself instead of red-toasting.
@@ -331,32 +281,6 @@ export function useRollbackImport() {
   });
 }
 
-// Org → admin roster (per-org admin list). Symmetric with the service-bundle map.
-export function useOrgAdminMap() {
-  return useQuery({
-    queryKey: ['org-admin-map'],
-    queryFn: () => api.getOrgAdminMap(),
-    staleTime: CONFIG_STALE_TIME,
-  });
-}
-
-// Replace an org's ENTIRE admin roster (PUT). An empty list clears the roster.
-export function useSetOrgAdmins() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ organizationId, admins }: { organizationId: string; admins: string[] }) =>
-      api.setOrgAdmins(organizationId, admins),
-    onMutate: async ({ organizationId, admins }) => {
-      await qc.cancelQueries({ queryKey: ['org-admin-map'] });
-      const snapshot = qc.getQueryData<OrgServiceMapCache>(['org-admin-map']);
-      qc.setQueryData<OrgServiceMapCache>(['org-admin-map'], (m) => ({ ...(m ?? {}), [organizationId]: admins }));
-      return { snapshot };
-    },
-    onError: (_e, _v, ctx) => qc.setQueryData(['org-admin-map'], ctx?.snapshot),
-    onSettled: () => qc.invalidateQueries({ queryKey: ['org-admin-map'] }),
-  });
-}
-
 export function useAllRoles(serviceNames: string[]) {
   // Stable key: a single sorted, joined token rather than spreading the array
   // into the key. Spreading made the key change on service reordering, busting
@@ -485,7 +409,7 @@ export function useUserSearch(q: string) {
 const REALTIME_KEYS: readonly (readonly string[])[] = [
   ['stats'], ['users'], ['user-search'], ['groups'], ['groups-map'],
   ['services'], ['all-roles'], ['all-routes'],
-  ['org-users'], ['my-orgs'], ['org-service-map'], ['org-admin-map'], ['assignable-groups'], ['audit'],
+  ['org-users'], ['my-orgs'], ['my-permissions'], ['org-roles'], ['org-member-roles'], ['audit'],
   ['access-review'],
   // The Home's modules that a change moves; each refetches through its own endpoint, never the
   // whole briefing.
@@ -580,7 +504,7 @@ export function useAllOrganizations() {
 
 /** Every screen that lists organisations reads one of these; a change refreshes them all. */
 function refreshOrganizations(qc: ReturnType<typeof useQueryClient>) {
-  for (const key of [['all-orgs'], ['my-orgs'], ['org-service-map']]) qc.invalidateQueries({ queryKey: key });
+  for (const key of [['all-orgs'], ['my-orgs'], ['my-permissions']]) qc.invalidateQueries({ queryKey: key });
 }
 
 export function useCreateOrganization() {
@@ -594,7 +518,7 @@ export function useCreateOrganization() {
 export function useUpdateOrganization() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; name?: string; tenant?: string; applications?: string[] }) =>
+    mutationFn: ({ id, ...body }: { id: string; name?: string; tenant?: string }) =>
       api.updateOrganization(id, body),
     onSettled: () => refreshOrganizations(qc),
   });
@@ -627,15 +551,6 @@ export function useMyOrganizationsScope() {
   });
 }
 
-export function useAssignableGroups(orgId: string) {
-  return useQuery({
-    queryKey: ['assignable-groups', orgId],
-    queryFn: () => api.getAssignableGroups(orgId),
-    enabled: !!orgId,
-    staleTime: CONFIG_STALE_TIME,
-  });
-}
-
 // Org-scoped user list. `search` is an exact email match (credentials_identifier)
 // like the global directory (J9). Keyed by org + search so switching orgs or
 // searching doesn't clobber the other's cache.
@@ -650,10 +565,13 @@ export function useOrgUsers(orgId: string, search?: string) {
 export function useCreateOrgUser(orgId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { email: string; name?: string; sendInvite?: boolean; groups?: string[] }) =>
+    mutationFn: (payload: { email: string; name?: string; sendInvite?: boolean; roles?: string[] }) =>
       api.createOrgUser(orgId, payload),
     // Server assigns the identity id → invalidate-only (no fabricated row).
-    onSettled: () => qc.invalidateQueries({ queryKey: ['org-users', orgId] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['org-users', orgId] });
+      qc.invalidateQueries({ queryKey: ['org-member-roles', orgId] });
+    },
   });
 }
 

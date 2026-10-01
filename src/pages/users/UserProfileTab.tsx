@@ -10,7 +10,7 @@ import { profileChange, type ProfileDraft } from '../../lib/profile';
 import { formatWait } from '../../lib/recovery';
 import { toastFor } from '../../lib/apiError';
 import { signInAddress, VERIFICATION_LINK_SETTINGS, verificationFailure, type VerificationOutcome } from '../../lib/userAddress';
-import { mayUse } from '../../policy/model';
+import { holds } from '../../policy/model';
 import { ChangeEmailDialog } from './ChangeEmailDialog';
 import type { User } from '../../api/types';
 
@@ -53,8 +53,8 @@ export function UserProfileTab({ user, resumedEmail, onEmailChanged }: {
 
   const email = identity?.traits.email ?? user.email;
   const address = signInAddress(identity);
-  const mayChangeEmail = mayUse(session, 'users:update_email');
-  const mayVerify = mayUse(session, 'users:verify');
+  const mayChangeEmail = holds(session, 'users:update_email');
+  const mayVerify = holds(session, 'users:verify');
   const change = profileChange(baseline, draft);
 
   const save = async () => {

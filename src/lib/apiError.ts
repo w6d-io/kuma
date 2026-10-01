@@ -143,27 +143,36 @@ export function permissionRefusal(err: unknown): PermissionRefusal | null {
   };
 }
 
-/** `*` is every permission at once — said as what it is, not as a symbol. */
-const permissionWords = (p: string) => (p === '*' ? 'full platform access (super admin)' : p);
-
 function listWords(xs: string[]): string {
   return xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
 }
 
 /**
  * The sentence for a permission refusal: "You need <permission>. Ask an administrator to add you to
- * one of: <groups>." Without groups, jinbe's hint says who to ask (nobody short of a super admin, or
- * it could not tell). Null when the refusal names nothing to act on.
+ * one of: <groups>." Without groups, jinbe's hint says who to ask (or that it could not tell). Null
+ * when the refusal names nothing to act on.
  */
 export function refusalDetail(err: unknown): string | null {
   const r = permissionRefusal(err);
   if (!r) return null;
-  const need = r.permissions.length ? `You need ${listWords(r.permissions.map(permissionWords))}.` : '';
+  const need = r.permissions.length ? `You need ${listWords(r.permissions)}.` : '';
   const exceeding = r.code === 'grant_exceeds_own' ? 'This grants what you do not hold. ' : '';
   const who = r.grantedBy.length
     ? `Ask an administrator to add you to one of: ${r.grantedBy.join(', ')}.`
     : r.hint ?? 'Ask an administrator for it.';
   return `${exceeding}${need} ${who}`.trim();
+}
+
+/**
+ * A write to something code or a site intent defines (staff groups, super_admins, jinbe's roles and
+ * route map): jinbe answers 409 `defined_in_code` and nothing changes, whoever asks. Read from the
+ * code where the body carries one, and from the message where it does not.
+ */
+export function isDefinedInCode(err: unknown): boolean {
+  if (statusOf(err) !== 409) return false;
+  const e = err as { code?: unknown; message?: unknown; details?: { code?: unknown; error?: unknown } } | null;
+  if (e?.code === 'defined_in_code' || e?.details?.code === 'defined_in_code' || e?.details?.error === 'defined_in_code') return true;
+  return typeof e?.message === 'string' && /defined in code|generated from code/i.test(e.message);
 }
 
 /** One value the service refused, and why: "services.3" / "Invalid". */

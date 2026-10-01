@@ -61,11 +61,11 @@ describe('two-step sign-in rules, in words', () => {
     expect(describeApiError(refusal(422, { error: 'mfa_required' })).title).toBe('Second factor not enrolled');
   });
 
-  it('lets only groups.mfa:write (or *) flip a group’s switch, never the admin:write fallback', () => {
-    expect(mayChangeGroup2fa({ permissions: ['*'] })).toBe(true);
-    expect(mayChangeGroup2fa({ permissions: ['admin:write'], effective_permissions: ['groups.mfa:write'] })).toBe(true);
-    expect(mayChangeGroup2fa({ permissions: ['admin:write'], effective_permissions: ['groups:write'] })).toBe(false);
-    expect(mayChangeGroup2fa({ permissions: ['admin:write'] })).toBe(false);
+  it('lets only groups.mfa:write flip a group’s switch, never a wildcard or groups:write', () => {
+    expect(mayChangeGroup2fa({ permissions: ['*'] })).toBe(false);
+    expect(mayChangeGroup2fa({ permissions: ['raw'], effective_permissions: ['groups.mfa:write'] })).toBe(true);
+    expect(mayChangeGroup2fa({ permissions: ['raw'], effective_permissions: ['groups:write'] })).toBe(false);
+    expect(mayChangeGroup2fa({ permissions: ['groups:write'] })).toBe(false);
     expect(mayChangeGroup2fa(undefined)).toBe(false);
   });
 });

@@ -9,7 +9,7 @@ import { useSitePerms } from './usePerms';
 import { useSiteAction } from './useAction';
 
 /**
- * "Migrate existing rules" (site-ux.md §20.3), super_admin, once per environment: preview the 1:1
+ * "Migrate existing rules" (site-ux.md §20.3), sites:apply, once per environment: preview the 1:1
  * conversion → parity check → dual run → cut over → done (rollback for 7 days). Every step is the
  * server's; this screen shows what it says and refuses to go on while it reports a regression.
  */
@@ -78,7 +78,7 @@ export function MigrationPage({ step }: { step: MigrationStep | null }) {
   const header = (
     <PageHeader eyebrow={<Button variant="ghost" size="sm" icon={I.caretLeft} onClick={() => goSites(sitesHref({ view: 'list' }))}>Sites</Button>} title="Migrate existing rules" sub="Move the gateway's legacy rules to sites — preview first; nothing changes until you cut over." />
   );
-  if (!perms.canApply) return <div className="page-enter">{header}<Callout tone="info" icon={I.lock}>The migration is run by a super admin. Sites are read-only until it is finished.</Callout></div>;
+  if (!perms.canApply) return <div className="page-enter">{header}<Callout tone="info" icon={I.lock}>The migration is run by somebody holding sites:apply. Sites are read-only until it is finished.</Callout></div>;
   if (status.isLoading) return <div className="page-enter">{header}<SkeletonPanel lines={5} /></div>;
   if (status.error) {
     return (

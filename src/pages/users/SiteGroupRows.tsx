@@ -9,14 +9,16 @@ import { I } from '../../components/ui/Icons';
  * Every site group, plus anything the target already holds — a membership to a group that no longer
  * exists must stay visible and removable, or it becomes invisible and permanent.
  */
-export function SiteGroupRows({ checked, toggle, targetMfa, offered, mayAssign, privileged: isPrivileged, describe }: {
+export function SiteGroupRows({ checked, toggle, targetMfa, offered, mayAssign, privileged: isPrivileged, beyond, describe }: {
   checked: string[];
   toggle: (g: string) => void;
   targetMfa?: boolean;
   offered: string[];
   mayAssign: boolean;
-  /** Gives everything on `global` or a system site. */
+  /** Gives platform permissions (a role on jinbe). */
   privileged: (group: string) => boolean;
+  /** What the group gives on jinbe that the caller does not hold (the holding rule): not addable. */
+  beyond?: (group: string) => string[];
   /** The group in one line: its roles per site. */
   describe: (group: string) => string;
 }) {
@@ -33,10 +35,11 @@ export function SiteGroupRows({ checked, toggle, targetMfa, offered, mayAssign, 
         // rule falls back to the old test, privileged groups.
         const rule = secondFactorOf(g);
         const blockedByMfa = !on && (rule ? blockedForEnrolment(rule, targetMfa) : privileged && targetMfa === false);
-        const blockedByActor = !mayAssign && !on;
+        const exceeds = beyond?.(g) ?? [];
+        const blockedByActor = !on && (!mayAssign || exceeds.length > 0);
         const blocked = blockedByMfa || blockedByActor;
         const title = blockedByActor
-          ? 'Assigning a group needs admin write access.'
+          ? (mayAssign ? `It gives what you do not hold: ${exceeds.join(', ')}.` : 'Adding people to groups needs groups.members:write.')
           : blockedByMfa
           ? `Members of '${g}' must use two-step sign-in. This person must enrol a second factor (authenticator app, security key or backup codes) before being added.`
           : !known
@@ -52,7 +55,7 @@ export function SiteGroupRows({ checked, toggle, targetMfa, offered, mayAssign, 
               label={
                 <span className="row wrap gap-4 fw-medium text-base">
                   {g}
-                  {privileged && <Badge tone="warning" title="Gives everything on a system site"><span className="chip-ico">{I.lock}</span>platform admin</Badge>}
+                  {privileged && <Badge tone="warning" title="Gives platform permissions (jinbe)"><span className="chip-ico">{I.lock}</span>platform</Badge>}
                   {rule?.required && <TwoFactorBadge kind="required" />}
                   {!known && <Badge tone="danger">unknown group</Badge>}
                   {blockedByMfa && !blockedByActor && <TwoFactorBadge kind="needs-enrol" />}

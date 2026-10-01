@@ -108,6 +108,6 @@ describe('refusals, in words', () => {
 
   it('tells a firewall block from a refusal, and says not to resend', () => {
     expect(describeImportError({ status: 403, edgeBlocked: true })).toMatch(/web firewall.*Do not send the same document again/);
-    expect(describeImportError({ status: 403 })).toMatch(/super admin/);
+    expect(describeImportError({ status: 403 })).toMatch(/sites:write/);
   });
 });

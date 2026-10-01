@@ -180,7 +180,7 @@ export function PeopleModule({ q, persona }: { q: UseQueryResult<Module<People>,
             <li>{pair(p.identities, 'people', users)} · {pair(p.active, 'active', users)} · {pair(p.inactive, 'inactive', users)}</li>
             {(p.fullAccess != null || p.unassigned != null) && (
               <li>
-                {p.fullAccess != null && pair(p.fullAccess, 'with full access', '#/accessreview', 'People holding a permission that covers everything. Review them regularly.')}
+                {p.fullAccess != null && pair(p.fullAccess, 'with full access', '#/accessreview', 'People holding every platform permission. Review them regularly.')}
                 {p.fullAccess != null && p.unassigned != null && ' · '}
                 {p.unassigned != null && pair(p.unassigned, 'in no group', '#/users?filter=unassigned')}
               </li>

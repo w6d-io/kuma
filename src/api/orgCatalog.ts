@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useAllOrganizations, useMyOrganizations, useMyOrganizationNames, useSession } from './hooks';
-import { permits } from '../policy/model';
+import { holds } from '../policy/model';
 
 /**
  * The organisations the caller may pick from, with their names.
@@ -11,7 +11,7 @@ import { permits } from '../policy/model';
  */
 export function useOrgCatalog() {
   const { data: session } = useSession();
-  const mayReadAll = permits(session?.permissions, 'admin.organisation:read');
+  const mayReadAll = holds(session, 'orgs:read');
   const all = useAllOrganizations();
   const mine = useMyOrganizations();
   const names = useMyOrganizationNames();

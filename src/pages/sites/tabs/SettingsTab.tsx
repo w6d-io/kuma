@@ -18,7 +18,7 @@ import { useSitePerms } from '../usePerms';
  * Settings (site-ux.md §10.4–10.6): name, brand, address (Edit address: checked before it is saved) and
  * upstream (drafted like any change), then the
  * actions that change what the gateway serves at once — pause/resume and delete with its blast
- * radius — which need a super admin and a recent second factor.
+ * radius — which need sites:apply and a recent second factor.
  */
 
 export function SettingsTab({ ed, readOnly, canApply, onEditAddress }: { ed: SiteEditor; readOnly: boolean; canApply: boolean; onEditAddress: () => void }) {

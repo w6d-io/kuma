@@ -3,7 +3,7 @@ import type { GroupsMap, RouteEntry } from '../../api/types';
 import type { SiteRolesWrite } from '../../api/rbacWrites';
 import { Badge, Button, Callout, Checkbox, Drawer, EmptyHint, Field, I, Input } from '../../components/ui';
 import {
-  EVERYTHING, diffRoles, groupsUsingRole, isEverything, permissionCatalogue, validateRoleName,
+  diffRoles, groupsUsingRole, permissionCatalogue, validateRoleName,
   type SiteRoles,
 } from '../../lib/rbacEdit';
 import { plural } from './access';
@@ -19,7 +19,8 @@ export interface RoleDraft {
  * whom it reaches before anything is saved.
  *
  * The permissions offered are what the site's routes ask for, what its roles already carry and what
- * jinbe lists for it, grouped by resource. Anything else can be typed in.
+ * jinbe lists for it, grouped by resource. Anything else can be typed in. A role is an explicit list:
+ * "All permissions of this site" ticks every one the routes declare today, and nothing later.
  */
 export function RoleEditor({ site, role, roles, groups, routes, known, peopleIn, busy, onSave, onClose }: {
   site: string;
@@ -36,8 +37,8 @@ export function RoleEditor({ site, role, roles, groups, routes, known, peopleIn,
 }) {
   const before = role ? roles[role] ?? [] : [];
   const [name, setName] = useState(role ?? '');
-  const [everything, setEverything] = useState(isEverything(before));
-  const [perms, setPerms] = useState<Set<string>>(() => new Set(before.filter(p => p !== EVERYTHING)));
+  // A `*` left from the old model means nothing to the engine: dropped from the draft, shown in the review.
+  const [perms, setPerms] = useState<Set<string>>(() => new Set(before.filter(p => p !== '*')));
   const [extra, setExtra] = useState<string[]>([]);
   const [custom, setCustom] = useState('');
   const [filter, setFilter] = useState('');
@@ -62,7 +63,9 @@ export function RoleEditor({ site, role, roles, groups, routes, known, peopleIn,
 
   const nameError = validateRoleName(name, Object.keys(roles), role ?? undefined);
   const finalName = name.trim();
-  const after = everything ? [EVERYTHING, ...[...perms].sort()] : [...perms].sort();
+  const after = [...perms].sort();
+  const sitePermissions = useMemo(() => [...new Set(routes.map(r => r.permission).filter((p): p is string => !!p))].sort(), [routes]);
+  const allPicked = sitePermissions.length > 0 && sitePermissions.every(p => perms.has(p));
   const nextRoles: SiteRoles = { ...roles };
   if (role && role !== finalName) delete nextRoles[role];
   nextRoles[finalName] = after;
@@ -78,7 +81,7 @@ export function RoleEditor({ site, role, roles, groups, routes, known, peopleIn,
   });
   const addCustom = () => {
     const p = custom.trim();
-    if (!p || p === EVERYTHING) return;
+    if (!p || p.includes('*')) return;
     setExtra(x => (x.includes(p) ? x : [...x, p]));
     toggle(p, true);
     setCustom('');
@@ -117,12 +120,20 @@ export function RoleEditor({ site, role, roles, groups, routes, known, peopleIn,
           <Field label="Name" htmlFor="role-name" error={name && nameError} hint="Lowercase, e.g. payslips-editor">
             <Input id="role-name" mono value={name} onChange={e => setName(e.target.value)} autoFocus={!role} />
           </Field>
-          <Checkbox
-            checked={everything}
-            onChange={setEverything}
-            label={<strong>Everything in this site</strong>}
-            hint="Every route of the site, now and later — except the organization routes, which follow org grants."
-          />
+          <div className="row wrap gap-8 items-center">
+            <Button
+              size="sm"
+              disabled={allPicked || sitePermissions.length === 0}
+              onClick={() => setPerms(s => new Set([...s, ...sitePermissions]))}
+            >
+              All permissions of this site
+            </Button>
+            <span className="small muted">
+              {sitePermissions.length === 0
+                ? 'No route of this site declares a permission yet.'
+                : `Ticks the ${plural(sitePermissions.length, 'permission')} its routes declare today, by name. A route added later needs adding here.`}
+            </span>
+          </div>
           <div className="col gap-8">
             <div className="row wrap gap-8 items-end">
               <Field label="Permissions" htmlFor="role-filter" className="flex-1">
@@ -130,7 +141,6 @@ export function RoleEditor({ site, role, roles, groups, routes, known, peopleIn,
               </Field>
               <span className="small muted">{plural(perms.size, 'permission')} picked</span>
             </div>
-            {everything && <div className="small muted">Picked permissions are kept, but everything already covers them.</div>}
             {byResource.length === 0 && <EmptyHint>No permission matches.</EmptyHint>}
             {byResource.map(([res, list]) => (
               <fieldset key={res} className="rb-perm-set">
@@ -187,7 +197,7 @@ function RoleReview({ site, role, finalName, renamed, before, after, holders, pe
   holders: string[];
   people: number | null;
 }) {
-  const label = (p: string) => (p === EVERYTHING ? 'Everything in this site' : p);
+  const label = (p: string) => (p === '*' ? '* (no longer means anything: dropped)' : p);
   const lines = [
     ...after.filter(p => !before.includes(p)).map(p => ({ sign: '+', p: label(p) })),
     ...before.filter(p => !after.includes(p)).map(p => ({ sign: '−', p: label(p) })),

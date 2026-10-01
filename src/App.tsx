@@ -6,6 +6,7 @@ import { redirectToLogin } from './auth/loginRedirect';
 import { edgeBlocked } from './lib/apiError';
 import { takeRedo } from './lib/resume';
 import { NAV, COLLAPSIBLE, hasAnyPerm, navBlocks, navItemFor, type NavSection } from './nav';
+import { holds } from './policy/model';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { useSession, useStats, useRealtime, useUserSearch, useSecondFactorStatus } from './api/hooks';
 import { searchedToUser } from './api/transforms';
@@ -102,7 +103,7 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
   // Filter nav by user permissions — non-admins only see Overview + Settings.
   const myOrg = useMyOrg();
   const personalKeys = usePersonalKeysEnabled()
-  const visibleNav = NAV.filter((n) => hasAnyPerm(session?.permissions, n.perms) && (n.id !== "orgadmin" || myOrg.show) && (n.id !== "connections" || personalKeys))
+  const visibleNav = NAV.filter((n) => hasAnyPerm(session, n.perms) && (n.id !== "orgadmin" || myOrg.show) && (n.id !== "connections" || personalKeys))
   const blocks = navBlocks(visibleNav)
   const activeId = navItemFor(page)?.id
   const { data: ownSecondFactor } = useSecondFactorStatus()
@@ -422,10 +423,9 @@ function AppShell() {
     redirectToLogin({ refresh: !!session.error });
   }, [sessionReady, session]);
 
-  // Real-time: subscribe to the server change stream (admins only) so the whole
+  // Real-time: subscribe to the server change stream (its holders only) so the whole
   // console reflects changes sub-second without polling.
-  const isAdmin = !!session?.permissions?.some(p => p === '*' || p === 'admin:read');
-  useRealtime(isAdmin);
+  useRealtime(holds(session, 'stats:read'));
 
   // If the user landed on a page they cannot access (direct URL / reload),
   // bounce to Overview. Only act once the session query has SUCCESSFULLY
@@ -437,14 +437,9 @@ function AppShell() {
     // An old id with no rail entry of its own inherits the gate of the page that replaced it.
     const nav = navItemFor(page)
     if (!nav) return
-    if (!hasAnyPerm(session?.permissions, nav.perms)) {
-      // Land the user on a surface they can actually use. Platform admins get
-      // Overview; a delegated org admin (no admin:read) gets Org Admin instead
-      // of Overview's "you can't be here" state.
-      const canAdmin = !!session?.permissions?.some((p) => p === '*' || p === 'admin:read')
-      setPage(canAdmin ? 'dashboard' : 'orgadmin')
-    }
-  }, [page, sessionReady, session?.permissions, setPage])
+    // Home is scoped to whoever is looking, so it is a surface everybody can use.
+    if (!hasAnyPerm(session, nav.perms)) setPage('dashboard')
+  }, [page, sessionReady, session, setPage])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

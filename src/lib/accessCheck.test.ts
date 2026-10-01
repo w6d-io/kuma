@@ -11,7 +11,6 @@ const base: AccessCheckResult = {
   groups: ['devs'],
   roles: ['viewer'],
   permissions: ['nodes:read'],
-  superAdmin: false,
 };
 
 describe('explain', () => {
@@ -22,10 +21,6 @@ describe('explain', () => {
     expect(e.text).toMatch(/clusters:read/);
   });
 
-  it('says allowed because super admin', () => {
-    const e = explain({ ...base, allow: true, reason: 'ok', superAdmin: true });
-    expect(e.text).toMatch(/super admin/i);
-  });
 
   it('names the missing permission and the site on a refusal', () => {
     const e = explain(base);
