@@ -40,6 +40,7 @@ export const NAV: NavItem[] = [
   // Backup only appears when the chart enabled backup.
   { id: "backup",    name: "Backup",    ico: I.box,     perms: ["policy.bundle:read"] },
   { id: "accessreview", name: "Access review", ico: I.check, section: "Compliance", perms: ["access:read"] },
+  { id: "grants", name: "Direct grants", ico: I.key, section: "Compliance", perms: ["access:read"] },
   { id: "recertification", name: "Recertification", ico: I.clock, section: "Compliance", perms: ["recert:read"] },
   // One organization from the inside. perms [] — the rail shows it only to somebody who holds an org
   // permission somewhere, or may list every org (useMyOrg); the page itself explains an empty list.

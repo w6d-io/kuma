@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { useApp } from '../../contexts/AppContext';
 import { I } from '../../components/ui/Icons';
-import { Button, Card, ConfirmDialog } from '../../components/ui';
+import { Button, Card, ConfirmDialog, Drawer } from '../../components/ui';
 import { ApiErrorState } from '../../components/ApiErrorState';
 import type { KratosIdentity } from '../../api/client';
 import { useOrgUsers } from '../../api/hooks';
@@ -12,6 +12,7 @@ import { RolesMatrix } from './RolesMatrix';
 import { AddMember } from './AddMember';
 import { InviteDrawer } from './InviteDrawer';
 import { makeToastErr } from './toastErr';
+import { IndividualAccess } from '../../components/grants/IndividualAccess';
 
 /**
  * One organization's people and the org roles they hold there — the same table on My org and on the
@@ -33,6 +34,7 @@ export function OrgMembers({ org, orgName, mayManage, pushToast }: {
   const roles = useMemo(() => rolesQ.data ?? [], [rolesQ.data]);
   const [invite, setInvite] = useState(false);
   const [removing, setRemoving] = useState<KratosIdentity | null>(null);
+  const [individual, setIndividual] = useState<KratosIdentity | null>(null);
   const [busy, setBusy] = useState(false);
 
   const saved = memberRoles.byId;
@@ -77,6 +79,7 @@ export function OrgMembers({ org, orgName, mayManage, pushToast }: {
           roles={roles}
           mayManage={manage}
           onRemove={setRemoving}
+          onIndividual={setIndividual}
           pushToast={pushToast}
         />
       </Card>
@@ -85,10 +88,22 @@ export function OrgMembers({ org, orgName, mayManage, pushToast }: {
         <InviteDrawer
           org={org}
           assignable={roles.filter((r) => r.assignable)}
+          mayGrant={manage}
           pushToast={pushToast}
           onClose={() => setInvite(false)}
           onDone={() => { setInvite(false); usersQ.refetch(); }}
         />
+      )}
+      {individual && (
+        <Drawer open size="lg" onClose={() => setIndividual(null)} eyebrow={orgName} title={individual.traits?.name || individual.traits?.email || individual.id}>
+          <IndividualAccess
+            userId={individual.id}
+            who={individual.traits?.email ?? individual.id}
+            org={org}
+            mayGrant={manage}
+            pushToast={pushToast}
+          />
+        </Drawer>
       )}
       <ConfirmDialog
         open={!!removing}

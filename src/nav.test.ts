@@ -14,7 +14,7 @@ describe('the rail', () => {
     const under = (s: string) => navBlocks(NAV).find((b) => b.section === s)!.items.map((i) => i.id);
     expect(under('People')).toEqual(['users', 'groups']);
     expect(under('Access')).toEqual(['roles', 'accesscheck']);
-    expect(under('Compliance')).toEqual(['accessreview', 'recertification']);
+    expect(under('Compliance')).toEqual(['accessreview', 'grants', 'recertification']);
   });
 
   it('only lists pages the router knows', () => {

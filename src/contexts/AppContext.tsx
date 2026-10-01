@@ -1,3 +1,4 @@
+import type { GrantDraft } from '../lib/grants';
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AppState, PageId, TweakDefaults } from '../api/types';
@@ -94,7 +95,7 @@ interface AppContextType {
   setTweak: (key: string, val: unknown) => void;
   // Live API mutations
   apiSetUserGroups: (email: string, groups: string[]) => Promise<void>;
-  apiCreateUser: (payload: { email: string; name: string; groups?: string[]; sendInvite?: boolean }) => Promise<void>;
+  apiCreateUser: (payload: { email: string; name: string; groups?: string[]; grants?: GrantDraft[]; sendInvite?: boolean }) => Promise<void>;
   apiDeleteUser: (id: string) => Promise<void>;
   apiSendRecoveryEmail: (id: string) => Promise<void>;
   apiSetUserState: (id: string, state: 'active' | 'inactive') => Promise<void>;
@@ -327,7 +328,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       () => api.setUserGroups(email, groups));
   }, [qc]);
 
-  const apiCreateUser = useCallback(async (payload: { email: string; name: string; groups?: string[]; sendInvite?: boolean }) => {
+  const apiCreateUser = useCallback(async (payload: { email: string; name: string; groups?: string[]; grants?: GrantDraft[]; sendInvite?: boolean }) => {
     // Create → server assigns the id; invalidate-only (no fabricated row).
     await withOptimism(qc, [['users'], ['stats']], undefined, () => api.createUser(payload));
   }, [qc]);

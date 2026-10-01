@@ -4,6 +4,10 @@ import { refusalWords, refusedOf, type OrgRole, type RefusedRole } from '../../a
 import { roleLabel } from '../../lib/orgRoles';
 import { makeToastErr, type PushToast } from './toastErr';
 import { useCreateOrgUser } from '../../api/hooks';
+import { GrantComposer } from '../../components/grants/GrantComposer';
+import { refusedGrantsOf, type RefusedGrant } from '../../api/grants';
+import { RefusedGrants } from '../../components/grants/RefusedGrants';
+import type { GrantDraft } from '../../lib/grants';
 
 /** Checkbox list limited to the org roles the caller may assign here (never the whole catalogue). */
 function RolePicker({ assignable, checked, toggle }: { assignable: OrgRole[]; checked: string[]; toggle: (r: string) => void }) {
@@ -32,8 +36,11 @@ function RolePicker({ assignable, checked, toggle }: { assignable: OrgRole[]; ch
   );
 }
 
-export function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
-  org: string; assignable: OrgRole[]; onClose: () => void; onDone: () => void; pushToast: PushToast;
+export function InviteDrawer({ org, assignable, mayGrant = assignable.length > 0, onClose, onDone, pushToast }: {
+  org: string; assignable: OrgRole[];
+  /** May give individual access in this org (org.members:write here). */
+  mayGrant?: boolean;
+  onClose: () => void; onDone: () => void; pushToast: PushToast;
 }) {
   const toastErr = makeToastErr(pushToast);
   const createUser = useCreateOrgUser(org);
@@ -42,24 +49,29 @@ export function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
   const [sendInvite, setSendInvite] = useState(true);
   const [roles, setRoles] = useState<string[]>([]);
   const [refused, setRefused] = useState<RefusedRole[]>([]);
+  const [grants, setGrants] = useState<{ drafts: GrantDraft[]; valid: boolean }>({ drafts: [], valid: true });
+  const [refusedGrants, setRefusedGrants] = useState<RefusedGrant[]>([]);
   const busy = createUser.isPending;
   const toggle = (r: string) => setRoles(rs => (rs.includes(r) ? rs.filter(x => x !== r) : [...rs, r]));
 
   const submit = () => {
-    if (!email || busy) return;
+    if (!email || busy || !grants.valid) return;
     setRefused([]);
+    setRefusedGrants([]);
     createUser.mutate(
       {
         email: email.trim(),
         name: name.trim() || undefined,
         sendInvite,
         roles: roles.length ? roles : undefined,
+        grants: grants.drafts.length ? grants.drafts : undefined,
       },
       {
         onSuccess: () => { pushToast(`Invited ${email.trim()}`, { sub: sendInvite ? 'recovery email sent' : undefined }); onDone(); },
         onError: (err) => {
           const list = refusedOf(err);
-          if (list.length) setRefused(list);
+          const grantList = refusedGrantsOf(err).filter((g) => !list.some((r) => r.role === g.name));
+          if (list.length || grantList.length) { setRefused(list); setRefusedGrants(grantList); }
           else toastErr(err);
         },
       },
@@ -77,7 +89,7 @@ export function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
           <span className="small muted">Adds a new member to this organization</span>
           <div className="row">
             <Button onClick={onClose}>Cancel</Button>
-            <Button variant="primary" onClick={submit} disabled={!email || busy}>{busy ? 'Inviting…' : 'Invite'}</Button>
+            <Button variant="primary" onClick={submit} disabled={!email || busy || !grants.valid}>{busy ? 'Inviting…' : 'Invite'}</Button>
           </div>
         </>
       }
@@ -103,6 +115,8 @@ export function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
           </ul>
         </div>
       )}
+      {mayGrant && <GrantComposer org={org} onChange={(drafts, valid) => setGrants({ drafts, valid })} />}
+      <RefusedGrants refused={refusedGrants} lead="Nobody was invited. Refused:" />
       <Field label="Send invite email" inline hint="Emails them a link to set their password">
         <Switch on={sendInvite} onChange={setSendInvite} label="Send invite email" />
       </Field>

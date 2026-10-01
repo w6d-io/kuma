@@ -16,6 +16,11 @@ import { UserProfileTab } from './UserProfileTab';
 import { UserSessionsTab } from './UserSessionsTab';
 import { UserSignInTab } from './UserSignInTab';
 import { UserDangerTab } from './UserDangerTab';
+import { IndividualAccess } from '../../components/grants/IndividualAccess';
+import { GrantComposer } from '../../components/grants/GrantComposer';
+import { useOrgCatalog } from '../../api/orgCatalog';
+import { orgLabel } from '../../lib/orgOptions';
+import { GRANT_PERMISSION, type GrantDraft } from '../../lib/grants';
 
 type DrawerTab = 'groups' | 'profile' | 'signin' | 'sessions' | 'activity' | 'danger';
 const DRAWER_TABS: { value: DrawerTab; label: string }[] = [
@@ -28,7 +33,8 @@ const DRAWER_TABS: { value: DrawerTab; label: string }[] = [
 ];
 
 export function UserDrawer() {
-  const { userDrawer, setUserDrawer, setPage, state, apiSetUserGroups, apiCreateUser } = useApp();
+  const { userDrawer, setUserDrawer, setPage, state, apiSetUserGroups, apiCreateUser, pushToast } = useApp();
+  const { orgs: orgCatalog } = useOrgCatalog();
   const applyChange = useApplyChange();
   const { data: session } = useSession();
   // The same site groups Groups edits, from jinbe's /admin/rbac — what the mutation will accept.
@@ -45,6 +51,7 @@ export function UserDrawer() {
   const [newName, setNewName] = useState("");
   const [newGroups, setNewGroups] = useState<string[]>([]);
   const [sendInvite, setSendInvite] = useState(true);
+  const [newGrants, setNewGrants] = useState<{ drafts: GrantDraft[]; valid: boolean }>({ drafts: [], valid: true });
 
   // Seed the form from the user ONLY when the drawer targets a different user
   // (keyed on id). Deliberately NOT on user?.groups/organizationId: those change
@@ -54,7 +61,7 @@ export function UserDrawer() {
   useEffect(() => { setGroups(userDrawer?.resumeGroups ?? user?.groups ?? []); }, [user?.id]);
   useEffect(() => {
     setDrawerTab("groups");
-    setNewEmail(""); setNewName(""); setNewGroups([]); setSendInvite(true);
+    setNewEmail(""); setNewName(""); setNewGroups([]); setSendInvite(true); setNewGrants({ drafts: [], valid: true });
     setResumedEmail(undefined);
   }, [userDrawer?.mode, user?.id]);
 
@@ -89,8 +96,9 @@ export function UserDrawer() {
   };
 
   const create = () => {
-    if (!newEmail || !newName) return;
-    const ok = applyChange("create", newEmail, () => apiCreateUser({ email: newEmail, name: newName, groups: newGroups, sendInvite }));
+    if (!newEmail || !newName || !newGrants.valid) return;
+    const grants = newGrants.drafts.length ? newGrants.drafts : undefined;
+    const ok = applyChange("create", newEmail, () => apiCreateUser({ email: newEmail, name: newName, groups: newGroups, grants, sendInvite }));
     if (ok) setUserDrawer(null);
   };
 
@@ -102,6 +110,7 @@ export function UserDrawer() {
     history.replaceState(null, '', `#${formatHash('accesscheck', null, { email })}`);
   });
   const mayCheck = holds(session, 'access:check');
+  const mayGrant = holds(session, GRANT_PERMISSION);
 
   if (userDrawer.mode === 'create') {
     return (
@@ -115,7 +124,7 @@ export function UserDrawer() {
             <span className="small muted">They can sign in once they set a password.</span>
             <div className="row">
               <Button onClick={() => setUserDrawer(null)}>Cancel</Button>
-              <Button variant="primary" onClick={create} disabled={!newEmail || !newName}>Create user</Button>
+              <Button variant="primary" onClick={create} disabled={!newEmail || !newName || !newGrants.valid}>Create user</Button>
             </div>
           </>
         }
@@ -132,6 +141,12 @@ export function UserDrawer() {
             <div className="input-label">Groups <span className="muted">(optional)</span></div>
             <Card><SiteGroupRows {...siteRows} checked={newGroups} toggle={toggleNewGroup} /></Card>
           </div>
+        )}
+        {mayGrant && (
+          <GrantComposer
+            hint="Single roles or permissions on jinbe or a site, beside their groups. Access inside an organization is given there once they are a member."
+            onChange={(drafts, valid) => setNewGrants({ drafts, valid })}
+          />
         )}
         <Field label="Send invite email" inline hint="Emails them a link to set their password">
           <Switch on={sendInvite} onChange={setSendInvite} label="Send invite email" />
@@ -196,6 +211,15 @@ export function UserDrawer() {
                 siteRows={siteRows}
                 onOpenOrg={(orgId) => leaveTo(() => setPage('orgadmin', orgId))}
               />
+              <div className="mt-16">
+                <IndividualAccess
+                  userId={user.id}
+                  who={user.name || user.email}
+                  mayGrant={mayGrant}
+                  orgName={(o) => orgLabel(o ?? '', orgCatalog)}
+                  pushToast={pushToast}
+                />
+              </div>
             </>
           )}
           {drawerTab === "profile" && (

@@ -11,7 +11,7 @@ import { makeToastErr, type PushToast } from './toastErr';
  * roles for that person and should not hold back the others. A role the caller may not hand out is
  * shown and can be taken away, never added: jinbe's holding rule refuses it anyway.
  */
-export function RolesMatrix({ org, orgName, members, loading, saved, roles, mayManage, onRemove, pushToast }: {
+export function RolesMatrix({ org, orgName, members, loading, saved, roles, mayManage, onRemove, onIndividual, pushToast }: {
   org: string;
   orgName: string;
   members: KratosIdentity[];
@@ -22,6 +22,8 @@ export function RolesMatrix({ org, orgName, members, loading, saved, roles, mayM
   /** Holds org.members:write in this org: may change roles and remove members. */
   mayManage: boolean;
   onRemove: (m: KratosIdentity) => void;
+  /** Opens this member's individual access in this org. */
+  onIndividual?: (m: KratosIdentity) => void;
   pushToast: PushToast;
 }) {
   const qc = useQueryClient();
@@ -127,7 +129,8 @@ export function RolesMatrix({ org, orgName, members, loading, saved, roles, mayM
                   </>
                 )}
               </td>
-              <td className="actions">
+              <td className="actions nowrap">
+                {onIndividual && <Button variant="ghost" size="sm" onClick={() => onIndividual(m)} title={`Single roles or permissions given to ${email || m.id} in ${orgName}`}>Individual</Button>}
                 {mayManage && <Button variant="ghost" size="sm" onClick={() => onRemove(m)} title={`Remove from ${orgName} only`}>Remove</Button>}
               </td>
             </MemberRow>

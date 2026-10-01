@@ -28,6 +28,7 @@ import { usePersonalKeysEnabled } from './hooks/usePersonalKeys';
 import { GrantAccess } from './pages/GrantAccess';
 import { AuditPage } from './pages/Audit';
 import { AccessReviewPage } from './pages/AccessReview';
+import { DirectGrantsPage } from './pages/DirectGrants';
 import { RecertificationPage } from './pages/Recertification';
 import { SettingsPage } from './pages/Settings';
 import { BackupPage } from './pages/Backup';
@@ -472,6 +473,7 @@ function AppShell() {
             {page === "connections" && <ConnectionsPage />}
             {page === "audit" && <AuditPage />}
             {page === "accessreview" && <AccessReviewPage />}
+            {page === "grants" && <DirectGrantsPage />}
             {page === "recertification" && <RecertificationPage />}
             {page === "backup" && <BackupPage />}
             {page === "settings" && <SettingsPage />}
