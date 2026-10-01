@@ -11,6 +11,12 @@ describe('findings', () => {
     expect(g.errors).toHaveLength(1);
     expect(g.warnings).toHaveLength(1);
   });
+  it('keeps notes apart: shown, never blocking nor asked to be acknowledged', () => {
+    const list = [f('host_rewritten', 'info'), f('org_removed', 'warn')];
+    expect(groupFindings(list).notes).toEqual([expect.objectContaining({ code: 'host_rewritten' })]);
+    expect(unacknowledged(list, new Set())).toEqual([]);
+    expect(findingsBlocker(list, new Set())).toBeNull();
+  });
   it('says what is left: errors first, then codes to acknowledge', () => {
     const list = [f('public_route', 'confirm'), f('wildcard_role', 'confirm')];
     expect(unacknowledged(list, new Set(['public_route']))).toEqual(['wildcard_role']);

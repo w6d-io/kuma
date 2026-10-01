@@ -194,8 +194,8 @@ function GateBasic({ gate, site, enabled, readOnly, onChange, onSite, onLocked, 
           <Field label="Only these methods" hint="Empty = GET HEAD POST PUT PATCH DELETE.">
             <MethodChips value={gate.methods ?? []} disabled={readOnly} onChange={(m) => onChange({ ...gate, methods: m.length ? m : undefined })} />
           </Field>
-          <Field label="Keep the visitor's domain (preserve host)" inline hint="Site-wide: turn on if the service builds links or cookies from the Host header.">
-            <Switch on={!!site.upstream.preserveHost} disabled={readOnly} label="Preserve host" onChange={(on) => onSite((s) => ({ ...s, upstream: { ...s.upstream, preserveHost: on || undefined } }))} />
+          <Field label="Keep the visitor's domain (preserve host)" inline hint="Site-wide, on by default. Off, the service gets its internal name (…svc.cluster.local) as Host — only for a service that answers on that name alone.">
+            <Switch on={!!site.upstream.preserveHost} disabled={readOnly} label="Preserve host" onChange={(on) => onSite((s) => ({ ...s, upstream: { ...s.upstream, preserveHost: on } }))} />
           </Field>
           <Field label="Remove path prefix" hint="Site-wide. Oathkeeper removes the first occurrence (a substring replace) — it must be a literal prefix of every path.">
             <Input mono placeholder="/api" disabled={readOnly} value={site.upstream.stripPath ?? ''} onChange={(e) => onSite((s) => ({ ...s, upstream: { ...s.upstream, stripPath: e.target.value || undefined } }))} />

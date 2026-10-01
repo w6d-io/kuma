@@ -13,7 +13,7 @@ import { CheckList } from './parts';
 export function FindingsList({ findings, acknowledged, onChange, disabled }: {
   findings: readonly Finding[]; acknowledged: ReadonlySet<string>; onChange: (next: Set<string>) => void; disabled?: boolean;
 }) {
-  const { errors, warnings, confirm } = groupFindings(findings);
+  const { errors, warnings, notes, confirm } = groupFindings(findings);
   const toggle = (code: string, on: boolean) => {
     const next = new Set(acknowledged);
     if (on) next.add(code); else next.delete(code);
@@ -41,7 +41,8 @@ export function FindingsList({ findings, acknowledged, onChange, disabled }: {
           ))}
         </div>
       )}
-      {warnings.length > 0 && <CheckList live={false} lines={warnings.map((f) => ({ level: 'warn', text: f.message }))} />}
+      {warnings.length > 0 && <CheckList live={false} lines={warnings.map((f) => ({ level: 'warn', text: f.fix ? `${f.message} ${f.fix}` : f.message }))} />}
+      {notes.length > 0 && <CheckList live={false} lines={notes.map((f) => ({ level: 'info', text: f.fix ? `${f.message} ${f.fix}` : f.message }))} />}
     </div>
   );
 }

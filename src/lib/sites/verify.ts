@@ -46,9 +46,10 @@ export const EXPECT_WORD: Record<ProbeResult['expect'], string> = { protected: '
 export function groupFindings(findings: readonly Finding[]) {
   const errors = findings.filter((f) => f.level === 'error');
   const warnings = findings.filter((f) => f.level === 'warn');
+  const notes = findings.filter((f) => f.level === 'info');
   const confirm = new Map<string, Finding[]>();
   for (const f of findings) if (f.level === 'confirm') confirm.set(f.code, [...(confirm.get(f.code) ?? []), f]);
-  return { errors, warnings, confirm: [...confirm.entries()].map(([code, items]) => ({ code, items })) };
+  return { errors, warnings, notes, confirm: [...confirm.entries()].map(([code, items]) => ({ code, items })) };
 }
 
 /** The confirm codes still to acknowledge. */

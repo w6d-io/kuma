@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildSite, kindOf, summarySentence, TEMPLATES, orgGrantableFor } from './templates';
-import { presetsOf, withPreset, isCustomized, allowsAnonymous, missingHandlers, SANDBOX_ENABLED } from './presets';
+import { GETS, GETS_LABEL, presetsOf, withPreset, isCustomized, allowsAnonymous, missingHandlers, SANDBOX_ENABLED } from './presets';
 
 const basics = { name: 'payroll', displayName: 'Payroll', host: 'payroll.dev.example.com', service: 'payroll-ui', namespace: 'payroll', port: 8080 };
 
@@ -26,6 +26,15 @@ describe('buildSite', () => {
         expect(missingHandlers(g.authenticators, SANDBOX_ENABLED.authenticators)).toEqual([]);
         expect(missingHandlers(g.mutators, SANDBOX_ENABLED.mutators)).toEqual([]);
       }
+    }
+  });
+  it('keeps the visitor\'s domain on every template', () => {
+    for (const t of TEMPLATES) expect(buildSite(t.id, basics).upstream.preserveHost).toBe(true);
+  });
+  it('promises groups only from a preset that runs the hydrator', () => {
+    for (const k of Object.keys(GETS) as (keyof typeof GETS)[]) {
+      const enriches = GETS[k].some((h) => h.handler === 'hydrator');
+      if (!enriches) expect(GETS_LABEL[k]).not.toContain('X-User-Groups');
     }
   });
   it('prefixes paths for a shared host', () => {

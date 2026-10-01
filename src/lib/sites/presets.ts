@@ -52,9 +52,9 @@ export const PASS_LABEL: Record<PassPreset, string> = {
   nobody: 'Nobody (block)',
 };
 export const GETS_LABEL: Record<GetsPreset, string> = {
-  identity: 'Identity headers: X-User-Id, X-User-Email, X-User-Groups',
+  identity: 'Identity headers: X-User-Id, X-User-Email (groups and type need Enrich)',
   nothing: 'Nothing (the service must not trust X-User-* headers)',
-  enrich: 'Enrich from an API, then headers',
+  enrich: 'Enrich from an API, then headers: adds X-User-Groups and X-Type',
 };
 export const FAILS_LABEL: Record<FailsPreset, string> = {
   website: 'Website: send to sign-in, show errors as pages',
