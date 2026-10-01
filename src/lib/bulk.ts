@@ -49,7 +49,8 @@ export function reasonText(reason: string | undefined): string {
     case 'already_member': return 'Already in every group listed';
     case 'self_change': return 'Your own account — not from here';
     case 'not_found': return 'No such user';
-    case 'unavailable': return 'Not available to you';
+    // jinbe says this for a person hidden from you and for a policy that could not be asked alike.
+    case 'unavailable': return 'Not available to you right now';
     case 'address_unavailable': return 'This address cannot be used';
     case 'duplicate': return 'Listed twice';
     case 'no_address': return 'Has no email address';
@@ -68,7 +69,6 @@ export function reasonText(reason: string | undefined): string {
     case 'grant_exceeds_own': return `A group gives what you do not hold: ${rest}`;
     case 'reauth_required': return 'Needs your second factor proven in the last 15 minutes';
     case 'mfa_required': return 'A picked role needs 2FA, and this person has none yet';
-    case 'unavailable': return 'The policy could not be asked';
   }
   return reason;
 }
