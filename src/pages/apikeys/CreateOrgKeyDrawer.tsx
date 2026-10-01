@@ -4,6 +4,7 @@ import { useApp } from '../../contexts/AppContext';
 import { accountsApi, type ApiKeySecretView } from '../../api/accounts';
 import { Button, Drawer, Field, FormGrid, Input, Select } from '../../components/ui';
 import { toastFor } from '../../lib/apiError';
+import { stepUpOnRefusal } from '../../lib/resume';
 import { allowedScopesFrom, initialScopes, KEY_EXPIRY_CHOICES, normalizeCatalog, parseScopes, type ScopeEntry } from '../../lib/apiKeys';
 import { ScopeField } from './parts';
 import { SecretDrawer } from './SecretDrawer';
@@ -43,6 +44,7 @@ export function CreateOrgKeyDrawer({ org, orgName, onClose, onCreated }: {
     } catch (err) {
       const refused = allowedScopesFrom(err);
       if (refused) setRefusedWith(normalizeCatalog(refused));
+      if (stepUpOnRefusal(err, pushToast, { redo: 'Create the key again: your second factor is confirmed for the next 15 minutes.' })) return;
       pushToast(...toastFor(err));
     } finally {
       setBusy(false);

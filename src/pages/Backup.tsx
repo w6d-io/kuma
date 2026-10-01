@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useSession } from '../api/hooks';
 import { api, type BackupList } from '../api/client';
+import { stepUpOnRefusal } from '../lib/resume';
 import { I, Badge, Button, Card, CodeView, ConfirmDialog, EmptyRow, LoadingRows, PageHeader, Table } from '../components/ui';
 import { ExportBundleModal } from '../components/ExportBundleModal';
 import { PRIVILEGED_MUTATION, permits } from '../policy/model';
@@ -93,6 +94,7 @@ function BackupEnabled() {
       pushToast('Backup created', { sub: r.key });
       await load();
     } catch (e: any) {
+      if (stepUpOnRefusal(e, pushToast, { redo: 'Press Backup now again: no backup was taken before the check.' })) return;
       pushToast(e.message || 'Backup failed', { err: true });
     } finally {
       setBusy(false);
@@ -107,6 +109,7 @@ function BackupEnabled() {
       pushToast('Restored from backup', { sub: `${c.services} services · ${c.groups} groups · ${c.roles} roles` });
       refetch();
     } catch (e: any) {
+      if (stepUpOnRefusal(e, pushToast, { redo: `Restore ${key} again: nothing was restored before the check.` })) return;
       pushToast(e.message || 'Restore failed', { err: true });
     } finally {
       setBusy(false);
@@ -140,6 +143,7 @@ function BackupEnabled() {
       refetch();
       await load();
     } catch (e: any) {
+      if (stepUpOnRefusal(e, pushToast, { redo: 'Restore from the file again: nothing was restored before the check.' })) return;
       pushToast(e.message || 'Restore failed', { err: true });
     } finally {
       setBusy(false);

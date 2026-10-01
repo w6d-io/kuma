@@ -4,6 +4,7 @@ import { useServicePermissions } from '../../api/hooks';
 import { useRbacUsers, useSaveSiteRoles } from '../../api/rbacWrites';
 import { formatHash, parseHash } from '../../lib/route';
 import { describeApiError } from '../../lib/apiError';
+import { stepUpOnRefusal } from '../../lib/resume';
 import {
   Badge, Button, Callout, Card, ConfirmDialog, EmptyRow, Field, I, PageHeader, Select, Table, Tabs,
 } from '../../components/ui';
@@ -99,6 +100,7 @@ function RolesTab({ site, system }: { site: string; system: boolean }) {
       pipeline.run(draft.summary);
       setEditing(null);
     } catch (e) {
+      if (stepUpOnRefusal(e, pushToast, { redo: `Save the roles of ${site} again: nothing was saved before the check.` })) return;
       pushToast('The roles were not saved', { err: true, sub: describeApiError(e).detail });
     }
   };
@@ -110,6 +112,7 @@ function RolesTab({ site, system }: { site: string; system: boolean }) {
       pipeline.run(`role ${deleting} deleted on ${site}`);
       setDeleting(null);
     } catch (e) {
+      if (stepUpOnRefusal(e, pushToast, { redo: `Delete the role ${deleting} on ${site} again: nothing was deleted before the check.` })) return;
       pushToast('The role was not deleted', { err: true, sub: describeApiError(e).detail });
     }
   };

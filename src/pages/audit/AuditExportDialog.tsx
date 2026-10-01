@@ -4,6 +4,7 @@ import { AUDIT_ERROR_COPY, auditApi, auditErrorKind } from '../../api/audit';
 import { Button, Callout, Dialog, I, RadioGroup, Spinner } from '../../components/ui';
 import { useApp } from '../../contexts/AppContext';
 import { exportReadyMessage } from '../../lib/audit/exportJob';
+import { stepUpAndAskToRedo } from '../../lib/resume';
 import { useExportJob } from './queries';
 
 /**
@@ -37,7 +38,9 @@ export function AuditExportDialog({ open, onClose, query, rangeLabel }: {
     }
   };
   const close = () => { if (!running) reset(); onClose(); };
-  const errKind = error ? auditErrorKind(error) : null;
+  // Exporting needs a second factor proven in the last 15 minutes: offered as a step, not shown as a failure.
+  const stepUp = (error as { code?: unknown } | null)?.code === 'reauth_required';
+  const errKind = error && !stepUp ? auditErrorKind(error) : null;
 
   return (
     <Dialog open={open} onClose={close} title="Export audit events" eyebrow={rangeLabel}
@@ -66,6 +69,12 @@ export function AuditExportDialog({ open, onClose, query, rangeLabel }: {
           </Callout>
         )}
         {job?.status === 'failed' && <Callout tone="danger" icon={I.alert} title="Export failed">{job.error ?? 'The export did not finish.'}</Callout>}
+        {stepUp && (
+          <Callout tone="warning" icon={I.shield} title="Confirm it’s you">
+            <div className="small">Exporting audit evidence needs a second factor proven in the last 15 minutes. Nothing was exported.</div>
+            <Button size="sm" variant="primary" className="mt-4" onClick={() => stepUpAndAskToRedo('Start the audit export again: nothing was exported before the check.')}>Confirm my second factor</Button>
+          </Callout>
+        )}
         {errKind && (
           <Callout tone={errKind === 'not-available' ? 'info' : 'danger'} icon={I.alert} title={AUDIT_ERROR_COPY[errKind].title}>
             {errKind === 'not-available' ? 'This server cannot export from the audit store yet.'

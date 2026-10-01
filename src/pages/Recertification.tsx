@@ -12,6 +12,8 @@ import {
 } from '../api/hooks';
 import { api, type RecertCampaignSummary, type RecertItem, type RecertOnExpiry, type RecertStatus } from '../api/client';
 import { MultiSelectPills } from '../components/ui/Primitives';
+import { toastFor } from '../lib/apiError';
+import { stepUpOnRefusal } from '../lib/resume';
 import { ActionBar, Badge, Button, ButtonBase, Card, ConfirmDialog, EmptyHint, EmptyRow, Field, FormGrid, I, Input, LoadingRows, PageHeader, RadioGroup, Table, Textarea, cx, type BadgeTone } from '../components/ui';
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
@@ -296,8 +298,9 @@ export function RecertificationPage() {
     try {
       const r = await activate.mutateAsync(c.id);
       pushToast('Campaign activated', { sub: `${r.itemCount} review item(s) generated` });
-    } catch (e: any) {
-      pushToast(e.message || 'Activation failed', { err: true });
+    } catch (e) {
+      if (stepUpOnRefusal(e, pushToast, { redo: `Activate the campaign ${c.name} again: nothing was generated before the check.` })) return;
+      pushToast(...toastFor(e));
     }
   }
 

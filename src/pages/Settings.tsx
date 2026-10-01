@@ -3,6 +3,7 @@ import { useApp } from '../contexts/AppContext';
 import { useAuthMethods, useSetAuthMethods, useImportHistory, useRollbackImport } from '../api/hooks';
 import { I, Badge, Button, Callout, Card, Checkbox, ConfirmDialog, Dialog, PageHeader, Switch, Table } from '../components/ui';
 import { api } from '../api/client';
+import { stepUpOnRefusal } from '../lib/resume';
 import type { BundleImportResult, AuthMethodName } from '../api/client';
 import { ExportBundleModal } from '../components/ExportBundleModal';
 import { OrgSitesSettings } from '../components/OrgSitesSettings';
@@ -88,7 +89,10 @@ export function SettingsPage() {
       { [id]: patch },
       {
         onSuccess: () => pushToast('Authentication methods updated', { sub: 'Kratos hot-reloads — live on the next login flow.' }),
-        onError: (e: Error) => pushToast(e.message || 'Failed to update auth methods', { err: true }),
+        onError: (e: Error) => {
+          if (stepUpOnRefusal(e, pushToast, { redo: 'Change the sign-in method again: nothing was changed before the check.' })) return;
+          pushToast(e.message || 'Failed to update auth methods', { err: true });
+        },
       },
     );
   }
@@ -101,7 +105,10 @@ export function SettingsPage() {
           enabled ? 'Self-registration enabled' : 'Self-registration disabled',
           { sub: enabled ? 'Anyone can create an account on the login page.' : 'Accounts are now created only from Users → create (with invite email).' },
         ),
-        onError: (e: Error) => pushToast(e.message || 'Failed to update registration', { err: true }),
+        onError: (e: Error) => {
+          if (stepUpOnRefusal(e, pushToast, { redo: `${enabled ? 'Enable' : 'Disable'} self-registration again: nothing was changed before the check.` })) return;
+          pushToast(e.message || 'Failed to update registration', { err: true });
+        },
       },
     );
   }
@@ -167,6 +174,7 @@ export function SettingsPage() {
       });
       refetch();
     } catch (e: any) {
+      if (stepUpOnRefusal(e, pushToast, { redo: 'Import the bundle again: nothing was imported before the check.' })) return;
       // Validation rejections carry the failing rules — surface WHICH ones so
       // the operator can fix the bundle instead of guessing.
       const failures: { id: string; reason: string }[] | undefined = e?.details?.failures;
@@ -183,7 +191,10 @@ export function SettingsPage() {
   function doRollback(id: string) {
     rollbackImport.mutate(id, {
       onSuccess: () => { pushToast('Configuration rolled back', { sub: 'A pre-rollback snapshot of the replaced state was kept.' }); refetch(); },
-      onError: (e: Error) => pushToast(e.message || 'Rollback failed', { err: true }),
+      onError: (e: Error) => {
+        if (stepUpOnRefusal(e, pushToast, { redo: 'Roll the configuration back again: nothing was changed before the check.' })) return;
+        pushToast(e.message || 'Rollback failed', { err: true });
+      },
     });
   }
 
