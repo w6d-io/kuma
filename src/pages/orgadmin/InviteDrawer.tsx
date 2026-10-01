@@ -5,7 +5,7 @@ import { roleLabel } from '../../lib/orgRoles';
 import { makeToastErr, type PushToast } from './toastErr';
 import { useCreateOrgUser } from '../../api/hooks';
 import { GrantComposer } from '../../components/grants/GrantComposer';
-import { refusedGrantsOf, type RefusedGrant } from '../../api/grants';
+import { grantsApi, refusedGrantsOf, type RefusedGrant } from '../../api/grants';
 import { RefusedGrants } from '../../components/grants/RefusedGrants';
 import type { GrantDraft } from '../../lib/grants';
 
@@ -51,6 +51,8 @@ export function InviteDrawer({ org, assignable, mayGrant = assignable.length > 0
   const [refused, setRefused] = useState<RefusedRole[]>([]);
   const [grants, setGrants] = useState<{ drafts: GrantDraft[]; valid: boolean }>({ drafts: [], valid: true });
   const [refusedGrants, setRefusedGrants] = useState<RefusedGrant[]>([]);
+  // Invited, but the individual access was refused: the account exists, so the only way on is Done.
+  const [invited, setInvited] = useState(false);
   const busy = createUser.isPending;
   const toggle = (r: string) => setRoles(rs => (rs.includes(r) ? rs.filter(x => x !== r) : [...rs, r]));
 
@@ -64,14 +66,24 @@ export function InviteDrawer({ org, assignable, mayGrant = assignable.length > 0
         name: name.trim() || undefined,
         sendInvite,
         roles: roles.length ? roles : undefined,
-        grants: grants.drafts.length ? grants.drafts : undefined,
       },
       {
-        onSuccess: () => { pushToast(`Invited ${email.trim()}`, { sub: sendInvite ? 'recovery email sent' : undefined }); onDone(); },
+        // The account first; its individual access in this org is a second call on the new id.
+        onSuccess: async (created) => {
+          pushToast(`Invited ${email.trim()}`, { sub: sendInvite ? 'recovery email sent' : undefined });
+          if (!created?.id || grants.drafts.length === 0) { onDone(); return; }
+          try {
+            await grantsApi.add(created.id, grants.drafts, org);
+            onDone();
+          } catch (err) {
+            setInvited(true);
+            setRefusedGrants(refusedGrantsOf(err));
+            if (refusedGrantsOf(err).length === 0) toastErr(err);
+          }
+        },
         onError: (err) => {
           const list = refusedOf(err);
-          const grantList = refusedGrantsOf(err).filter((g) => !list.some((r) => r.role === g.name));
-          if (list.length || grantList.length) { setRefused(list); setRefusedGrants(grantList); }
+          if (list.length) setRefused(list);
           else toastErr(err);
         },
       },
@@ -89,7 +101,9 @@ export function InviteDrawer({ org, assignable, mayGrant = assignable.length > 0
           <span className="small muted">Adds a new member to this organization</span>
           <div className="row">
             <Button onClick={onClose}>Cancel</Button>
-            <Button variant="primary" onClick={submit} disabled={!email || busy || !grants.valid}>{busy ? 'Inviting…' : 'Invite'}</Button>
+            {invited
+              ? <Button variant="primary" onClick={onDone}>Done</Button>
+              : <Button variant="primary" onClick={submit} disabled={!email || busy || !grants.valid}>{busy ? 'Inviting…' : 'Invite'}</Button>}
           </div>
         </>
       }
@@ -116,7 +130,7 @@ export function InviteDrawer({ org, assignable, mayGrant = assignable.length > 0
         </div>
       )}
       {mayGrant && <GrantComposer org={org} onChange={(drafts, valid) => setGrants({ drafts, valid })} />}
-      <RefusedGrants refused={refusedGrants} lead="Nobody was invited. Refused:" />
+      <RefusedGrants refused={refusedGrants} lead={`Invited ${email.trim()}, but no individual access was granted. Refused:`} />
       <Field label="Send invite email" inline hint="Emails them a link to set their password">
         <Switch on={sendInvite} onChange={setSendInvite} label="Send invite email" />
       </Field>

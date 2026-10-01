@@ -11,13 +11,14 @@ import type { OrgPermission, PlatformPermission } from '../policy/catalog';
 export type GrantKind = 'role' | 'permission';
 
 /**
- * What lets somebody give or take individual access. jinbe has not named its own yet: until it does,
- * the same permission that hands out groups (platform) or org roles (in one org) — and the holding
- * rule applies to every grant either way. Reading them is the access review's permission.
+ * What lets somebody see, give or take individual access: users.grants:read / :write on the platform
+ * (write needs a recent second factor), org.members:read / :write inside one organization. The holding
+ * rule applies to every grant either way: nobody grants what they do not hold.
  */
-export const GRANT_PERMISSION: PlatformPermission = 'groups.members:write';
+export const GRANT_PERMISSION: PlatformPermission = 'users.grants:write';
+export const GRANTS_READ_PERMISSION: PlatformPermission = 'users.grants:read';
 export const ORG_GRANT_PERMISSION: OrgPermission = 'org.members:write';
-export const GRANTS_REVIEW_PERMISSION: PlatformPermission = 'access:read';
+export const ORG_GRANTS_READ_PERMISSION: OrgPermission = 'org.members:read';
 
 /** What somebody asks for, before jinbe has stored it. */
 export interface GrantDraft {
@@ -38,6 +39,8 @@ export interface Grant extends GrantDraft {
   org?: string;
   grantedBy?: string;
   grantedAt?: string;
+  /** False once it has expired: jinbe keeps it listed, marked, until somebody removes it. */
+  active?: boolean;
 }
 
 /** A grant with the person holding it (the review page). */

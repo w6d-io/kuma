@@ -1,4 +1,3 @@
-import type { GrantDraft } from '../lib/grants';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useEffect } from 'react';
 import { api, API_BASE } from './client';
@@ -566,7 +565,7 @@ export function useOrgUsers(orgId: string, search?: string) {
 export function useCreateOrgUser(orgId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { email: string; name?: string; sendInvite?: boolean; roles?: string[]; grants?: GrantDraft[] }) =>
+    mutationFn: (payload: { email: string; name?: string; sendInvite?: boolean; roles?: string[] }) =>
       api.createOrgUser(orgId, payload),
     // Server assigns the identity id → invalidate-only (no fabricated row).
     onSettled: () => {

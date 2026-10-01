@@ -162,7 +162,7 @@ export const api = {
       body: JSON.stringify({ groups }),
     }),
 
-  createUser: (payload: { email: string; name: string; groups?: string[]; grants?: import('../lib/grants').GrantDraft[]; sendInvite?: boolean }) =>
+  createUser: (payload: { email: string; name: string; groups?: string[]; sendInvite?: boolean }) =>
     request<{ identity: KratosIdentity; recoveryLink?: string }>('/admin/users', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -448,7 +448,7 @@ export const api = {
 
   createOrgUser: (
     orgId: string,
-    payload: { email: string; name?: string; sendInvite?: boolean; roles?: string[]; grants?: import('../lib/grants').GrantDraft[] },
+    payload: { email: string; name?: string; sendInvite?: boolean; roles?: string[] },
   ) =>
     request<KratosIdentity>(`/organizations/${orgId}/users`, {
       method: 'POST',

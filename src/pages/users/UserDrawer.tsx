@@ -20,7 +20,8 @@ import { IndividualAccess } from '../../components/grants/IndividualAccess';
 import { GrantComposer } from '../../components/grants/GrantComposer';
 import { useOrgCatalog } from '../../api/orgCatalog';
 import { orgLabel } from '../../lib/orgOptions';
-import { GRANT_PERMISSION, type GrantDraft } from '../../lib/grants';
+import { GRANT_PERMISSION, GRANTS_READ_PERMISSION, grantLabel, type GrantDraft } from '../../lib/grants';
+import { grantsApi, refusedGrantsOf } from '../../api/grants';
 
 type DrawerTab = 'groups' | 'profile' | 'signin' | 'sessions' | 'activity' | 'danger';
 const DRAWER_TABS: { value: DrawerTab; label: string }[] = [
@@ -97,8 +98,23 @@ export function UserDrawer() {
 
   const create = () => {
     if (!newEmail || !newName || !newGrants.valid) return;
-    const grants = newGrants.drafts.length ? newGrants.drafts : undefined;
-    const ok = applyChange("create", newEmail, () => apiCreateUser({ email: newEmail, name: newName, groups: newGroups, grants, sendInvite }));
+    const drafts = newGrants.drafts;
+    // jinbe creates the account first; individual access is a second call on the new id. A refusal
+    // there leaves the account in place and says what was not granted.
+    const ok = applyChange("create", newEmail, async () => {
+      const id = await apiCreateUser({ email: newEmail, name: newName, groups: newGroups, sendInvite });
+      if (!id || drafts.length === 0) return;
+      try {
+        await grantsApi.add(id, drafts);
+      } catch (e) {
+        const refused = refusedGrantsOf(e);
+        pushToast(`Created ${newEmail}, without individual access`, {
+          err: true,
+          sub: refused.length ? `Refused: ${refused.map((r) => grantLabel({ service: r.service, kind: r.kind === 'role' ? 'role' : 'permission', name: r.name })).join(', ')}. Add it from their Access tab.` : 'Add it from their Access tab.',
+          ttl: 12000,
+        });
+      }
+    });
     if (ok) setUserDrawer(null);
   };
 
@@ -111,6 +127,7 @@ export function UserDrawer() {
   });
   const mayCheck = holds(session, 'access:check');
   const mayGrant = holds(session, GRANT_PERMISSION);
+  const mayReadGrants = mayGrant || holds(session, GRANTS_READ_PERMISSION);
 
   if (userDrawer.mode === 'create') {
     return (
@@ -211,7 +228,7 @@ export function UserDrawer() {
                 siteRows={siteRows}
                 onOpenOrg={(orgId) => leaveTo(() => setPage('orgadmin', orgId))}
               />
-              <div className="mt-16">
+              {mayReadGrants && <div className="mt-16">
                 <IndividualAccess
                   userId={user.id}
                   who={user.name || user.email}
@@ -219,7 +236,7 @@ export function UserDrawer() {
                   orgName={(o) => orgLabel(o ?? '', orgCatalog)}
                   pushToast={pushToast}
                 />
-              </div>
+              </div>}
             </>
           )}
           {drawerTab === "profile" && (

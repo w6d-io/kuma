@@ -23,6 +23,7 @@ type Call = { method: string; url: string; body?: unknown };
 let calls: Call[] = [];
 let grants: unknown[] = [];
 let put: { status: number; body: unknown } = { status: 200, body: { grants: [] } };
+const puts = () => calls.filter((c) => c.method === 'PUT');
 
 beforeEach(() => {
   calls = [];
@@ -56,8 +57,8 @@ const box = (name: string) => [...document.querySelectorAll('label')].find((l) =
 describe('IndividualAccess', () => {
   it('lists each grant with its reason, who granted it and the countdown', async () => {
     grants = [
-      { id: 'g1', service: 'payroll', kind: 'role', name: 'editor', reason: 'covering the close', grantedBy: 'ops@example.com', grantedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3 * 86_400_000).toISOString() },
-      { id: 'g2', service: 'jinbe', kind: 'permission', name: 'users:read' },
+      { id: 'g1', scope: 'platform', app: 'payroll', kind: 'role', name: 'editor', reason: 'covering the close', grantedBy: 'ops@example.com', grantedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3 * 86_400_000).toISOString() },
+      { id: 'g2', scope: 'platform', app: 'jinbe', kind: 'permission', name: 'users:read' },
     ];
     mount();
     await settle();
@@ -85,16 +86,15 @@ describe('IndividualAccess', () => {
     expect(text()).toContain('expires in 7 days');
     await act(async () => { button('Grant')!.click(); });
     await settle();
-    const sent = calls.find((c) => c.method === 'PUT');
-    const body = sent?.body as { grants: Array<Record<string, unknown>> };
+    const body = puts()[0]?.body as { grants: Array<Record<string, unknown>> };
     expect(body.grants).toHaveLength(1);
-    expect(body.grants[0]).toMatchObject({ service: 'jinbe', kind: 'permission', name: 'users:read', reason: 'OPS-123' });
+    expect(body.grants[0]).toMatchObject({ scope: 'platform', app: 'jinbe', kind: 'permission', name: 'users:read', reason: 'OPS-123' });
     expect(Date.parse(String(body.grants[0].expiresAt)) - Date.now()).toBeGreaterThan(6.9 * 86_400_000);
     expect(h.toasts.at(-1)?.[0]).toBe('Granted users:read to bob@example.com');
   });
 
   it('sends no reason and no expiry when none is given, and names each refusal', async () => {
-    put = { status: 403, body: { error: 'Forbidden', message: 'refused', refused: [{ service: 'jinbe', kind: 'permission', name: 'users:delete', reason: 'grant_exceeds_own', missing: ['users:delete'], grantedBy: ['super_admins'] }] } };
+    put = { status: 403, body: { error: 'Forbidden', code: 'grant_exceeds_own', message: 'refused', refused: [{ grant: { scope: 'platform', app: 'jinbe', kind: 'permission', name: 'users:delete' }, reasons: ['missing_permissions'], missing: ['users:delete'], grantedBy: ['super_admins'] }] } };
     mount();
     await settle();
     await act(async () => { button('Add individual access')!.click(); });
@@ -102,7 +102,7 @@ describe('IndividualAccess', () => {
     await act(async () => { box('users:delete')!.click(); });
     await act(async () => { button('Grant')!.click(); });
     await settle();
-    expect((calls.find((c) => c.method === 'PUT')?.body as { grants: unknown[] }).grants).toEqual([{ service: 'jinbe', kind: 'permission', name: 'users:delete' }]);
+    expect((puts()[0]?.body as { grants: unknown[] }).grants).toEqual([{ scope: 'platform', app: 'jinbe', kind: 'permission', name: 'users:delete' }]);
     expect(text()).toContain('Nothing was granted. Refused:');
     expect(text()).toContain('it gives what you do not hold');
     expect(text()).toContain('you would need users:delete');
