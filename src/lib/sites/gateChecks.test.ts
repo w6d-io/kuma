@@ -31,6 +31,10 @@ describe('gateChecks', () => {
     expect(codes(g({ authenticators: [{ handler: 'oauth2_introspection' }, bare] }))).not.toContain('bare_bearer_token');
     expect(codes(g({ authenticators: [{ handler: 'bearer_token', config: { token_from: { header: 'X-Session-Token' } } }] }))).toEqual([]);
   });
+  it('a Cookie header on the identity headers is refused (jinbe would replace it)', () => {
+    expect(gateChecks(g({ mutators: [{ handler: 'header', config: { headers: { COOKIE: 'a=b' } } }] }))).toEqual([expect.objectContaining({ level: 'error', code: 'cookie_header_reserved' })]);
+    expect(codes(g({ mutators: [{ handler: 'header', config: { headers: { 'X-Org': '{{ print .Subject }}' } } }] }))).toEqual([]);
+  });
   it('jwt scopes need a strategy', () => {
     expect(codes(g({ authenticators: [{ handler: 'jwt', config: { required_scope: ['a'] } }] }))).toContain('jwt_scope');
   });

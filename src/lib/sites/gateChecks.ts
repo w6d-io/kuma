@@ -1,4 +1,4 @@
-import { secretLooking } from './validate';
+import { COOKIE_RESERVED, reservedHeaderProblem, secretLooking } from './validate';
 import { PASSES_NO_IDENTITY, passesNoIdentity } from './presets';
 import { BARE_BEARER, BEARER_BEFORE_OAUTH2, NOBODY_SIGNS_IN, bareBearer } from './gateWords';
 import type { Check, Gate, Handler, Site } from './types';
@@ -35,6 +35,9 @@ export function gateChecks(gate: Gate): Check[] {
   if (muts.includes('hydrator') && muts.includes('header') && muts.indexOf('hydrator') > muts.indexOf('header')) {
     out.push({ level: 'error', code: 'hydrator_order', message: 'Enrich (hydrator) must come before the identity headers.' });
   }
+  // Set in Expert JSON or over the API: jinbe would replace it silently.
+  const headerKeys = gate.mutators.filter((m) => m.handler === 'header').flatMap((m) => Object.keys((m.config?.headers as Record<string, unknown> | undefined) ?? {}));
+  if (headerKeys.some((k) => reservedHeaderProblem(k))) out.push({ level: 'error', code: 'cookie_header_reserved', message: `${COOKIE_RESERVED}. Remove the Cookie header.` });
   // Same code as jinbe's finding.
   if (passesNoIdentity(gate)) out.push({ level: 'warn', code: 'gate_passes_no_identity', message: `${PASSES_NO_IDENTITY}.` });
   const jwt = gate.authenticators.find((h) => h.handler === 'jwt');

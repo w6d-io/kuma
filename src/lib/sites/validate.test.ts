@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   nameProblem, labelProblem, serviceProblem, namespaceProblem, portProblem, welcomeProblem, helpUrlProblem,
-  logoProblem, routeProblems, secretLooking, headerNameProblem, accentProblem,
+  logoProblem, routeProblems, secretLooking, headerNameProblem, accentProblem, COOKIE_RESERVED,
 } from './validate';
 import { contrastRatio, parseHex } from './color';
 import type { Route } from './types';
@@ -130,5 +130,9 @@ describe('secrets and headers', () => {
     expect(headerNameProblem('X Bad', [])).not.toBeNull();
     expect(headerNameProblem('x-payroll-org', ['X-Payroll-Org'])).toMatch(/already/);
     expect(headerNameProblem('X-User-Id', [])).toMatch(/platform/);
+  });
+  it('Cookie is reserved, in any case', () => {
+    for (const n of ['Cookie', 'cookie', 'COOKIE', 'CooKie']) expect(headerNameProblem(n, [])).toBe(COOKIE_RESERVED);
+    expect(headerNameProblem('X-Cookie-Consent', [])).toBeNull();
   });
 });
