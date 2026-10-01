@@ -35,6 +35,9 @@ describe('reasons and actions', () => {
     expect(reasonText('something_new')).toBe('something_new');
     expect(actionText('add:ops,billing')).toBe('Add to ops, billing');
     expect(actionText('create:invite_failed')).toContain('invite email not sent');
+    expect(actionText('create:groups_refused:x:grants_refused:y')).toBe('Created · groups not added · individual access not granted');
+    expect(reasonText('grant_refused:jinbe:users:read,payroll:editor')).toContain('jinbe:users:read, payroll:editor');
+    expect(reasonText('reauth_required')).toContain('second factor');
   });
 
   it('labels planned and run items', () => {

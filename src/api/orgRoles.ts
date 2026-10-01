@@ -13,15 +13,21 @@ export function useMyOrgPermissions() {
   const { data: session } = useSession();
   return useQuery({
     queryKey: ['my-permissions', session?.email ?? ''],
-    queryFn: () =>
-      request<{ orgPermissions?: Record<string, unknown> }>('/me/permissions').then((r): OrgPermissions =>
-        Object.fromEntries(
-          Object.entries(r.orgPermissions ?? {}).map(([org, perms]) => [
-            org,
-            Array.isArray(perms) ? perms.filter((p): p is string => typeof p === 'string') : [],
-          ]),
-        ),
-      ),
+    // Paged by org id (an every-org holder is in every org): followed to the end, a bounded number of pages.
+    queryFn: async (): Promise<OrgPermissions> => {
+      const out: OrgPermissions = {};
+      let cursor: string | undefined;
+      for (let page = 0; page < 20; page++) {
+        const qs = new URLSearchParams({ orgLimit: '1000', ...(cursor ? { orgCursor: cursor } : {}) });
+        const r = await request<{ orgPermissions?: Record<string, unknown>; orgPermissionsPage?: { next?: string } }>(`/me/permissions?${qs}`);
+        for (const [org, perms] of Object.entries(r.orgPermissions ?? {})) {
+          out[org] = Array.isArray(perms) ? perms.filter((p): p is string => typeof p === 'string') : [];
+        }
+        cursor = r.orgPermissionsPage?.next;
+        if (!cursor) break;
+      }
+      return out;
+    },
     enabled: !!session?.authenticated,
     staleTime: 60_000,
   });

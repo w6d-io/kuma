@@ -448,7 +448,7 @@ export const api = {
 
   createOrgUser: (
     orgId: string,
-    payload: { email: string; name?: string; sendInvite?: boolean; roles?: string[] },
+    payload: { email: string; name?: string; sendInvite?: boolean; roles?: string[]; grants?: ReturnType<typeof import('./grants').requestOf>[] },
   ) =>
     request<KratosIdentity>(`/organizations/${orgId}/users`, {
       method: 'POST',
@@ -668,6 +668,8 @@ export interface SetUserGroupsResponse {
 
 export interface KratosIdentity {
   id: string;
+  /** On an org's member list: their org roles there (`svc:role`). Absent elsewhere and on an older jinbe. */
+  roles?: string[];
   schema_id: string;
   state: 'active' | 'inactive';
   state_changed_at: string;

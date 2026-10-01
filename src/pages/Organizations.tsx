@@ -189,10 +189,13 @@ function OrgDetail({ org, name, tenant, listedOwners, listedSites, mayWrite, may
   const users = useMemo(() => usersQ.data?.data ?? [], [usersQ.data]);
   const total = usersQ.data?.total ?? users.length;
   const rolesQ = useOrgRoles(org, mayReadMembers);
-  const memberRoles = useOrgMemberRoles(org, users.map((u) => u.id), mayReadMembers);
-  const owners = listedOwners ?? ownersOf(memberRoles.byId);
-  const sites = listedSites ?? entitledSites(rolesQ.data ?? []);
-  const ownersKnown = !!listedOwners || (mayReadMembers && !memberRoles.isLoading);
+  // Fallbacks for an older jinbe only: owners from the members' roles (listed, or read one by one).
+  const rolesListed = users.length > 0 && users.every((u) => Array.isArray(u.roles));
+  const memberRoles = useOrgMemberRoles(org, users.map((u) => u.id), mayReadMembers && !listedOwners && !rolesListed);
+  const owners = listedOwners ?? ownersOf(rolesListed ? Object.fromEntries(users.map((u) => [u.id, u.roles ?? []])) : memberRoles.byId);
+  // jinbe is always among them: every organization holds jinbe's own roles. Only the sites are news.
+  const sites = (listedSites ?? entitledSites(rolesQ.data ?? [])).filter((s) => s !== 'jinbe');
+  const ownersKnown = !!listedOwners || (mayReadMembers && (rolesListed || !memberRoles.isLoading));
   const sitesKnown = !!listedSites || !rolesQ.isLoading;
   const label = (id: string) => users.find((u) => u.id === id)?.traits?.email ?? id;
 

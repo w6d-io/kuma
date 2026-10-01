@@ -8,6 +8,11 @@ import { parseInvites } from '../../lib/bulk';
 import { useBulkPermissions } from '../../hooks/useBulkPermissions';
 import { BulkDialog } from './BulkDialog';
 import { SiteGroupRows } from './SiteGroupRows';
+import { GrantComposer } from '../../components/grants/GrantComposer';
+import { requestOf } from '../../api/grants';
+import { useSession } from '../../api/hooks';
+import { holds } from '../../policy/model';
+import { GRANT_PERMISSION, type GrantDraft } from '../../lib/grants';
 
 /** People picked on the directory, by identity id, with the address shown for each. */
 export type Selection = Map<string, string>;
@@ -79,24 +84,30 @@ export function SelectionBar({ selected, onClear }: { selected: Selection; onCle
 }
 
 /**
- * "Invite people": a pasted list of addresses becomes accounts, previewed first. Groups and individual
- * access come after (jinbe's bulk invite takes neither yet): Add to groups, or each person's Access tab.
+ * "Invite people": a pasted list of addresses becomes accounts, previewed first — each starting with the
+ * groups and the individual roles or permissions picked here, when the caller may give them. The
+ * preview checks every row; a row the run could not finish says so.
  */
 export function InviteDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const may = useBulkPermissions();
   const qc = useQueryClient();
+  const siteRows = useSiteGroups();
+  const { data: session } = useSession();
+  const mayGrant = holds(session, GRANT_PERMISSION);
   const [text, setText] = useState('');
   const [sendInvite, setSendInvite] = useState(true);
+  const [groups, setGroups] = useState<string[]>([]);
+  const [grants, setGrants] = useState<{ drafts: GrantDraft[]; valid: boolean }>({ drafts: [], valid: true });
   const parsed = parseInvites(text);
   const mail = sendInvite && may.inviteMail;
 
   return (
     <BulkDialog
       open={open}
-      onClose={() => { setText(''); onClose(); }}
+      onClose={() => { setText(''); setGroups([]); setGrants({ drafts: [], valid: true }); onClose(); }}
       title="Invite people"
       op="users.invite"
-      ready={parsed.invites.length > 0}
+      ready={parsed.invites.length > 0 && grants.valid}
       compose={
         <div className="stack gap-12">
           <Field
@@ -113,15 +124,31 @@ export function InviteDialog({ open, onClose }: { open: boolean; onClose: () => 
           {may.inviteMail
             ? <Checkbox checked={sendInvite} onChange={setSendInvite} label="Send invite emails" hint="Emails each a link to set their password." />
             : <div className="small muted">They are not emailed: sending invites needs users:recovery. Send each a recovery email from their Edit tab.</div>}
+          {may.addToGroups && (
+            <div>
+              <div className="input-label">Groups <span className="muted">(optional)</span></div>
+              <Card><SiteGroupRows {...siteRows} mayAssign checked={groups} toggle={g => setGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])} /></Card>
+            </div>
+          )}
+          {mayGrant && (
+            <GrantComposer
+              hint="The same single roles or permissions on jinbe or a site for each of them, beside their groups. Needs a recent second factor."
+              onChange={(drafts, valid) => setGrants({ drafts, valid })}
+            />
+          )}
           <div className="small muted">
-            {parsed.invites.length ? `${plural(parsed.invites.length, 'address', 'addresses')} to check.` : 'Nothing to check yet.'} New accounts
-            have no groups and no individual access — add them with Add to groups, or from each person&apos;s Access tab, once they exist.
+            {parsed.invites.length ? `${plural(parsed.invites.length, 'address', 'addresses')} to check.` : 'Nothing to check yet.'}
+            {groups.length || grants.drafts.length ? ' Each starts with what is picked above.' : ' New accounts start with no groups and no individual access.'}
           </div>
         </div>
       }
       build={() => ({
         items: parsed.invites,
-        params: { sendInvite: mail },
+        params: {
+          sendInvite: mail,
+          ...(groups.length ? { groups } : {}),
+          ...(grants.drafts.length ? { grants: grants.drafts.map((d) => requestOf(d)) } : {}),
+        },
         labels: parsed.invites.map(i => (i.name ? `${i.name} <${i.email}>` : i.email)),
       })}
       runLabel={n => `Create ${plural(n, 'account')}`}

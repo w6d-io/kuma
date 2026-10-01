@@ -249,4 +249,19 @@ describe('Organizations', () => {
     expect(ownersCard.textContent).toContain('bob@example.com');
     expect(calls.some((c) => c.url.includes(`/organizations/${ACME}/users/${BOB}/roles`) && c.method === 'GET')).toBe(true);
   });
+
+  it('reads member roles off the member list, without one call per member, and never shows jinbe as a site', async () => {
+    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', applications: [], owners: [BOB], sites: ['jinbe', 'crm'] }];
+    members = [{ id: BOB, traits: { email: 'bob@example.com' }, state: 'active', metadata_admin: {}, roles: ['jinbe:owner'] }];
+    orgPermissions = { [ACME]: ['org.members:read'] };
+    orgRoles = [{ role: 'jinbe:owner', permissions: ['org.members:write'], assignable: false }];
+    mount();
+    await settle();
+    expect(calls.some((c) => /\/users\/[^/]+\/roles$/.test(new URL(c.url, 'http://x').pathname))).toBe(false);
+    const owner = [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')][0];
+    expect(owner.checked).toBe(true);
+    const sitesCard = [...document.querySelectorAll('.fw-medium')].find((e) => e.textContent === 'Sites')!.parentElement!;
+    expect(sitesCard.textContent).toContain('crm');
+    expect(sitesCard.textContent).not.toMatch(/\bjinbe\b/);
+  });
 });

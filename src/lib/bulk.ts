@@ -64,8 +64,23 @@ export function reasonText(reason: string | undefined): string {
     case 'same_route_as': return `Same path and method as ${rest}`;
     case 'unchanged': return 'Unchanged';
     case 'error': return 'Failed unexpectedly';
+    case 'grant_refused': return `Individual access refused: ${rest.split(',').join(', ')} (you may grant only what you hold)`;
+    case 'grant_exceeds_own': return `A group gives what you do not hold: ${rest}`;
+    case 'reauth_required': return 'Needs your second factor proven in the last 15 minutes';
+    case 'mfa_required': return 'A picked role needs 2FA, and this person has none yet';
+    case 'unavailable': return 'The policy could not be asked';
   }
   return reason;
+}
+
+/** `create`, then what the run could not finish: `invite_failed`, `groups_refused:<why>`, `grants_refused:<why>`. */
+function createText(rest: string): string {
+  if (!rest) return 'Create the account';
+  const left: string[] = [];
+  if (rest.includes('invite_failed')) left.push('invite email not sent');
+  if (rest.includes('groups_refused')) left.push('groups not added');
+  if (rest.includes('grants_refused')) left.push('individual access not granted');
+  return left.length ? `Created · ${left.join(' · ')}` : 'Create the account';
 }
 
 /** What an item would do, from the plan's action code. */
@@ -74,7 +89,7 @@ export function actionText(action: string | undefined): string {
   const [code, rest] = split(action);
   switch (code) {
     case 'send': return 'Send the link';
-    case 'create': return rest === 'invite_failed' ? 'Created · invite email not sent' : 'Create the account';
+    case 'create': return createText(rest);
     case 'add': return rest ? `Add to ${rest.split(',').join(', ')}` : 'Add to the groups';
     case 'update': return 'Replace the route';
   }

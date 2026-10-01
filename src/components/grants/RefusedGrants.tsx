@@ -36,6 +36,7 @@ function reasonWords(reason: string): string {
     case 'not_org_member':
     case 'grantee_not_member': return 'they are not a member of this organization';
     case 'invalid_definition': return 'that grant is not valid';
+    case 'never_direct': return 'it is never given directly: it comes with its group only';
     default: return reason || 'refused';
   }
 }

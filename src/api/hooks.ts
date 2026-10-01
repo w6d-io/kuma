@@ -565,7 +565,7 @@ export function useOrgUsers(orgId: string, search?: string) {
 export function useCreateOrgUser(orgId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { email: string; name?: string; sendInvite?: boolean; roles?: string[] }) =>
+    mutationFn: (payload: Parameters<typeof api.createOrgUser>[1]) =>
       api.createOrgUser(orgId, payload),
     // Server assigns the identity id → invalidate-only (no fabricated row).
     onSettled: () => {

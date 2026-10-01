@@ -53,6 +53,7 @@ export function RolesMatrix({ org, orgName, members, loading, saved, roles, mayM
     try {
       const now = await orgAccessApi.setMemberRoles(org, m.id, wanted);
       qc.setQueryData<string[]>(['org-member-roles', org, m.id], now);
+      qc.invalidateQueries({ queryKey: ['org-users', org] });
       setRefused((r) => ({ ...r, [m.id]: [] }));
       pushToast(`Saved ${label} in ${orgName}`, { sub: 'Counts on this organization\'s routes only.' });
     } catch (err) {

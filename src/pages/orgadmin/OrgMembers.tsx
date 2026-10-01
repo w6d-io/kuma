@@ -29,8 +29,14 @@ export function OrgMembers({ org, orgName, mayManage, pushToast }: {
   const usersQ = useOrgUsers(org);
   const rolesQ = useOrgRoles(org);
   const members = useMemo(() => usersQ.data?.data ?? [], [usersQ.data]);
+  // jinbe lists each member's roles on the member list; only an older one needs a read per member.
+  const listed = members.length > 0 && members.every((m) => Array.isArray(m.roles));
   const ids = useMemo(() => members.map((m) => m.id), [members]);
-  const memberRoles = useOrgMemberRoles(org, ids);
+  const perMember = useOrgMemberRoles(org, ids, !listed);
+  const memberRoles = useMemo(
+    () => (listed ? { byId: Object.fromEntries(members.map((m) => [m.id, m.roles ?? []])), isLoading: false, error: null, refetch: () => {} } : perMember),
+    [listed, members, perMember],
+  );
   const roles = useMemo(() => rolesQ.data ?? [], [rolesQ.data]);
   const [invite, setInvite] = useState(false);
   const [removing, setRemoving] = useState<KratosIdentity | null>(null);

@@ -109,8 +109,9 @@ export function refusedGrantsOf(err: unknown): RefusedGrant[] {
   return raw.flatMap((r) => {
     if (!r || typeof r !== 'object') return [];
     const o = r as Record<string, unknown>;
+    // An org-role refusal ({role, …}) in the same list is refusedOf's, not this one's.
     const g = (o.grant && typeof o.grant === 'object' ? o.grant : o) as Record<string, unknown>;
-    const name = str(g.name) ?? str(o.role);
+    const name = str(g.name);
     if (!name) return [];
     const reasons = strings(o.reasons).length ? strings(o.reasons) : strings(o.reason);
     const scope = str(g.scope);
