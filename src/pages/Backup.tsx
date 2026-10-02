@@ -3,14 +3,14 @@ import { useApp } from '../contexts/AppContext';
 import { useSession } from '../api/hooks';
 import { api, type BackupList } from '../api/client';
 import { stepUpOnRefusal } from '../lib/resume';
-import { I, Badge, Button, Card, CodeView, ConfirmDialog, EmptyRow, LoadingRows, PageHeader, Table } from '../components/ui';
+import { I, Badge, Button, Card, CodeView, ConfirmDialog, EmptyRow, LoadingRows, PageHeader, SkeletonPanel, Table } from '../components/ui';
 import { ExportBundleModal } from '../components/ExportBundleModal';
 import { holds } from '../policy/model';
 
-// Deploy-time flag (envsubst → window.__BACKUP_ENABLED__). A stable module
-// constant — the conditional render in BackupPage never flips at runtime, so
-// BackupEnabled's hooks stay unconditional.
-const backupEnabled = (window as any).__BACKUP_ENABLED__ === 'true';
+// Deploy-time flag (envsubst → window.__BACKUP_ENABLED__): only a fallback for an older jinbe whose
+// backups call fails. jinbe's own `enabled` decides — on auth-dev the flag said off while jinbe had a
+// nightly backup, and the page said "Backup isn't set up".
+const deployFlag = () => (window as any).__BACKUP_ENABLED__ === 'true';
 
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -22,7 +22,29 @@ function fmtDate(s: string | null): string {
 }
 
 export function BackupPage() {
-  return backupEnabled ? <BackupEnabled /> : <BackupDisabled />;
+  const { pushToast } = useApp();
+  const [list, setList] = useState<BackupList | null>(null);
+  // 'ok': jinbe answered; 'failed': it did not, the deploy flag decides.
+  const [state, setState] = useState<'loading' | 'ok' | 'failed'>('loading');
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setList(await api.listBackups());
+      setState('ok');
+    } catch (e: any) {
+      setState((s) => (s === 'ok' ? s : 'failed'));
+      if (deployFlag()) pushToast(e.message || 'Could not list backups', { err: true });
+    } finally {
+      setLoading(false);
+    }
+  }, [pushToast]);
+  useEffect(() => { load(); }, [load]);
+
+  if (state === 'loading') return <><PageHeader title="Backup" sub="Snapshot, restore and disaster-recovery for your RBAC configuration." /><SkeletonPanel lines={4} /></>;
+  const enabled = state === 'ok' ? !!list?.enabled : deployFlag();
+  return enabled ? <BackupEnabled list={list} loading={loading} load={load} /> : <BackupDisabled />;
 }
 
 // ─── Disabled: setup requirement ──────────────────────────────────────────────
@@ -61,31 +83,17 @@ jinbe:
 }
 
 // ─── Enabled: full backup UX ──────────────────────────────────────────────────
-function BackupEnabled() {
+function BackupEnabled({ list, loading, load }: { list: BackupList | null; loading: boolean; load: () => Promise<void> }) {
   const { pushToast, refetch } = useApp();
   const { data: session } = useSession();
   // The permission the restore checks.
   const mayRestore = holds(session, 'policy.bundle:write');
 
-  const [list, setList] = useState<BackupList | null>(null);
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmKey, setConfirmKey] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [pendingFile, setPendingFile] = useState<{ bundle: unknown; name: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setList(await api.listBackups());
-    } catch (e: any) {
-      pushToast(e.message || 'Could not list backups', { err: true });
-    } finally {
-      setLoading(false);
-    }
-  }, [pushToast]);
-  useEffect(() => { load(); }, [load]);
 
   async function doBackupNow() {
     setBusy(true);
@@ -163,8 +171,9 @@ function BackupEnabled() {
       <Card pad="md" className="mb-12">
         <div className="row wrap gap-8 mb-12">
           <Badge tone="info">S3 backup on</Badge>
-          {list?.bucket && <Badge>{list.bucket}/{list.prefix}</Badge>}
-          {list?.region && <Badge>{list.region}</Badge>}
+          {list?.bucket && <Badge title="Bucket">s3://{list.bucket}</Badge>}
+          {list?.prefix && <Badge title="Prefix">prefix {list.prefix}</Badge>}
+          {list?.region && <Badge title="Region">{list.region}</Badge>}
           <span className="small muted ml-auto">
             {latest ? `Latest: ${fmtDate(latest.lastModified)}` : 'No backups yet'}
           </span>
