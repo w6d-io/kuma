@@ -132,6 +132,7 @@ html[data-navcollapsed="on"] .sidebar .nav-item { justify-content: center; font-
 html[data-navcollapsed="on"] .sidebar .nav-item .ico { margin: 0; }
 html[data-navcollapsed="on"] .sidebar-foot { justify-content: center; }
 html[data-navcollapsed="on"] .sidebar .logo-collapsed { display: contents; }
+html[data-navcollapsed="on"] .sidebar .sidebar-header { justify-content: center; padding-left: 0; padding-right: 0; }
 
 html[data-levelstyle="dot"] .alevel .bars { display: none; }
 html[data-levelstyle="dot"] .alevel::before {

@@ -45,20 +45,42 @@
   box-shadow: var(--shadow-sm);
 }
 .logo-text { display: flex; flex-direction: column; line-height: 1.15; }
-/* A deployment's logo (LOGO_URL / LOGO_SMALL_URL). On a light plate in the dark theme: a logo drawn
-   for white paper disappears on the dark rail otherwise. */
-.logo-full, .logo-small {
+/* A deployment's logo (LOGO_URL / LOGO_DARK_URL / LOGO_SMALL_URL). Its box exists before the image
+   loads: 28px tall, so nothing under it moves. Without a dark variant it sits on a neutral plate —
+   white on the light rail, light on the dark one — so a logo drawn for white paper always reads. */
+.logo-full-box { display: flex; align-items: center; height: 28px; min-width: 0; }
+.logo-full {
   display: block;
-  object-fit: contain;
+  box-sizing: border-box;
+  height: 28px; width: auto; max-width: 100%;
+  object-fit: contain; object-position: left center;
+}
+.logo-full.plated, .logo-small {
   background: var(--color-logo-plate);
-  padding: var(--logo-plate-pad);
+  box-shadow: inset 0 0 0 1px var(--color-border);
   border-radius: var(--radius-sm);
 }
-.logo-full { max-width: 100%; max-height: 32px; width: auto; height: auto; }
-.logo-small { width: 26px; height: 26px; flex: none; }
+.logo-full.plated { padding: var(--logo-plate-pad); }
+.logo-small { display: block; box-sizing: border-box; width: 26px; height: 26px; object-fit: contain; flex: none; }
+.only-dark { display: none; }
+:root[data-theme="dark"] .only-dark { display: block; }
+:root[data-theme="dark"] .only-light { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .only-dark { display: block; }
+  :root:not([data-theme="light"]) .only-light { display: none; }
+}
+/* Lined up with the navigation: the logo starts where the nav icons do. */
+.sidebar-header.has-logo { padding: 4px 9px 14px 11px; }
 .logo-full-wrap { display: flex; flex-direction: column; gap: 4px; min-width: 0; line-height: 1.15; }
-.logo-full-wrap .s { font-size: var(--text-xs); color: var(--color-text-subtle); letter-spacing: 0.02em; }
+.logo-full-wrap .s, .screen-brand .s { font-size: var(--text-xs); color: var(--color-text-subtle); letter-spacing: 0.02em; }
 .sidebar-header .logo-collapsed { display: none; }
+/* The phone bar names the console with its square mark (the rail is behind the menu button). */
+.topbar-brand { display: none; }
+/* The organisation screens, shown before the console: the brand above the question. */
+.screen-brand { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 1rem; }
+.screen-brand .logo-full-box { flex-basis: 100%; }
+.screen-brand .n { font-weight: 600; font-size: var(--text-base); }
+.screen-brand .logo-full-box + .s { flex-basis: 100%; }
 .logo-text .n { font-weight: 600; font-size: var(--text-base); letter-spacing: -0.01em; }
 .logo-text .s { font-size: var(--text-xs); color: var(--color-text-subtle); letter-spacing: 0.02em; }
 
@@ -464,6 +486,7 @@
   .search-trigger { min-width: 0; }
   .search-trigger > span:not(.icon) { display: none; }
   .crumbs > :not(.cur) { display: none; }
+  .topbar-brand { display: flex; align-items: center; margin-right: var(--space-2); }
 
   .rail-scrim {
     position: fixed;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyFavicon, logoUrl, readBrand } from './brand';
+import { appName, applyFavicon, applyTitle, logoUrl, readBrand } from './brand';
 
 describe('logoUrl', () => {
   it('takes https and same-origin paths', () => {
@@ -20,8 +20,23 @@ describe('logoUrl', () => {
 describe('readBrand', () => {
   it('the favicon defaults to the small logo', () => {
     expect(readBrand({ __LOGO_URL__: 'https://example.com/full.svg', __LOGO_SMALL_URL__: 'https://example.com/small.svg', __FAVICON_URL__: '${FAVICON_URL}' }))
-      .toEqual({ full: 'https://example.com/full.svg', small: 'https://example.com/small.svg', favicon: 'https://example.com/small.svg' });
+      .toEqual({ full: 'https://example.com/full.svg', fullDark: null, small: 'https://example.com/small.svg', favicon: 'https://example.com/small.svg', appName: null });
     expect(readBrand({ __LOGO_SMALL_URL__: '/s.svg', __FAVICON_URL__: '/f.ico' }).favicon).toBe('/f.ico');
+  });
+});
+
+describe('dark logo and name', () => {
+  it('a dark variant counts only beside the logo it varies', () => {
+    expect(readBrand({ __LOGO_DARK_URL__: 'https://example.com/d.svg' }).fullDark).toBeNull();
+    expect(readBrand({ __LOGO_URL__: 'https://example.com/l.svg', __LOGO_DARK_URL__: 'https://example.com/d.svg' }).fullDark).toBe('https://example.com/d.svg');
+  });
+  it('the tab reads "<APP_NAME> — Access console" only when a name is set', () => {
+    expect(appName('${APP_NAME}')).toBeNull();
+    document.title = 'Kuma · RBAC Console';
+    applyTitle({ full: null, small: null, favicon: null, appName: null });
+    expect(document.title).toBe('Kuma · RBAC Console');
+    applyTitle(readBrand({ __APP_NAME__: ' Acme ' }));
+    expect(document.title).toBe('Acme — Access console');
   });
 });
 

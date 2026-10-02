@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ScreenBrand } from '../components/BrandMark';
 import type { Organisation } from './directory';
 import { ButtonBase } from '../components/ui';
 
@@ -33,6 +34,7 @@ export function OrganisationChoice({
 
   return (
     <main className="choice">
+      <ScreenBrand />
       <h1>Choose an organization</h1>
       <p className="sub">
         The directory records which one this session acts in. You can still switch between the ones
@@ -64,6 +66,7 @@ export function OrganisationChoice({
 export function DirectoryUnavailable({ reason, onRetry }: { reason: string; onRetry: () => void }) {
   return (
     <main className="choice">
+      <ScreenBrand />
       <h1>Can’t reach the organization directory</h1>
       <p className="sub">
         Your organizations are held elsewhere, and that service did not answer — so this session

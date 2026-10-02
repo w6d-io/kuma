@@ -30,7 +30,8 @@ import { AuditPage } from './pages/Audit';
 import { AccessReviewPage } from './pages/AccessReview';
 import { DirectGrantsPage } from './pages/DirectGrants';
 import { RecertificationPage } from './pages/Recertification';
-import { BrandMark } from './components/BrandMark';
+import { BrandIcon, BrandMark } from './components/BrandMark';
+import { readBrand } from './lib/brand';
 import { SettingsPage } from './pages/Settings';
 import { BackupPage } from './pages/Backup';
 import { DesignPage } from './pages/design/DesignPage';
@@ -210,8 +211,9 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
   return (
     <>
       <div className="topbar">
+        <span className="topbar-brand"><BrandIcon /></span>
         <div className="crumbs">
-          <span>Kuma</span>
+          <span>{readBrand().appName ?? 'Kuma'}</span>
           <span className="sep">/</span>
           <span className="cur">{title}</span>
         </div>

@@ -19,8 +19,9 @@
     <!--              Empty → no trace link rendered. -->
     <!-- MCP_SERVER_URL: where MCP clients connect with a personal key (Connections & keys). -->
     <!--              Empty → the help panel says to ask an administrator. -->
-    <!-- LOGO_URL / LOGO_SMALL_URL / FAVICON_URL: the deployment's full and square logos and tab -->
-    <!--              icon (https:// or a path on this origin). Empty → the console's own tile. -->
+    <!-- LOGO_URL / LOGO_DARK_URL / LOGO_SMALL_URL / FAVICON_URL: the deployment's full logo, its -->
+    <!--              dark-theme variant, square logo and tab icon (https:// or a path on this -->
+    <!--              origin). Empty → the console's own tile. APP_NAME: "<name> — Access console". -->
     <script>
       window.__API_BASE__ = "${API_BASE}";
       window.__AUTH_DOMAIN__ = "${AUTH_DOMAIN}";
@@ -36,8 +37,10 @@
       window.__ORG_SELECTION_URL__ = "${ORG_SELECTION_URL}";
       window.__MCP_SERVER_URL__ = "${MCP_SERVER_URL}";
       window.__LOGO_URL__ = "${LOGO_URL}";
+      window.__LOGO_DARK_URL__ = "${LOGO_DARK_URL}";
       window.__LOGO_SMALL_URL__ = "${LOGO_SMALL_URL}";
       window.__FAVICON_URL__ = "${FAVICON_URL}";
+      window.__APP_NAME__ = "${APP_NAME}";
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
