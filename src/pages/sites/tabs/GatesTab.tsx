@@ -161,7 +161,7 @@ function RolesCheckbox({ gate, readOnly, onChange }: { gate: Gate; readOnly: boo
     <Checkbox
       checked={policy && !!gate.passRoles}
       disabled={readOnly || !policy}
-      label={`Also pass the person's roles and permissions (${ROLE_HEADERS.join(', ')})`}
+      label={`Also send the caller's roles and permissions in this app (${ROLE_HEADERS.join(', ')}; groups from the policy)`}
       hint={policy ? 'The app then learns what each person may do on this site, as JSON arrays.' : ROLES_NEED_POLICY}
       onChange={(on) => { const { passRoles: _drop, ...rest } = gate; void _drop; onChange(on ? { ...gate, passRoles: true } : rest); }}
     />

@@ -38,10 +38,10 @@ describe('buildSite', () => {
   it('keeps the visitor\'s domain on every template', () => {
     for (const t of TEMPLATES) expect(buildSite(t.id, basics).upstream.preserveHost).toBe(true);
   });
-  it('promises groups only from a preset that runs the hydrator', () => {
+  it('promises groups from every preset that sends the identity headers, and only from those', () => {
     for (const k of Object.keys(GETS) as (keyof typeof GETS)[]) {
-      const enriches = GETS[k].some((h) => h.handler === 'hydrator');
-      if (!enriches) expect(GETS_LABEL[k]).not.toContain('X-User-Groups');
+      const headers = GETS[k].some((h) => h.handler === 'header');
+      expect(/X-User-Groups|groups included/.test(GETS_LABEL[k])).toBe(headers);
     }
   });
   it('prefixes paths for a shared host', () => {

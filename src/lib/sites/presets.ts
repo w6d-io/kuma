@@ -52,10 +52,10 @@ export const PASS_LABEL: Record<PassPreset, string> = {
   nobody: 'Nobody (block)',
 };
 export const GETS_LABEL: Record<GetsPreset, string> = {
-  identity: 'Identity headers: X-User-Id, X-User-Email (groups and type need Enrich)',
+  // Groups come with the identity headers by default (jinbe wave25 groups template).
+  identity: 'Identity headers: X-User-Id, X-User-Email, X-User-Groups',
   nothing: 'Nothing: the app sees empty X-User-* identity headers (for public gates)',
-  // X-User-Groups is blanked unless the gate passes roles (jinbe wave25), so it is not promised here.
-  enrich: 'Enrich from an API, then headers: adds X-Type',
+  enrich: 'Enrich from an API, then the identity headers (groups included) plus X-Type',
 };
 export const FAILS_LABEL: Record<FailsPreset, string> = {
   website: 'Website: send to sign-in, show errors as pages',
@@ -123,7 +123,8 @@ export function withoutRoles(gate: Gate): Gate {
   return rest;
 }
 
-export const ROLE_HEADERS = ['X-User-Roles', 'X-User-Permissions', 'X-User-Groups'] as const;
+/** What passRoles adds; X-User-Groups then carries the policy's own view of the groups. */
+export const ROLE_HEADERS = ['X-User-Roles', 'X-User-Permissions'] as const;
 
 /** Handlers per kind, with the sandbox's enabled set as a fallback when the platform is not read. */
 export interface HandlerCatalog { authenticators: string[]; authorizers: string[]; mutators: string[]; errors: string[] }
