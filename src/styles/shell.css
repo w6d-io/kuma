@@ -45,6 +45,20 @@
   box-shadow: var(--shadow-sm);
 }
 .logo-text { display: flex; flex-direction: column; line-height: 1.15; }
+/* A deployment's logo (LOGO_URL / LOGO_SMALL_URL). On a light plate in the dark theme: a logo drawn
+   for white paper disappears on the dark rail otherwise. */
+.logo-full, .logo-small {
+  display: block;
+  object-fit: contain;
+  background: var(--color-logo-plate);
+  padding: var(--logo-plate-pad);
+  border-radius: var(--radius-sm);
+}
+.logo-full { max-width: 100%; max-height: 32px; width: auto; height: auto; }
+.logo-small { width: 26px; height: 26px; flex: none; }
+.logo-full-wrap { display: flex; flex-direction: column; gap: 4px; min-width: 0; line-height: 1.15; }
+.logo-full-wrap .s { font-size: var(--text-xs); color: var(--color-text-subtle); letter-spacing: 0.02em; }
+.sidebar-header .logo-collapsed { display: none; }
 .logo-text .n { font-weight: 600; font-size: var(--text-base); letter-spacing: -0.01em; }
 .logo-text .s { font-size: var(--text-xs); color: var(--color-text-subtle); letter-spacing: 0.02em; }
 

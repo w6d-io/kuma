@@ -31,6 +31,8 @@
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
   --color-sidebar: #f7f8fa;                 /* their sidebar is pure white: a rail that does not read as one */
+  --color-logo-plate: transparent;          /* a deployment's logo sits on the rail as drawn */
+  --logo-plate-pad: 0;
   --color-hover: var(--surface-hover);
   --color-scrim: rgb(0 0 0 / 0.35);
 
@@ -143,6 +145,8 @@
     --color-surface-2: #24262a;
     --color-surface-3: #2a2c30;
     --color-sidebar: #131416;
+    --color-logo-plate: #f7f8fa;
+    --logo-plate-pad: 2px 4px;
     --color-hover: rgb(255 255 255 / 0.06);
     --color-scrim: rgb(0 0 0 / 0.55);
     --color-text: #e9eaec;
@@ -190,6 +194,8 @@
   --color-surface-2: #24262a;
   --color-surface-3: #2a2c30;
   --color-sidebar: #131416;
+  --color-logo-plate: #f7f8fa;
+  --logo-plate-pad: 2px 4px;
   --color-hover: rgb(255 255 255 / 0.06);
   --color-scrim: rgb(0 0 0 / 0.55);
   --color-text: #e9eaec;

@@ -9,12 +9,13 @@ import { DirectoryUnavailable, OrganisationChoice } from './auth/OrganisationCho
 import { rumSettings, startRum } from './telemetry/rum'
 import { API_BASE } from './api/client'
 import { edgeBlocked } from './lib/apiError'
+import { applyFavicon, readBrand } from './lib/brand'
 
 // index.html carries envsubst placeholders ("${AUTH_DOMAIN}") that Docker
 // substitutes at container start. On the vite dev server nothing substitutes
 // them, so readers would see a TRUTHY garbage value and build broken
 // "https://${AUTH_DOMAIN}/login" redirects. Blank them out once at boot.
-for (const k of ['__API_BASE__', '__AUTH_DOMAIN__', '__GRAFANA_URL__', '__BACKUP_ENABLED__', '__OIDC_AUTHORITY__', '__OIDC_CLIENT_ID__', '__OIDC_AUDIENCE__', '__ORG_AUTHORITY__', '__KRATOS_PUBLIC_URL__', '__ORG_DIRECTORY_AUDIENCE__', '__ORG_DIRECTORY_URL__', '__ORG_SELECTION_URL__', '__MCP_SERVER_URL__'] as const) {
+for (const k of ['__API_BASE__', '__AUTH_DOMAIN__', '__GRAFANA_URL__', '__BACKUP_ENABLED__', '__OIDC_AUTHORITY__', '__OIDC_CLIENT_ID__', '__OIDC_AUDIENCE__', '__ORG_AUTHORITY__', '__KRATOS_PUBLIC_URL__', '__ORG_DIRECTORY_AUDIENCE__', '__ORG_DIRECTORY_URL__', '__ORG_SELECTION_URL__', '__MCP_SERVER_URL__', '__LOGO_URL__', '__LOGO_SMALL_URL__', '__FAVICON_URL__'] as const) {
   const v = (window as unknown as Record<string, unknown>)[k]
   if (typeof v === 'string' && v.startsWith('${')) {
     (window as unknown as Record<string, unknown>)[k] = ''
@@ -25,6 +26,7 @@ for (const k of ['__API_BASE__', '__AUTH_DOMAIN__', '__GRAFANA_URL__', '__BACKUP
 // WITHOUT the app shell, so an effect inside the shell's provider never runs for it. That is why the
 // chooser was decided by the machine's setting while the console was decided by a stored one.
 initTheme()
+applyFavicon(readBrand())
 
 const queryClient = new QueryClient({
   defaultOptions: {

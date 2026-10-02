@@ -55,12 +55,19 @@ ENV ORG_SELECTION_URL=""
 # MCP_SERVER_URL: where MCP clients connect with a personal key, shown on Connections & keys.
 #              Empty (default) → the page says to ask an administrator for it.
 ENV MCP_SERVER_URL=""
+# LOGO_URL:       the deployment's full logo (wordmark) for the navigation rail.
+# LOGO_SMALL_URL: its small square logo: collapsed rail, phone menu, and the tab icon by default.
+# FAVICON_URL:    the tab and home-screen icon, when it is not the small logo.
+#              https:// or a path on this origin only; empty (default) → the console's own tile.
+ENV LOGO_URL=""
+ENV LOGO_SMALL_URL=""
+ENV FAVICON_URL=""
 
 EXPOSE 8080
 
 # Inject runtime config into index.html, then start nginx.
 # envsubst whitelist: only the listed vars are substituted (preserves other ${...} content).
 CMD ["/bin/sh", "-c", \
-  "envsubst '${API_BASE} ${AUTH_DOMAIN} ${GRAFANA_URL} ${BACKUP_ENABLED} ${OIDC_AUTHORITY} ${OIDC_CLIENT_ID} ${OIDC_AUDIENCE} ${ORG_AUTHORITY} ${KRATOS_PUBLIC_URL} ${ORG_DIRECTORY_AUDIENCE} ${ORG_DIRECTORY_URL} ${ORG_SELECTION_URL} ${MCP_SERVER_URL}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
+  "envsubst '${API_BASE} ${AUTH_DOMAIN} ${GRAFANA_URL} ${BACKUP_ENABLED} ${OIDC_AUTHORITY} ${OIDC_CLIENT_ID} ${OIDC_AUDIENCE} ${ORG_AUTHORITY} ${KRATOS_PUBLIC_URL} ${ORG_DIRECTORY_AUDIENCE} ${ORG_DIRECTORY_URL} ${ORG_SELECTION_URL} ${MCP_SERVER_URL} ${LOGO_URL} ${LOGO_SMALL_URL} ${FAVICON_URL}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
    mv /tmp/index.html /usr/share/nginx/html/index.html && \
    nginx -g 'daemon off;'"]

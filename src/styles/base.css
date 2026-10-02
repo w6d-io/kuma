@@ -122,6 +122,7 @@ html[data-motion="off"] *::after {
 
 html[data-navcollapsed="on"] .app { grid-template-columns: 64px 1fr; }
 html[data-navcollapsed="on"] .sidebar { width: 64px; }
+html[data-navcollapsed="on"] .sidebar .logo-full-wrap,
 html[data-navcollapsed="on"] .sidebar .logo-text,
 html[data-navcollapsed="on"] .sidebar .nav-section,
 html[data-navcollapsed="on"] .sidebar .nav-item .count,
@@ -130,6 +131,7 @@ html[data-navcollapsed="on"] .sidebar-foot .btn { display: none; }
 html[data-navcollapsed="on"] .sidebar .nav-item { justify-content: center; font-size: 0; padding: 10px 0; }
 html[data-navcollapsed="on"] .sidebar .nav-item .ico { margin: 0; }
 html[data-navcollapsed="on"] .sidebar-foot { justify-content: center; }
+html[data-navcollapsed="on"] .sidebar .logo-collapsed { display: contents; }
 
 html[data-levelstyle="dot"] .alevel .bars { display: none; }
 html[data-levelstyle="dot"] .alevel::before {

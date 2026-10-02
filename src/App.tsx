@@ -30,6 +30,7 @@ import { AuditPage } from './pages/Audit';
 import { AccessReviewPage } from './pages/AccessReview';
 import { DirectGrantsPage } from './pages/DirectGrants';
 import { RecertificationPage } from './pages/Recertification';
+import { BrandMark } from './components/BrandMark';
 import { SettingsPage } from './pages/Settings';
 import { BackupPage } from './pages/Backup';
 import { DesignPage } from './pages/design/DesignPage';
@@ -80,7 +81,7 @@ function RailDrawer({ onOpenTweaks }: { onOpenTweaks: () => void }) {
         <Dialog.Overlay className="rail-scrim" />
         <Dialog.Content className="rail-sheet" aria-label="Navigation">
           <Dialog.Title className="sr-only">Navigation</Dialog.Title>
-          <RailContent onNavigate={() => setOpen(false)} onOpenTweaks={onOpenTweaks} />
+          <RailContent compact onNavigate={() => setOpen(false)} onOpenTweaks={onOpenTweaks} />
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -91,7 +92,7 @@ function RailDrawer({ onOpenTweaks }: { onOpenTweaks: () => void }) {
  * What the rail contains. Rendered twice — once in the fixed rail, once inside the sheet a narrow
  * screen opens — because two copies of a navigation is how the two stop agreeing.
  */
-function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; onOpenTweaks: () => void }) {
+function RailContent({ onNavigate, onOpenTweaks, compact }: { onNavigate?: () => void; onOpenTweaks: () => void; compact?: boolean }) {
   const { page, setPage, state, tweaks, apiError } = useApp();
   const showCounts = tweaks?.showCounts !== false;
   // Home is scoped to whoever is looking; the admin API refusing them is not news there.
@@ -114,13 +115,7 @@ function RailContent({ onNavigate, onOpenTweaks }: { onNavigate?: () => void; on
 
   return (
     <>
-      <div className="sidebar-header">
-        <div className="logo-mark">K</div>
-        <div className="logo-text">
-          <span className="n">Kuma</span>
-          <span className="s">Access console</span>
-        </div>
-      </div>
+      <BrandMark compact={compact} />
       <nav className="nav">
         {isForbidden && (
           <div className="nav-forbidden">
