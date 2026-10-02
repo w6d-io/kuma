@@ -4,6 +4,7 @@ import { api, API_BASE } from './client';
 import type { AuthConfigState, AuthMethodName, McpSettings, SignInProtection } from './client';
 import type { RolesMap, RouteMapsMap, User } from './types';
 import { kratosToUser, jinbeGroupsToMap } from './transforms';
+import { holds } from '../policy/model';
 
 // Directory page size. 100 (not the old 1000) keeps each round trip — and the
 // per-identity RBAC enrichment jinbe does per row (PERF-2) — bounded, so the
@@ -223,10 +224,11 @@ export function useMcpStatus() {
   });
 }
 
-export function useAuthMethods() {
+export function useAuthMethods(opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['auth-methods'],
     queryFn: () => api.getAuthMethods(),
+    enabled: opts.enabled ?? true,
     staleTime: CONFIG_STALE_TIME,
     retry: (count, err: any) => err?.status !== 501 && count < 2,
   });
@@ -264,10 +266,11 @@ export function useSetAuthMethods() {
 }
 
 // Import history (pre-import snapshots, cap 10) + one-click rollback.
-export function useImportHistory() {
+export function useImportHistory(opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['import-history'],
     queryFn: () => api.getImportHistory(),
+    enabled: opts.enabled ?? true,
     staleTime: 10_000,
   });
 }
@@ -379,10 +382,15 @@ export function useSession() {
 // made in the console), and we poll + refetch on window-focus so changes made
 // OUTSIDE the console (Kratos self-registration, another service) surface within
 // ~20s. Cheap — warm reads are ~1ms.
+//
+// Only with stats:read (viewer kept it; auditor and others lost it in the role trim): without it the
+// poll was a 403 every 20 s. Callers fall back to their own counts while `data` stays undefined.
 export function useStats() {
+  const { data: session } = useSession();
   return useQuery({
     queryKey: ['stats'],
     queryFn: () => api.getStats(),
+    enabled: holds(session, 'stats:read'),
     staleTime: 15_000,
     refetchInterval: 20_000,
     refetchOnWindowFocus: true,

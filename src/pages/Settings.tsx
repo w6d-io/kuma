@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useAuthMethods, useSetAuthMethods, useImportHistory, useRollbackImport } from '../api/hooks';
+import { useAuthMethods, useSetAuthMethods, useImportHistory, useRollbackImport, useSession } from '../api/hooks';
+import { holds } from '../policy/model';
 import { I, Badge, Button, Callout, Card, Checkbox, ConfirmDialog, Dialog, PageHeader, Switch, Table } from '../components/ui';
 import { api } from '../api/client';
 import { stepUpOnRefusal } from '../lib/resume';
@@ -51,6 +52,12 @@ const IMPORT_SECTIONS: { id: keyof PendingBundle['counts']; label: string }[] = 
 
 export function SettingsPage() {
   const { pushToast, refetch } = useApp();
+  // Each admin section asks only with the permission jinbe checks for it: a viewer (no
+  // settings:read, zones:read or policy.bundle:read since the role trim) got a page of 403s.
+  const { data: session } = useSession();
+  const settingsRead = holds(session, 'settings:read');
+  const zonesRead = holds(session, 'zones:read');
+  const bundleRead = holds(session, 'policy.bundle:read');
   const authDomain = (window as any).__AUTH_DOMAIN__ || '';
   const accountUrl = authDomain
     ? `https://${authDomain}/settings?return_to=${encodeURIComponent(window.location.href)}`
@@ -58,7 +65,7 @@ export function SettingsPage() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [exportOpen, setExportOpen] = useState(false);
-  const { data: importHistory } = useImportHistory();
+  const { data: importHistory } = useImportHistory({ enabled: bundleRead });
   const rollbackImport = useRollbackImport();
   const [confirmRollback, setConfirmRollback] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -67,7 +74,7 @@ export function SettingsPage() {
   const [importSections, setImportSections] = useState<string[]>([]);
 
   // ─── Kratos auth-method toggles (hot-reload; hidden when jinbe lacks KRATOS_CONFIG_PATH) ───
-  const { data: authConfig, error: authMethodsError } = useAuthMethods();
+  const { data: authConfig, error: authMethodsError } = useAuthMethods({ enabled: settingsRead });
   const setAuthMethods = useSetAuthMethods();
   const authMethods = authConfig?.methods;
   const registrationEnabled = authConfig?.registration.enabled ?? true;
@@ -225,6 +232,12 @@ export function SettingsPage() {
 
       <OwnSecondFactor />
 
+      {!settingsRead && !zonesRead && !bundleRead && (
+        <Callout tone="neutral" icon={I.lock} title="Nothing to administer here for your access">
+          <div className="small">Your own account and two-step sign-in are above. The platform settings, zones and RBAC bundle need roles you don’t hold.</div>
+        </Callout>
+      )}
+
       {/* ─── Authentication methods (Kratos self-service, hot-reload) ─── */}
       {authMethodsAvailable && authMethods && (
         <Card
@@ -277,74 +290,76 @@ export function SettingsPage() {
         </Card>
       )}
 
-      <SecondFactorSettings />
+      {settingsRead && <SecondFactorSettings />}
 
-      <SignInProtectionSettings />
+      {settingsRead && <SignInProtectionSettings />}
 
-      <McpSettings />
+      {settingsRead && <McpSettings />}
 
-      <ZonesSettings />
+      {zonesRead && <ZonesSettings />}
 
       {/* ─── RBAC bundle ─── */}
-      <Card
-        title="RBAC bundle"
-        sub="Export or import a full snapshot of RBAC configuration (services, groups, roles, route maps, Oathkeeper rules)."
-      >
-        <div className="row wrap gap-8">
-          <Button icon={I.download} onClick={() => setExportOpen(true)}>
-            Export bundle
-          </Button>
-          <Button icon={I.upload} onClick={handleImportClick} disabled={importing}>
-            {importing ? 'Importing…' : 'Import bundle'}
-          </Button>
-          <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleFileSelected} />
-        </div>
-
-        {importResult && (
-          <div className="mt-12 text-sm text-muted">
-            <div className="fw-medium mb-4">Import summary</div>
-            <div>{importResult.rbac.services} services, {importResult.rbac.groups} groups, {importResult.rbac.roles} roles, {importResult.rbac.routeMaps} route maps, {importResult.rbac.oathkeeperRules} Oathkeeper rules</div>
+      {bundleRead && (
+        <Card
+          title="RBAC bundle"
+          sub="Export or import a full snapshot of RBAC configuration (services, groups, roles, route maps, Oathkeeper rules)."
+        >
+          <div className="row wrap gap-8">
+            <Button icon={I.download} onClick={() => setExportOpen(true)}>
+              Export bundle
+            </Button>
+            <Button icon={I.upload} onClick={handleImportClick} disabled={importing}>
+              {importing ? 'Importing…' : 'Import bundle'}
+            </Button>
+            <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleFileSelected} />
           </div>
-        )}
 
-        {/* ─── Import history — automatic pre-import snapshots, one-click reroll ─── */}
-        {(importHistory?.length ?? 0) > 0 && (
-          <div className="mt-16">
-            <div className="fw-medium text-base mb-4">Import history</div>
-            <div className="small muted mb-8">
-              A snapshot is taken automatically before every import, restore or rollback. Rolling back re-applies the snapshot as a full restore (and keeps a snapshot of what it replaces).
+          {importResult && (
+            <div className="mt-12 text-sm text-muted">
+              <div className="fw-medium mb-4">Import summary</div>
+              <div>{importResult.rbac.services} services, {importResult.rbac.groups} groups, {importResult.rbac.roles} roles, {importResult.rbac.routeMaps} route maps, {importResult.rbac.oathkeeperRules} Oathkeeper rules</div>
             </div>
-            <Table className="compact">
-              <thead>
-                <tr>
-                  <th>When</th>
-                  <th>Taken before</th>
-                  <th>By</th>
-                  <th>Contents</th>
-                  <th className="actions" />
-                </tr>
-              </thead>
-              <tbody>
-                {importHistory!.map(h => (
-                  <tr key={h.id}>
-                    <td className="nowrap">{new Date(h.takenAt).toLocaleString()}</td>
-                    <td><Badge>{h.reason.replace('pre-', '')}</Badge></td>
-                    <td className="mono">{h.actor || '—'}</td>
-                    <td className="small muted">
-                      {h.counts.services} svc · {h.counts.groups} groups · {h.counts.roles} roles · {h.counts.oathkeeperRules} rules
-                    </td>
-                    <td className="actions">
-                      <Button variant="ghost" size="sm" disabled={rollbackImport.isPending} onClick={() => setConfirmRollback(h.id)}>
-                        Roll back
-                      </Button>
-                    </td>
+          )}
+
+          {/* ─── Import history — automatic pre-import snapshots, one-click reroll ─── */}
+          {(importHistory?.length ?? 0) > 0 && (
+            <div className="mt-16">
+              <div className="fw-medium text-base mb-4">Import history</div>
+              <div className="small muted mb-8">
+                A snapshot is taken automatically before every import, restore or rollback. Rolling back re-applies the snapshot as a full restore (and keeps a snapshot of what it replaces).
+              </div>
+              <Table className="compact">
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Taken before</th>
+                    <th>By</th>
+                    <th>Contents</th>
+                    <th className="actions" />
                   </tr>
-                ))}
-              </tbody>
-            </Table>
-          </div>
-        )}
-      </Card>
+                </thead>
+                <tbody>
+                  {importHistory!.map(h => (
+                    <tr key={h.id}>
+                      <td className="nowrap">{new Date(h.takenAt).toLocaleString()}</td>
+                      <td><Badge>{h.reason.replace('pre-', '')}</Badge></td>
+                      <td className="mono">{h.actor || '—'}</td>
+                      <td className="small muted">
+                        {h.counts.services} svc · {h.counts.groups} groups · {h.counts.roles} roles · {h.counts.oathkeeperRules} rules
+                      </td>
+                      <td className="actions">
+                        <Button variant="ghost" size="sm" disabled={rollbackImport.isPending} onClick={() => setConfirmRollback(h.id)}>
+                          Roll back
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Confirm before import (UX-8) — pick which sections to apply. */}
       <Dialog
