@@ -30,6 +30,11 @@ export interface Gate {
   errors: ErrorsPreset | Handler[];
   methods?: HttpMethod[];
   preflight?: boolean;
+  /**
+   * Opt-in, policy gates only: the app also receives X-User-Groups, X-User-Roles and
+   * X-User-Permissions (JSON arrays, the caller's roles and permissions in this site's app).
+   */
+  passRoles?: boolean;
   expert?: { matchUrl?: string };
 }
 

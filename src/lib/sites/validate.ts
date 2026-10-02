@@ -121,7 +121,7 @@ export function secretLooking(v: string): boolean {
 }
 
 // The platform's identity headers (global header mutator): a gate may not re-declare them.
-const PLATFORM_HEADERS = ['x-user-id', 'x-user-email', 'x-user-groups', 'x-user-name'];
+const PLATFORM_HEADERS = ['x-user-id', 'x-user-email', 'x-user-groups', 'x-user-name', 'x-user-roles', 'x-user-permissions'];
 
 /**
  * jinbe renders every gate's header mutator with its own Cookie header (the platform session cookie

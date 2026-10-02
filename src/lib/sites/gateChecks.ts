@@ -38,6 +38,10 @@ export function gateChecks(gate: Gate): Check[] {
   // Set in Expert JSON or over the API: jinbe would replace it silently.
   const headerKeys = gate.mutators.filter((m) => m.handler === 'header').flatMap((m) => Object.keys((m.config?.headers as Record<string, unknown> | undefined) ?? {}));
   if (headerKeys.some((k) => reservedHeaderProblem(k))) out.push({ level: 'error', code: 'cookie_header_reserved', message: `${COOKIE_RESERVED}. Remove the Cookie header.` });
+  // Same code as jinbe's finding: only the policy knows the caller's roles in this site.
+  if (gate.passRoles && gate.authorizer !== 'policy') {
+    out.push({ level: 'error', code: PASS_ROLES_WITHOUT_POLICY, message: 'Roles and permissions can only be passed by a gate that checks permissions per route: turn it off or set “Who may pass” to the policy.' });
+  }
   // Same code as jinbe's finding.
   if (passesNoIdentity(gate)) out.push({ level: 'warn', code: 'gate_passes_no_identity', message: `${PASSES_NO_IDENTITY}.` });
   const jwt = gate.authenticators.find((h) => h.handler === 'jwt');
@@ -52,6 +56,8 @@ export function gateChecks(gate: Gate): Check[] {
   return out;
 }
 
+export const PASS_ROLES_WITHOUT_POLICY = 'pass_roles_not_policy';
+
 /** Every gate's checks, placed at the gate (Review blocks on their errors like the server's). */
 export function siteGateChecks(site: Site): Check[] {
   return site.gates.flatMap((g, i) => gateChecks(g).map((c) => ({ ...c, message: site.gates.length > 1 ? `${g.label}: ${c.message}` : c.message, path: gatePath(i, c.code) })));
@@ -59,7 +65,7 @@ export function siteGateChecks(site: Site): Check[] {
 
 /** Where jinbe places a gate check: the sign-in ones at the gate's authenticators, the identity one at its mutators. */
 export const SIGN_IN_CODES = new Set(['gate_without_authenticator', 'bearer_before_oauth2', 'bare_bearer_token']);
-export const gatePath = (index: number, code: string) => `gates.${index}${SIGN_IN_CODES.has(code) ? '.authenticators' : code === 'gate_passes_no_identity' ? '.mutators' : ''}`;
+export const gatePath = (index: number, code: string) => `gates.${index}${SIGN_IN_CODES.has(code) ? '.authenticators' : code === 'gate_passes_no_identity' ? '.mutators' : code === PASS_ROLES_WITHOUT_POLICY ? '.passRoles' : ''}`;
 
 /** Local checks beside the server's, without saying the same thing twice. */
 export function mergeChecks(server: readonly Check[], local: readonly Check[]): Check[] {

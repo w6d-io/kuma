@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Badge, Button, Callout, I, Select } from '../../../components/ui';
 import { AdvancedDisclosure } from '../../../components/ui/Primitives';
 import { HANDLER_FIELDS, HANDLER_LABEL, type HandlerKind } from '../../../lib/sites/handlerFields';
-import { ALL_HANDLERS, type HandlerCatalog } from '../../../lib/sites/presets';
+import { ALL_HANDLERS, withoutRoles, type HandlerCatalog } from '../../../lib/sites/presets';
 import { explicitErrors, gateChecks, moveHandler } from '../../../lib/sites/gateChecks';
 import type { Gate, Handler, Site } from '../../../lib/sites/types';
 import { CheckList } from '../parts';
@@ -83,7 +83,7 @@ export function GateAdvanced({ gate, site, enabled, readOnly, onChange, onLocked
     if (kind === 'authenticators') onChange({ ...gate, authenticators: list });
     else if (kind === 'mutators') onChange({ ...gate, mutators: list });
     else if (kind === 'errors') onChange({ ...gate, errors: list.length ? list : 'platform' });
-    else onChange({ ...gate, authorizer: list[0] ?? 'policy' });
+    else onChange(withoutRoles({ ...gate, authorizer: list[0] ?? 'policy' }));
   };
   const header = gate.mutators.find((m) => m.handler === 'header');
 

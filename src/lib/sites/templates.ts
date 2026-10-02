@@ -133,5 +133,7 @@ export function summarySentence(site: Site, people?: number | null): string {
   const groups = Object.keys(site.groups.platform).length;
   const reach = people != null ? `${people} people get access through ${groups} group${groups === 1 ? '' : 's'}.` : `${groups} group${groups === 1 ? '' : 's'} mapped.`;
   const orgs = site.orgs.length === 0 ? 'No organizations.' : `${site.orgs.length} organization${site.orgs.length === 1 ? '' : 's'}.`;
-  return `${addr} will send ${who} to ${up}.${api} ${reach} ${orgs}`;
+  const roles = site.gates.filter((g) => g.passRoles && g.authorizer === 'policy').map((g) => g.label);
+  const passes = roles.length ? ` Gate${roles.length === 1 ? '' : 's'} ${roles.join(', ')} also pass${roles.length === 1 ? 'es' : ''} each person's roles and permissions to the app.` : '';
+  return `${addr} will send ${who} to ${up}.${api}${passes} ${reach} ${orgs}`;
 }

@@ -35,6 +35,10 @@ describe('gateChecks', () => {
     expect(gateChecks(g({ mutators: [{ handler: 'header', config: { headers: { COOKIE: 'a=b' } } }] }))).toEqual([expect.objectContaining({ level: 'error', code: 'cookie_header_reserved' })]);
     expect(codes(g({ mutators: [{ handler: 'header', config: { headers: { 'X-Org': '{{ print .Subject }}' } } }] }))).toEqual([]);
   });
+  it('roles and permissions are passed by a policy gate only', () => {
+    expect(gateChecks(g({ passRoles: true }))).toEqual([]);
+    expect(gateChecks(g({ passRoles: true, authorizer: { handler: 'allow' } }))).toContainEqual(expect.objectContaining({ level: 'error', code: 'pass_roles_not_policy' }));
+  });
   it('jwt scopes need a strategy', () => {
     expect(codes(g({ authenticators: [{ handler: 'jwt', config: { required_scope: ['a'] } }] }))).toContain('jwt_scope');
   });

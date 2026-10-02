@@ -13,7 +13,7 @@ import type { SiteEditor } from '../useSiteEditor';
 import type { Go } from '../SiteDetail';
 import { CheckList, RiskBadge } from '../parts';
 import { checkLines } from '../../../lib/sites/format';
-import { mergeChecks, siteGateChecks } from '../../../lib/sites/gateChecks';
+import { PASS_ROLES_WITHOUT_POLICY, mergeChecks, siteGateChecks } from '../../../lib/sites/gateChecks';
 import { describeSiteError, publishAction, useSiteAction } from '../useAction';
 import { useApp } from '../../../contexts/AppContext';
 import { stepUpAndResume, useResume } from '../../../lib/resume';
@@ -35,7 +35,7 @@ import { gateOfFinding } from '../../../lib/sites/twoFactorGates';
  */
 
 /** Findings fixed on a gate: 2FA set but a gate skips the policy, a gate that checks only a sign-in or passes no identity. */
-const GATE_FINDINGS = new Set(['second_factor_not_enforced', 'gate_signed_in_only', 'gate_passes_no_identity']);
+const GATE_FINDINGS = new Set(['second_factor_not_enforced', 'gate_signed_in_only', 'gate_passes_no_identity', 'role_headers_unavailable', PASS_ROLES_WITHOUT_POLICY]);
 
 function OpenGate({ gate, go }: { gate: Gate | undefined; go: Go }) {
   return <Button size="sm" variant="ghost" icon={I.shield} onClick={() => go('gates', gate ? { gate: gate.id } : undefined)}>{gate ? `Open gate ${gate.label}` : 'Gates'}</Button>;

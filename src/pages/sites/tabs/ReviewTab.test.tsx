@@ -158,6 +158,15 @@ describe('Review · security findings', () => {
     expect(button(/^Apply changes/).disabled).toBe(false);
   });
 
+  it('role headers that cannot be filled are a warning with the way to the gate', async () => {
+    mount(editor({ version: 16, applied: 16, hasDraft: true, findings: [
+      { code: 'role_headers_unavailable', level: 'warn', message: "gate 'web' passes roles, but this site's app has none.", fix: "Map roles, or turn it off on gate 'web'.", path: 'gates.0.passRoles' },
+    ] }));
+    await settle();
+    expect(text()).toContain('passes roles');
+    expect(button(/^Gates$/)).toBeTruthy();
+  });
+
   it('a publish refused for unconfirmed findings lists them and publishes that version once they are ticked', async () => {
     api.apply.mockRejectedValueOnce(Object.assign(new Error('Not published'), { status: 422, code: 'unconfirmed_findings', details: { findings: [pub] } }));
     mount(editor({ version: 17, applied: 16, hasDraft: false }));

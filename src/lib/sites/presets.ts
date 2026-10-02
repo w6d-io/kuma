@@ -54,7 +54,8 @@ export const PASS_LABEL: Record<PassPreset, string> = {
 export const GETS_LABEL: Record<GetsPreset, string> = {
   identity: 'Identity headers: X-User-Id, X-User-Email (groups and type need Enrich)',
   nothing: 'Nothing: the app sees empty X-User-* identity headers (for public gates)',
-  enrich: 'Enrich from an API, then headers: adds X-User-Groups and X-Type',
+  // X-User-Groups is blanked unless the gate passes roles (jinbe wave25), so it is not promised here.
+  enrich: 'Enrich from an API, then headers: adds X-Type',
 };
 export const FAILS_LABEL: Record<FailsPreset, string> = {
   website: 'Website: send to sign-in, show errors as pages',
@@ -102,14 +103,27 @@ export function withPreset(gate: Gate, question: 'who' | 'pass' | 'gets' | 'fail
   if (question === 'who') {
     const next = { ...gate, authenticators: WHO[value as WhoPreset] };
     if (value === 'anyone') {
-      return { ...next, authorizer: gate.authorizer === 'policy' ? PASS.everyone : gate.authorizer, mutators: GETS.nothing };
+      return withoutRoles({ ...next, authorizer: gate.authorizer === 'policy' ? PASS.everyone : gate.authorizer, mutators: GETS.nothing });
     }
     return passesNoIdentity(next) ? { ...next, mutators: GETS.identity } : next;
   }
-  if (question === 'pass') return { ...gate, authorizer: PASS[value as PassPreset] };
+  if (question === 'pass') return withoutRoles({ ...gate, authorizer: PASS[value as PassPreset] });
   if (question === 'gets') return { ...gate, mutators: GETS[value as GetsPreset] };
   return { ...gate, errors: value as FailsPreset };
 }
+
+/**
+ * Only the policy knows the caller's roles and permissions in this site: a gate that stops asking it
+ * stops passing them (jinbe refuses passRoles on any other gate). Never set by a preset or template.
+ */
+export function withoutRoles(gate: Gate): Gate {
+  if (gate.authorizer === 'policy' || !gate.passRoles) return gate;
+  const { passRoles: _drop, ...rest } = gate;
+  void _drop;
+  return rest;
+}
+
+export const ROLE_HEADERS = ['X-User-Roles', 'X-User-Permissions', 'X-User-Groups'] as const;
 
 /** Handlers per kind, with the sandbox's enabled set as a fallback when the platform is not read. */
 export interface HandlerCatalog { authenticators: string[]; authorizers: string[]; mutators: string[]; errors: string[] }

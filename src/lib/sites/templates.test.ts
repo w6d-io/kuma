@@ -112,3 +112,22 @@ describe('sign-in gates pass the identity', () => {
     expect(passesNoIdentity({ ...anyone, authenticators: WHO['signed-in'], mutators: [] })).toBe(true);
   });
 });
+
+// Opt-in role headers: only a policy gate may pass them, and nothing sets them for you.
+describe('passRoles', () => {
+  const policy = { id: 'g', label: 'Web', authenticators: WHO['signed-in'], authorizer: 'policy' as const, mutators: GETS.identity, errors: 'website' as const, passRoles: true };
+  it('no template sets it', () => {
+    for (const t of TEMPLATES) for (const g of buildSite(t.id, basics).gates) expect(g.passRoles).toBeUndefined();
+  });
+  it('leaving the policy drops it; staying keeps it', () => {
+    expect(withPreset(policy, 'pass', 'everyone').passRoles).toBeUndefined();
+    expect(withPreset(policy, 'who', 'anyone').passRoles).toBeUndefined();
+    expect(withPreset(policy, 'pass', 'policy').passRoles).toBe(true);
+    expect(withPreset(policy, 'gets', 'enrich').passRoles).toBe(true);
+  });
+  it('the summary says which gates pass them', () => {
+    const site = buildSite('app', basics);
+    site.gates = site.gates.map((g) => (g.authorizer === 'policy' ? { ...g, passRoles: true } : g));
+    expect(summarySentence(site)).toMatch(/also pass(es)? each person's roles and permissions to the app/);
+  });
+});

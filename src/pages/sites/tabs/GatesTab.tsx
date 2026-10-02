@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Badge, Button, ButtonBase, Callout, Card, Drawer, Field, FormGrid, I, Input, RadioGroup, Segmented, Switch, cx } from '../../../components/ui';
+import { Badge, Button, ButtonBase, Callout, Card, Checkbox, Drawer, Field, FormGrid, I, Input, RadioGroup, Segmented, Switch, Tooltip, cx } from '../../../components/ui';
 import { useSitesPlatform } from '../../../api/sites';
 import {
-  FAILS_LABEL, GETS, GETS_LABEL, PASSES_NO_IDENTITY, PASS_LABEL, WHO, WHO_LABEL, isCustomized, missingHandlers, passesNoIdentity, presetsOf, withPreset, SANDBOX_ENABLED,
+  FAILS_LABEL, GETS, GETS_LABEL, PASSES_NO_IDENTITY, ROLE_HEADERS, PASS_LABEL, WHO, WHO_LABEL, isCustomized, missingHandlers, passesNoIdentity, presetsOf, withPreset, SANDBOX_ENABLED,
   type FailsPreset, type GetsPreset, type PassPreset, type WhoPreset,
 } from '../../../lib/sites/presets';
 import type { Gate, Site } from '../../../lib/sites/types';
@@ -80,7 +80,7 @@ export function GatesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnly
             <ButtonBase key={g.id} className={cx('site-gate-card', g.id === selectedId && 'on')} aria-pressed={g.id === selectedId} onClick={() => select(g.id)}>
               <span className="row gap-8 items-center"><span className="fw-medium">{g.label}</span>{isCustomized(g) && <Badge tone="info" mono={false}>Customized</Badge>}{gateSkipsTwoFactor(site, g) && <Badge tone="danger" mono={false}>2FA not enforced</Badge>}{passesNoIdentity(g) && <Badge tone="warning" mono={false} title={PASSES_NO_IDENTITY}>Passes no identity</Badge>}</span>
               <span className="small muted">{WHO_LABEL[presetsOf(g).who as WhoPreset] ?? 'Custom sign-in'}</span>
-              <span className="small">{n} route{n === 1 ? '' : 's'}{catchAll ? ' · everything else' : ''}{g.preflight ? ' · + browser pre-flight' : ''}</span>
+              <span className="small">{n} route{n === 1 ? '' : 's'}{catchAll ? ' · everything else' : ''}{g.preflight ? ' · + browser pre-flight' : ''}{g.passRoles ? ' · + roles and permissions' : ''}</span>
             </ButtonBase>
           );
         })}
@@ -151,6 +151,26 @@ function CustomNote({ q, answer, readOnly, onPreset, onAdvanced }: {
   );
 }
 
+/**
+ * Opt-in: the app also learns each person's roles and permissions on this site. Only the policy
+ * knows them, so it is offered on a policy gate only; elsewhere it is off and says why.
+ */
+function RolesCheckbox({ gate, readOnly, onChange }: { gate: Gate; readOnly: boolean; onChange: (g: Gate) => void }) {
+  const policy = gate.authorizer === 'policy';
+  const box = (
+    <Checkbox
+      checked={policy && !!gate.passRoles}
+      disabled={readOnly || !policy}
+      label={`Also pass the person's roles and permissions (${ROLE_HEADERS.join(', ')})`}
+      hint={policy ? 'The app then learns what each person may do on this site, as JSON arrays.' : ROLES_NEED_POLICY}
+      onChange={(on) => { const { passRoles: _drop, ...rest } = gate; void _drop; onChange(on ? { ...gate, passRoles: true } : rest); }}
+    />
+  );
+  return <div className="mt-8">{policy ? box : <Tooltip content={ROLES_NEED_POLICY}>{box}</Tooltip>}</div>;
+}
+
+const ROLES_NEED_POLICY = 'Only when “Who may pass” checks permissions per route: the policy is what knows the roles.';
+
 function GateBasic({ gate, site, enabled, readOnly, onChange, onSite, onLocked, onAdvanced }: {
   gate: Gate; site: Site; enabled: typeof SANDBOX_ENABLED; readOnly: boolean;
   onChange: (g: Gate) => void; onSite: (fn: (s: Site) => Site) => void; onLocked: (h: string) => void; onAdvanced: () => void;
@@ -193,6 +213,7 @@ function GateBasic({ gate, site, enabled, readOnly, onChange, onSite, onLocked, 
           const missing = missingHandlers(GETS[k], enabled.mutators);
           return { value: k, label: GETS_LABEL[k], hint: lockHint(missing) ?? (k === 'nothing' && !noSubject ? `Warning: ${PASSES_NO_IDENTITY.toLowerCase()}.` : undefined), disabled: missing.length > 0 };
         })} />
+        <RolesCheckbox gate={gate} readOnly={readOnly} onChange={onChange} />
       </section>
       <section>
         <h4>4 When access fails</h4>

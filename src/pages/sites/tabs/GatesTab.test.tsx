@@ -55,3 +55,20 @@ describe('Gates · a sign-in gate that passes no identity', () => {
     expect(text()).not.toContain('Passes no identity');
   });
 });
+
+describe('Gates · pass roles and permissions', () => {
+  const policyGate: Gate = { ...gate, authenticators: [{ handler: 'cookie_session' }] };
+  const box = () => [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find((i) => i.closest('label')?.textContent?.includes('X-User-Roles'))!;
+  it('is off by default and turns on for a policy gate', async () => {
+    const update = mount(policyGate);
+    expect(box().checked).toBe(false);
+    expect(box().disabled).toBe(false);
+    await click(box());
+    expect((update.mock.calls[0][0](site) as Site).gates[0].passRoles).toBe(true);
+  });
+  it('is off and says why on a gate that does not ask the policy', () => {
+    mount({ ...policyGate, authorizer: { handler: 'allow' } });
+    expect(box().disabled).toBe(true);
+    expect(text()).toContain('Only when “Who may pass” checks permissions per route');
+  });
+});
