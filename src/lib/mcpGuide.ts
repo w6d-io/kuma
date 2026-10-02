@@ -1,14 +1,30 @@
 /**
  * The snippets of the "Connect an MCP client" guide, one set per client. Pure strings, so the guide
  * and its tests read the same text. `key` is the key just created (shown once) or the placeholder;
- * every client reads it from example_MCP_KEY (or its own secret store), so no snippet puts a key in
- * a file a project could commit.
+ * every client reads it from MCP_KEY_ENV (KUMA_MCP_KEY by default, or its own secret store), so no
+ * snippet puts a key in a file a project could commit.
  */
 
+/** The name a client lists the server under when the deployment names none (MCP_SERVER_NAME). */
+export const DEFAULT_MCP_SERVER_NAME = 'kuma';
+
+/**
+ * The deployment's server name (MCP_SERVER_NAME, substituted at container start): lowercase letters,
+ * digits and dashes, as every client accepts it and as it reads in a shell command. Anything else —
+ * unset, never substituted ("${MCP_SERVER_NAME}"), or a name a client would choke on — is the default.
+ */
+export function mcpServerName(raw: unknown): string {
+  const v = typeof raw === 'string' ? raw.trim() : '';
+  return /^[a-z0-9][a-z0-9-]{0,40}$/.test(v) ? v : DEFAULT_MCP_SERVER_NAME;
+}
+
+/** The variable the key is read from, after the server name: kuma-dev → KUMA_DEV_MCP_KEY. */
+export const mcpKeyEnv = (name: string) => `${name.toUpperCase().replace(/-/g, '_')}_MCP_KEY`;
+
 /** The name each client lists the server under. */
-export const MCP_SERVER_NAME = 'example';
+export const MCP_SERVER_NAME = mcpServerName((window as unknown as { __MCP_SERVER_NAME__?: unknown }).__MCP_SERVER_NAME__);
 /** Where the snippets read the key from. */
-export const MCP_KEY_ENV = 'example_MCP_KEY';
+export const MCP_KEY_ENV = mcpKeyEnv(MCP_SERVER_NAME);
 /** Stands for a key in the snippets when none was just created. */
 export const MCP_KEY_PLACEHOLDER = 'stk_mcp_<your key>';
 
@@ -70,8 +86,8 @@ export const cursor = (url: string) =>
 /** VS Code asks for the key once and keeps it in its secret storage, never in the file. */
 export const vscode = (url: string) =>
   json({
-    inputs: [{ type: 'promptString', id: 'example-mcp-key', description: 'example MCP key (stk_mcp_…)', password: true }],
-    servers: { [MCP_SERVER_NAME]: { type: 'http', url, headers: { Authorization: 'Bearer ${input:example-mcp-key}' } } },
+    inputs: [{ type: 'promptString', id: `${MCP_SERVER_NAME}-mcp-key`, description: `${MCP_SERVER_NAME} MCP key (stk_mcp_…)`, password: true }],
+    servers: { [MCP_SERVER_NAME]: { type: 'http', url, headers: { Authorization: `Bearer \${input:${MCP_SERVER_NAME}-mcp-key}` } } },
   });
 
 const rpc = (id: number, method: string, params?: unknown) => JSON.stringify({ jsonrpc: '2.0', id, method, ...(params ? { params } : {}) });

@@ -55,6 +55,10 @@ ENV ORG_SELECTION_URL=""
 # MCP_SERVER_URL: where MCP clients connect with a personal key, shown on Connections & keys.
 #              Empty (default) → the page says to ask an administrator for it.
 ENV MCP_SERVER_URL=""
+# MCP_SERVER_NAME: the name MCP clients list the server under in the setup snippets — lowercase
+#              letters, digits and dashes; the key variable follows it (kuma-dev → KUMA_DEV_MCP_KEY).
+#              Empty or invalid (default) → kuma, KUMA_MCP_KEY.
+ENV MCP_SERVER_NAME=""
 # LOGO_URL:       the deployment's full logo (wordmark): navigation rail, organisation screens.
 # LOGO_DARK_URL:  that logo drawn for the dark theme; unset → the full logo on a neutral plate.
 # LOGO_SMALL_URL: its small square logo: collapsed rail, phone bar and menu, the tab icon by default.
@@ -72,6 +76,6 @@ EXPOSE 8080
 # Inject runtime config into index.html, then start nginx.
 # envsubst whitelist: only the listed vars are substituted (preserves other ${...} content).
 CMD ["/bin/sh", "-c", \
-  "envsubst '${API_BASE} ${AUTH_DOMAIN} ${GRAFANA_URL} ${BACKUP_ENABLED} ${OIDC_AUTHORITY} ${OIDC_CLIENT_ID} ${OIDC_AUDIENCE} ${ORG_AUTHORITY} ${KRATOS_PUBLIC_URL} ${ORG_DIRECTORY_AUDIENCE} ${ORG_DIRECTORY_URL} ${ORG_SELECTION_URL} ${MCP_SERVER_URL} ${LOGO_URL} ${LOGO_DARK_URL} ${LOGO_SMALL_URL} ${FAVICON_URL} ${APP_NAME}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
+  "envsubst '${API_BASE} ${AUTH_DOMAIN} ${GRAFANA_URL} ${BACKUP_ENABLED} ${OIDC_AUTHORITY} ${OIDC_CLIENT_ID} ${OIDC_AUDIENCE} ${ORG_AUTHORITY} ${KRATOS_PUBLIC_URL} ${ORG_DIRECTORY_AUDIENCE} ${ORG_DIRECTORY_URL} ${ORG_SELECTION_URL} ${MCP_SERVER_URL} ${MCP_SERVER_NAME} ${LOGO_URL} ${LOGO_DARK_URL} ${LOGO_SMALL_URL} ${FAVICON_URL} ${APP_NAME}' < /usr/share/nginx/html/index.html > /tmp/index.html && \
    mv /tmp/index.html /usr/share/nginx/html/index.html && \
    nginx -g 'daemon off;'"]

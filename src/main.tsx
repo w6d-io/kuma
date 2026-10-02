@@ -15,7 +15,7 @@ import { applyFavicon, applyTitle, readBrand } from './lib/brand'
 // substitutes at container start. On the vite dev server nothing substitutes
 // them, so readers would see a TRUTHY garbage value and build broken
 // "https://${AUTH_DOMAIN}/login" redirects. Blank them out once at boot.
-for (const k of ['__API_BASE__', '__AUTH_DOMAIN__', '__GRAFANA_URL__', '__BACKUP_ENABLED__', '__OIDC_AUTHORITY__', '__OIDC_CLIENT_ID__', '__OIDC_AUDIENCE__', '__ORG_AUTHORITY__', '__KRATOS_PUBLIC_URL__', '__ORG_DIRECTORY_AUDIENCE__', '__ORG_DIRECTORY_URL__', '__ORG_SELECTION_URL__', '__MCP_SERVER_URL__', '__LOGO_URL__', '__LOGO_DARK_URL__', '__LOGO_SMALL_URL__', '__FAVICON_URL__', '__APP_NAME__'] as const) {
+for (const k of ['__API_BASE__', '__AUTH_DOMAIN__', '__GRAFANA_URL__', '__BACKUP_ENABLED__', '__OIDC_AUTHORITY__', '__OIDC_CLIENT_ID__', '__OIDC_AUDIENCE__', '__ORG_AUTHORITY__', '__KRATOS_PUBLIC_URL__', '__ORG_DIRECTORY_AUDIENCE__', '__ORG_DIRECTORY_URL__', '__ORG_SELECTION_URL__', '__MCP_SERVER_URL__', '__MCP_SERVER_NAME__', '__LOGO_URL__', '__LOGO_DARK_URL__', '__LOGO_SMALL_URL__', '__FAVICON_URL__', '__APP_NAME__'] as const) {
   const v = (window as unknown as Record<string, unknown>)[k]
   if (typeof v === 'string' && v.startsWith('${')) {
     (window as unknown as Record<string, unknown>)[k] = ''

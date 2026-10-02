@@ -19,6 +19,8 @@
     <!--              Empty → no trace link rendered. -->
     <!-- MCP_SERVER_URL: where MCP clients connect with a personal key (Connections & keys). -->
     <!--              Empty → the help panel says to ask an administrator. -->
+    <!-- MCP_SERVER_NAME: the name clients list the server under (a-z, 0-9, dashes); the key variable -->
+    <!--              follows it (kuma-dev → KUMA_DEV_MCP_KEY). Empty or invalid → kuma. -->
     <!-- LOGO_URL / LOGO_DARK_URL / LOGO_SMALL_URL / FAVICON_URL: the deployment's full logo, its -->
     <!--              dark-theme variant, square logo and tab icon (https:// or a path on this -->
     <!--              origin). Empty → the console's own tile. APP_NAME: "<name> — Access console". -->
@@ -36,6 +38,7 @@
       window.__ORG_DIRECTORY_URL__ = "${ORG_DIRECTORY_URL}";
       window.__ORG_SELECTION_URL__ = "${ORG_SELECTION_URL}";
       window.__MCP_SERVER_URL__ = "${MCP_SERVER_URL}";
+      window.__MCP_SERVER_NAME__ = "${MCP_SERVER_NAME}";
       window.__LOGO_URL__ = "${LOGO_URL}";
       window.__LOGO_DARK_URL__ = "${LOGO_DARK_URL}";
       window.__LOGO_SMALL_URL__ = "${LOGO_SMALL_URL}";

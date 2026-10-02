@@ -103,9 +103,9 @@ describe('Connections & keys', () => {
     expect([...document.querySelectorAll('.tag-list .badge')].map((b) => b.textContent)).toEqual(['users:read']);
     expect(text()).toContain('All my permissions');
     expect((document.querySelector('.copy-field input') as HTMLInputElement).value).toBe('https://mcp.dev.example.com/mcp');
-    expect(text()).toContain("export example_MCP_KEY='stk_mcp_<your key>'");
-    expect(text()).toContain('claude mcp add --transport http --scope user example https://mcp.dev.example.com/mcp');
-    expect(text()).toContain('Authorization: Bearer $example_MCP_KEY');
+    expect(text()).toContain("export KUMA_MCP_KEY='stk_mcp_<your key>'");
+    expect(text()).toContain('claude mcp add --transport http --scope user kuma https://mcp.dev.example.com/mcp');
+    expect(text()).toContain('Authorization: Bearer $KUMA_MCP_KEY');
   });
 
   it('walks through each client in its own tab, then what a key can do and what refusals mean', async () => {
@@ -119,10 +119,10 @@ describe('Connections & keys', () => {
     expect(text()).toContain('"mcp-remote"');
     expect(text()).toContain('"AUTH_HEADER": "Bearer stk_mcp_<your key>"');
     click(button(/^Cursor$/));
-    expect(text()).toContain('"Authorization": "Bearer ${env:example_MCP_KEY}"');
+    expect(text()).toContain('"Authorization": "Bearer ${env:KUMA_MCP_KEY}"');
     click(button(/^VS Code$/));
     expect(text()).toContain('"type": "http"');
-    expect(text()).toContain('${input:example-mcp-key}');
+    expect(text()).toContain('${input:kuma-mcp-key}');
     click(button(/^curl$/));
     expect(text()).toContain('"method":"tools/list"');
     expect(document.querySelector('[role=tabpanel]')!.getAttribute('aria-labelledby')).toBe('mcp-client-tab-curl');
@@ -146,7 +146,7 @@ describe('Connections & keys', () => {
     expect(api.createMyApiKey).toHaveBeenCalledWith({ label: 'Laptop', expires_in_days: 30, allow_step_up_actions: true });
     expect((document.querySelector('.drawer .copy-field input') as HTMLInputElement).value).toBe('stk_mcp_c2.s');
     expect(document.querySelector('.drawer')!.textContent).toContain('with all your permissions');
-    expect(document.querySelector('.drawer')!.textContent).toContain("export example_MCP_KEY='stk_mcp_c2.s'");
+    expect(document.querySelector('.drawer')!.textContent).toContain("export KUMA_MCP_KEY='stk_mcp_c2.s'");
     click([...document.querySelectorAll('.drawer [role=tab]')].find((t) => t.textContent === 'Claude Desktop')!);
     expect(document.querySelector('.drawer')!.textContent).toContain('"AUTH_HEADER": "Bearer stk_mcp_c2.s"');
   });
@@ -198,7 +198,7 @@ describe('Connections & keys', () => {
     const t = text();
     expect(t).toContain('Sign in with your browser (recommended)');
     expect(t.indexOf('Sign in with your browser')).toBeLessThan(t.indexOf('Or use a personal key'));
-    expect(t).toContain('claude mcp add --transport http --scope user example https://mcp.example.com/mcp');
+    expect(t).toContain('claude mcp add --transport http --scope user kuma https://mcp.example.com/mcp');
     cleanup();
     api.status.data = { enabled: true, serverUrl: null, off: null, personalKeys: { maxDays: 30 }, oauth: { enabled: false } };
     mount();
