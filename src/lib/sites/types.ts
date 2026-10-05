@@ -61,6 +61,17 @@ export interface SiteLogin {
   defaultReturnUrl?: string;
 }
 
+/** Public sign-up through this site (jinbe sites/signup). Absent = closed. */
+export interface SiteSignUp {
+  mode: 'closed' | 'open' | 'domains';
+  /** Who may sign up, in domains mode (exact domains). */
+  domains: string[];
+  /** The site roles signed-up people get (the generated `<site>-users` group). */
+  roles: string[];
+  /** The organization a sign-up lands in. */
+  orgs: 'personal' | 'domain' | 'invite' | 'none';
+}
+
 export interface Site {
   name: string;
   displayName: string;
@@ -84,6 +95,7 @@ export interface Site {
   /** What a site role carries into every organization entitled to the site, never more than it holds. */
   everyOrg?: Record<string, string[]>;
   login?: SiteLogin;
+  signUp?: SiteSignUp;
   state?: 'active' | 'paused';
 }
 

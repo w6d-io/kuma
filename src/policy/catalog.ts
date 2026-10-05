@@ -20,6 +20,7 @@ export const PLATFORM_PERMISSIONS = [
   'groups.mfa:write', 'users.grants:read', 'users.grants:write',
   'orgs:read', 'orgs:write', 'orgs:delete', 'orgs.members:write', 'orgs.owners:write',
   'sites:read', 'sites:write', 'sites:apply', 'sites:delete', 'sites.requests:approve',
+  'sites.signup:write', 'sites.signup:revoke',
   'zones:read', 'zones:write', 'zones:delete', 'gateway:read', 'gateway:apply',
   'settings:read', 'settings.signin:write', 'settings.mcp:write', 'policy.bundle:read', 'policy.bundle:write',
   'audit:read', 'audit:export', 'recert:read', 'recert:manage', 'recert:delete', 'stats:read',

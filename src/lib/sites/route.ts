@@ -11,7 +11,7 @@
  *   #/sites/<name>[/<tab>][?query]
  */
 
-export const SITE_TABS = ['overview', 'routes', 'gates', 'access', 'login', 'status', 'history', 'verify', 'settings', 'review'] as const;
+export const SITE_TABS = ['overview', 'routes', 'gates', 'access', 'users', 'login', 'status', 'history', 'verify', 'settings', 'review'] as const;
 export type SiteTab = (typeof SITE_TABS)[number];
 
 export const WIZARD_STEPS = ['address', 'kind', 'access', 'review'] as const;

@@ -113,6 +113,9 @@ export const sitesApi = {
     request<ApplyResult>(`${BASE}/${enc(name)}/rollback`, { method: 'POST', body: json({ toVersion, ...(note ? { note } : {}) }) }),
   pause: (name: string) => request<{ name: string; state: string }>(`${BASE}/${enc(name)}/pause`, { method: 'POST' }),
   resume: (name: string) => request<{ name: string; state: string }>(`${BASE}/${enc(name)}/resume`, { method: 'POST' }),
+  signUpMembers: (name: string, limit = 200) => request<SignUpMembers>(`${BASE}/${enc(name)}/sign-up/members?limit=${limit}`),
+  removeSignUpMember: (name: string, id: string) => request<{ removed: boolean }>(`${BASE}/${enc(name)}/sign-up/members/${enc(id)}`, { method: 'DELETE' }),
+  removeAllSignUpMembers: (name: string) => request<{ removed: number }>(`${BASE}/${enc(name)}/sign-up/members`, { method: 'DELETE' }),
   blastRadius: (name: string) => request<BlastRadius>(`${BASE}/${enc(name)}/blast-radius`),
   remove: (name: string) => request<{ name: string; deleted: boolean }>(`${BASE}/${enc(name)}`, { method: 'DELETE' }),
 
@@ -287,4 +290,12 @@ export function useSitesPlatform() {
       }
     },
   });
+}
+
+/** GET /sites/:name/sign-up/members: who joined the site's sign-up group. */
+export interface SignUpMembers {
+  site: string;
+  group: string;
+  total: number;
+  members: Array<{ id: string; email: string | null; name: string | null; createdAt: string | null; organizations: Array<{ id: string; name: string | null }> }>;
 }

@@ -21,8 +21,10 @@ export function presetRoles(name: string, declared: readonly string[] = []): Rec
   const editor = [`${name}:list`, `${name}:read`, `${name}:create`, `${name}:update`];
   const viewer = [`${name}:list`, `${name}:read`];
   const admin = [...new Set([...operator, ...declared])].sort();
+  // `user`: somebody who uses the app (jinbe render.ts userRole) — what signed-up people get by default.
+  const user = [`${name}:list`, `${name}:read`, `${name}:use`];
   return {
-    standard: { admin, editor, viewer },
+    standard: { admin, editor, viewer, user },
     readonly: { viewer },
     operator: { admin, operator, editor, viewer },
   };

@@ -9,6 +9,7 @@ import { OverviewTab } from './tabs/OverviewTab';
 import { RoutesTab } from './tabs/RoutesTab';
 import { GatesTab } from './tabs/GatesTab';
 import { AccessTab } from './tabs/AccessTab';
+import { UsersTab } from './tabs/UsersTab';
 import { LoginTab } from './tabs/LoginTab';
 import { StatusTab } from './tabs/StatusTab';
 import { HistoryTab } from './tabs/HistoryTab';
@@ -64,7 +65,7 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
     { value: 'routes', label: 'Routes' },
     { value: 'gates', label: 'Gates' },
     { value: 'access', label: 'Access' },
-    ...(ed.system ? [] : [{ value: 'login' as const, label: 'Login' }]),
+    ...(ed.system ? [] : [{ value: 'users' as const, label: 'Users' }, { value: 'login' as const, label: 'Login' }]),
     { value: 'status', label: 'Status' },
     { value: 'history', label: 'History' },
     { value: 'verify', label: 'Verify' },
@@ -146,6 +147,7 @@ export function SiteDetailPage({ name, tab, query }: { name: string; tab: SiteTa
         {tab === 'routes' && <RoutesTab ed={ed} readOnly={readOnly} query={query} go={go} />}
         {tab === 'gates' && <GatesTab ed={ed} readOnly={readOnly} query={query} go={go} />}
         {tab === 'access' && <AccessTab ed={ed} readOnly={readOnly} query={query} go={go} />}
+        {tab === 'users' && !ed.system && <UsersTab ed={ed} readOnly={readOnly} />}
         {tab === 'login' && !ed.system && <LoginTab ed={ed} readOnly={readOnly} />}
         {tab === 'status' && <StatusTab ed={ed} />}
         {tab === 'verify' && <VerifyTab ed={ed} go={go} />}

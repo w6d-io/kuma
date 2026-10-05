@@ -15,6 +15,8 @@ export function useSitePerms() {
   return {
     canRead: holds(data, 'sites:read'), canDraft: holds(data, 'sites:write'), canApply: holds(data, 'sites:apply'),
     canDelete: holds(data, 'sites:delete'), canRequest: holds(data, 'sites:write'),
+    // Site sign-up: who joined (people data), removing them, and publishing a version that opens it.
+    canSeeMembers: holds(data, 'users:read'), canRevokeSignUp: holds(data, 'sites.signup:revoke'), canOpenSignUp: holds(data, 'sites.signup:write'),
     email: data?.email ?? null,
   };
 }
