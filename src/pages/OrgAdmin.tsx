@@ -10,6 +10,7 @@ import { orgLabel } from '../lib/orgOptions';
 import { holdsIn } from '../policy/model';
 import { useMyOrg } from '../hooks/useMyOrg';
 import { OrgMembers } from './orgadmin/OrgMembers';
+import { OrgDomains } from './orgadmin/OrgDomains';
 
 /**
  * "My org": one organization from the inside — its members and the org roles they hold there.
@@ -72,7 +73,10 @@ export function OrgAdminPage() {
       {!active
         ? <Card className="p-32"><EmptyHint>Choose an organization to see its members.</EmptyHint></Card>
         : mayRead
-          ? <OrgMembers key={active} org={active} orgName={orgName} mayManage={mayManage} pushToast={pushToast} />
+          ? <div className="stack gap-16">
+              <OrgMembers key={active} org={active} orgName={orgName} mayManage={mayManage} pushToast={pushToast} />
+              <OrgDomains key={`d-${active}`} org={active} mayManage={mayManage} pushToast={pushToast} />
+            </div>
           : <Card className="p-32"><EmptyHint>You hold no role here that shows its members (org.members:read in {orgName}).</EmptyHint></Card>}
     </>
   );
