@@ -6,7 +6,8 @@ import { redirectToLogin } from './auth/loginRedirect';
 import { edgeBlocked } from './lib/apiError';
 import { takeRedo } from './lib/resume';
 import { NAV, COLLAPSIBLE, hasAnyPerm, navBlocks, navItemFor, type NavSection } from './nav';
-import { holds } from './policy/model';
+import { holds, isStaff } from './policy/model';
+import { StaffOnly } from './components/StaffOnly';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { useSession, useStats, useRealtime, useUserSearch, useSecondFactorStatus } from './api/hooks';
 import { searchedToUser } from './api/transforms';
@@ -446,6 +447,9 @@ function AppShell() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Staff only: an account with organization permissions alone (a customer) never gets the shell.
+  if (sessionReady && session?.authenticated && !isStaff(session)) return <StaffOnly email={session.email} />;
 
   return (
     <div className="app">

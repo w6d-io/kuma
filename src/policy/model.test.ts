@@ -72,3 +72,13 @@ describe('the catalogue snapshot', () => {
     expect(new Set(PERMISSIONS).size).toBe(PERMISSIONS.length);
   });
 });
+
+describe('isStaff', () => {
+  it('needs one platform permission; organization permissions alone are not staff', async () => {
+    const { isStaff } = await import('./model');
+    expect(isStaff({ effective_permissions: ['sites:read'] })).toBe(true);
+    expect(isStaff({ effective_permissions: ['org.members:write', 'org.keys:read'] })).toBe(false);
+    expect(isStaff({ effective_permissions: [] })).toBe(false);
+    expect(isStaff(undefined)).toBe(false);
+  });
+});

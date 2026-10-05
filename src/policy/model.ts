@@ -6,7 +6,7 @@
  * lists every permission, not because they are special. Only decides what to show: jinbe decides the
  * call, and a screen must still expect a 403.
  */
-import type { OrgPermission, Permission, PlatformPermission } from './catalog';
+import { PLATFORM_PERMISSIONS, type OrgPermission, type Permission, type PlatformPermission } from './catalog';
 
 /** The session fields a gate reads (`GET /whoami`). */
 export type HeldSession = { permissions?: readonly string[]; effective_permissions?: readonly string[] } | undefined;
@@ -14,6 +14,16 @@ export type HeldSession = { permissions?: readonly string[]; effective_permissio
 /** The catalogue names a session holds: `effective_permissions`, or the raw list on a jinbe that does not say. */
 function heldBy(session: HeldSession): readonly string[] {
   return session?.effective_permissions ?? session?.permissions ?? [];
+}
+
+/**
+ * Staff: somebody who holds at least one platform permission (a staff group, super_admins, a direct
+ * grant). The console is for them; an account that holds only organization permissions (a customer
+ * who owns their organization) is shown the way out instead (App StaffOnly).
+ */
+export function isStaff(session: HeldSession): boolean {
+  const held = heldBy(session);
+  return (PLATFORM_PERMISSIONS as readonly string[]).some((p) => held.includes(p));
 }
 
 /** Whether the session holds this platform permission. */
