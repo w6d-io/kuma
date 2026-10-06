@@ -1,16 +1,21 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useSession } from '../api/hooks';
-import { api, type BackupList } from '../api/client';
+import { useImportHistory, useRollbackImport, useSession } from '../api/hooks';
+import { api, type BackupList, type BundleImportResult } from '../api/client';
 import { stepUpOnRefusal } from '../lib/resume';
-import { I, Badge, Button, Card, CodeView, ConfirmDialog, EmptyRow, LoadingRows, PageHeader, SkeletonPanel, Table } from '../components/ui';
-import { ExportBundleModal } from '../components/ExportBundleModal';
+import { I, Badge, Button, Card, ConfirmDialog, EmptyRow, LoadingRows, PageHeader, SkeletonPanel, Table } from '../components/ui';
 import { holds } from '../policy/model';
+import { RestoreFileDialog } from './backup/RestoreFileDialog';
+import { availableSections, readSnapshot, type PendingFile, type SectionId } from './backup/snapshot';
+import { BackupSetup, RestoreResult, SnapshotContents } from './backup/parts';
 
 // Deploy-time flag (envsubst → window.__BACKUP_ENABLED__): only a fallback for an older jinbe whose
 // backups call fails. jinbe's own `enabled` decides — on auth-dev the flag said off while jinbe had a
 // nightly backup, and the page said "Backup isn't set up".
 const deployFlag = () => (window as any).__BACKUP_ENABLED__ === 'true';
+
+const TITLE = 'Backup & restore';
+const SUB = 'One snapshot of what people configured: download it, keep it in S3, restore it, roll an import back.';
 
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -21,12 +26,32 @@ function fmtDate(s: string | null): string {
   return s ? new Date(s).toLocaleString() : '—';
 }
 
+/**
+ * The one place for backups: the snapshot as a file (works with S3 off), S3 snapshots when the chart
+ * turned them on, and the import history. Reading (download, list) needs policy.bundle:read; anything
+ * that writes (back up now, restore, roll back) policy.bundle:write and a recent second factor.
+ */
 export function BackupPage() {
-  const { pushToast } = useApp();
+  const { pushToast, refetch } = useApp();
+  const { data: session } = useSession();
+  const mayRead = holds(session, 'policy.bundle:read');
+  const mayWrite = holds(session, 'policy.bundle:write');
+  const writeGate = mayWrite ? undefined : 'Needs policy.bundle:write';
+
   const [list, setList] = useState<BackupList | null>(null);
   // 'ok': jinbe answered; 'failed': it did not, the deploy flag decides.
   const [state, setState] = useState<'loading' | 'ok' | 'failed'>('loading');
   const [loading, setLoading] = useState(true);
+  const { data: history, refetch: refetchHistory } = useImportHistory({ enabled: mayRead });
+  const rollbackImport = useRollbackImport();
+
+  const [busy, setBusy] = useState(false);
+  const [confirmKey, setConfirmKey] = useState<string | null>(null);
+  const [confirmRollback, setConfirmRollback] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<PendingFile | null>(null);
+  const [sections, setSections] = useState<SectionId[]>([]);
+  const [last, setLast] = useState<{ title: string; result: BundleImportResult } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,212 +67,180 @@ export function BackupPage() {
   }, [pushToast]);
   useEffect(() => { load(); }, [load]);
 
-  if (state === 'loading') return <><PageHeader title="Backup" sub="Snapshot, restore and disaster-recovery for your RBAC configuration." /><SkeletonPanel lines={4} /></>;
-  const enabled = state === 'ok' ? !!list?.enabled : deployFlag();
-  return enabled ? <BackupEnabled list={list} loading={loading} load={load} /> : <BackupDisabled />;
-}
+  const s3 = state === 'ok' ? !!list?.enabled : deployFlag();
+  const backups = list?.backups ?? [];
+  const latest = backups[0];
 
-// ─── Disabled: setup requirement ──────────────────────────────────────────────
-function BackupDisabled() {
-  return (
-    <>
-      <PageHeader title="Backup" sub="Snapshot, restore and disaster-recovery for your RBAC configuration." />
-      <Card pad="md" className="maxw-lg">
-        <div className="row gap-8 mb-8">
-          <span className="icon-lg text-warning">{I.alert}</span>
-          <h3 className="m-0">Backup isn't set up on this deployment</h3>
-        </div>
-        <p className="small muted leading-relaxed">
-          Scheduled S3 backups (and in-app restore + first-init recovery) are off. To enable, set in the auth Helm values:
-        </p>
-        <CodeView title="values.yaml" language="yaml" code={`backup:
-  enabled: true
-  s3:
-    bucket: your-auth-backup-bucket
-    region: eu-west-3
-  serviceAccount:
-    annotations:
-      eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/auth-backup-role
-jinbe:
-  serviceAccount:
-    annotations:
-      eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/auth-backup-role`} />
-        <p className="small muted leading-relaxed">
-          The IAM role needs <span className="mono">s3:PutObject</span> (backup), plus{' '}
-          <span className="mono">s3:GetObject</span> + <span className="mono">s3:ListBucket</span> for in-app restore.
-          Manual export/import is still available under <b>Settings</b>.
-        </p>
-      </Card>
-    </>
-  );
-}
+  /** One way every restore ends: the result shown, the history and the console refreshed. */
+  function restored(title: string, result: BundleImportResult) {
+    setLast({ title, result });
+    const failed = result.sites?.failed.length ?? 0;
+    pushToast(title, { err: failed > 0, sub: failed ? `${failed} site${failed === 1 ? '' : 's'} could not be published again` : `${result.rbac.services} services · ${result.rbac.groups} groups` });
+    refetch();
+    refetchHistory();
+  }
 
-// ─── Enabled: full backup UX ──────────────────────────────────────────────────
-function BackupEnabled({ list, loading, load }: { list: BackupList | null; loading: boolean; load: () => Promise<void> }) {
-  const { pushToast, refetch } = useApp();
-  const { data: session } = useSession();
-  // The permission the restore checks.
-  const mayRestore = holds(session, 'policy.bundle:write');
-
-  const [busy, setBusy] = useState(false);
-  const [confirmKey, setConfirmKey] = useState<string | null>(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [pendingFile, setPendingFile] = useState<{ bundle: unknown; name: string } | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  async function doBackupNow() {
+  async function run(what: () => Promise<void>, redo: string, failure: string) {
     setBusy(true);
     try {
-      const r = await api.backupNow();
-      pushToast('Backup created', { sub: r.key });
-      await load();
+      await what();
     } catch (e: any) {
-      if (stepUpOnRefusal(e, pushToast, { redo: 'Press Backup now again: no backup was taken before the check.' })) return;
-      pushToast(e.message || 'Backup failed', { err: true });
+      if (stepUpOnRefusal(e, pushToast, { redo })) return;
+      pushToast(e.message || failure, { err: true });
     } finally {
       setBusy(false);
     }
   }
 
-  async function doRestore(key: string) {
-    setBusy(true);
-    try {
-      const r = await api.restoreBackup(key);
-      const c = r.imported.rbac;
-      pushToast('Restored from backup', { sub: `${c.services} services · ${c.groups} groups · ${c.roles} roles` });
-      refetch();
-    } catch (e: any) {
-      if (stepUpOnRefusal(e, pushToast, { redo: `Restore ${key} again: nothing was restored before the check.` })) return;
-      pushToast(e.message || 'Restore failed', { err: true });
-    } finally {
-      setBusy(false);
-      setConfirmKey(null);
-    }
+  const download = (key?: string) => run(
+    async () => { await (key ? api.downloadBackup(key) : api.downloadSnapshot()); pushToast('Snapshot downloaded', { sub: key ?? 'the current configuration' }); },
+    'Download again.', 'Download failed',
+  );
+  const backupNow = () => run(
+    async () => { const r = await api.backupNow(); pushToast('Backup created', { sub: r.key }); await load(); },
+    'Press Back up now again: no backup was taken before the check.', 'Backup failed',
+  );
+  const restoreKey = (key: string) => run(
+    async () => { setConfirmKey(null); restored(`Restored from ${key}`, (await api.restoreBackup(key)).imported); },
+    `Restore ${key} again: nothing was restored before the check.`, 'Restore failed',
+  );
+  const restoreFile = () => pendingFile && run(
+    async () => {
+      const full = sections.length === availableSections(pendingFile).length;
+      const r = await api.importBundle(pendingFile.bundle, full ? undefined : sections);
+      setPendingFile(null);
+      restored(full ? `Restored from ${pendingFile.name}` : `${sections.length} section${sections.length === 1 ? '' : 's'} imported from ${pendingFile.name}`, r.imported);
+    },
+    'Restore from the file again: nothing was restored before the check.', 'Restore failed',
+  );
+  function rollback(id: string) {
+    setConfirmRollback(null);
+    rollbackImport.mutate(id, {
+      onSuccess: (r) => restored('Rolled back', r.imported),
+      onError: (e: Error) => {
+        if (stepUpOnRefusal(e, pushToast, { redo: 'Roll back again: nothing was changed before the check.' })) return;
+        pushToast(e.message || 'Rollback failed', { err: true });
+      },
+    });
   }
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const name = file.name;
     e.target.value = '';
-    try {
-      const bundle: any = JSON.parse(await file.text());
-      if (!bundle?.version || !bundle?.rbac) {
-        pushToast('Invalid bundle file', { err: true, sub: 'Missing version or rbac fields' });
-        return;
-      }
-      setPendingFile({ bundle, name });
-    } catch (err: any) {
-      pushToast(err.message || 'Could not read bundle file', { err: true, sub: 'Not valid JSON?' });
-    }
-  }
-  async function confirmFileRestore() {
-    if (!pendingFile) return;
-    setBusy(true);
-    try {
-      const r = await api.importBundle(pendingFile.bundle);
-      const c = r.imported.rbac;
-      pushToast('Restored from file', { sub: `${c.services} services · ${c.groups} groups` });
-      refetch();
-      await load();
-    } catch (e: any) {
-      if (stepUpOnRefusal(e, pushToast, { redo: 'Restore from the file again: nothing was restored before the check.' })) return;
-      pushToast(e.message || 'Restore failed', { err: true });
-    } finally {
-      setBusy(false);
-      setPendingFile(null);
-    }
+    const read = readSnapshot(await file.text(), file.name);
+    if (typeof read === 'string') { pushToast('Not a snapshot file', { err: true, sub: read }); return; }
+    setPendingFile(read);
+    setSections(availableSections(read).map((s) => s.id));
   }
 
-  const backups = list?.backups ?? [];
-  const latest = backups[0];
-  const gate = mayRestore ? undefined : 'Needs policy.bundle:write';
+  if (state === 'loading') return <><PageHeader title={TITLE} sub={SUB} /><SkeletonPanel lines={4} /></>;
 
   return (
     <>
-      <PageHeader title="Backup" sub="Snapshot, restore and disaster-recovery for your RBAC configuration." />
+      <PageHeader title={TITLE} sub={SUB} />
+      <div className="stack gap-16">
+        <Card pad="md">
+          <div className="row wrap gap-8 mb-12">
+            {s3 ? <Badge tone="info">S3 backup on</Badge> : <Badge>S3 backup off</Badge>}
+            {s3 && list?.bucket && <Badge title="Bucket">s3://{list.bucket}</Badge>}
+            {s3 && list?.prefix && <Badge title="Prefix">prefix {list.prefix}</Badge>}
+            {s3 && list?.region && <Badge title="Region">{list.region}</Badge>}
+            {s3 && <span className="small muted ml-auto">{latest ? `Latest: ${fmtDate(latest.lastModified)}` : 'No backups yet'}</span>}
+          </div>
+          <div className="row wrap gap-8">
+            <Button icon={I.download} onClick={() => download()} disabled={busy}>Download snapshot</Button>
+            <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={onFile} />
+            <Button icon={I.upload} onClick={() => fileRef.current?.click()} disabled={busy || !mayWrite} title={writeGate}>Restore from file</Button>
+            {s3 && <Button variant="primary" icon={I.sync} onClick={backupNow} disabled={busy || !mayWrite} title={writeGate}>Back up now</Button>}
+            {s3 && <Button variant="ghost" size="sm" className="ml-auto" onClick={load} disabled={loading}>Refresh</Button>}
+          </div>
+          {!mayWrite && <p className="small muted mt-12 mb-0">You can download snapshots. Backing up, restoring and rolling back need policy.bundle:write.</p>}
+        </Card>
 
-      {/* status + actions */}
-      <Card pad="md" className="mb-12">
-        <div className="row wrap gap-8 mb-12">
-          <Badge tone="info">S3 backup on</Badge>
-          {list?.bucket && <Badge title="Bucket">s3://{list.bucket}</Badge>}
-          {list?.prefix && <Badge title="Prefix">prefix {list.prefix}</Badge>}
-          {list?.region && <Badge title="Region">{list.region}</Badge>}
-          <span className="small muted ml-auto">
-            {latest ? `Latest: ${fmtDate(latest.lastModified)}` : 'No backups yet'}
-          </span>
-        </div>
-        <div className="row wrap gap-8">
-          <Button variant="primary" icon={I.sync} onClick={doBackupNow} disabled={busy || !mayRestore} title={gate}>
-            Back up now
-          </Button>
-          <Button onClick={() => latest && setConfirmKey(latest.key)} disabled={busy || !latest || !mayRestore} title={gate}>
-            Restore latest
-          </Button>
-          <Button icon={I.download} onClick={() => setExportOpen(true)} disabled={busy || !mayRestore} title={gate}>
-            Export…
-          </Button>
-          <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={onFile} />
-          <Button icon={I.upload} onClick={() => fileRef.current?.click()} disabled={busy || !mayRestore} title={gate}>
-            Restore from file
-          </Button>
-          <Button variant="ghost" size="sm" className="ml-auto" onClick={load} disabled={loading}>Refresh</Button>
-        </div>
-        {!mayRestore && <p className="small muted mt-12">Restore needs policy.bundle:write.</p>}
-      </Card>
+        {last && <RestoreResult title={last.title} result={last.result} onDismiss={() => setLast(null)} />}
 
-      {/* snapshots */}
-      <Card title="Snapshots" pad="none">
-        <Table>
-          <thead><tr><th>When</th><th className="num">Size</th><th className="mono">Key</th><th className="actions" /></tr></thead>
-          <tbody>
-            {loading && <LoadingRows rows={4} cols={4} />}
-            {!loading && backups.length === 0 && <EmptyRow colSpan={4}>No backups yet — the scheduled job runs daily, or use “Back up now”.</EmptyRow>}
-            {backups.map((b, i) => (
-              <tr key={b.key}>
-                <td>{fmtDate(b.lastModified)} {i === 0 && <Badge tone="info">latest</Badge>}</td>
-                <td className="num mono">{fmtBytes(b.size)}</td>
-                <td className="mono small break-all">{b.key}</td>
-                <td className="actions">
-                  <Button variant="ghost" size="sm" onClick={() => setConfirmKey(b.key)} disabled={busy || !mayRestore} title={gate}>Restore</Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-      </Card>
+        {s3 ? (
+          <Card title="Snapshots in S3" pad="none">
+            <Table>
+              <thead><tr><th>When</th><th className="num">Size</th><th className="mono">Key</th><th className="actions" /></tr></thead>
+              <tbody>
+                {loading && <LoadingRows rows={4} cols={4} />}
+                {!loading && backups.length === 0 && <EmptyRow colSpan={4}>No backups yet — jinbe backs up daily, or use “Back up now”.</EmptyRow>}
+                {!loading && backups.map((b, i) => (
+                  <tr key={b.key}>
+                    <td>{fmtDate(b.lastModified)} {i === 0 && <Badge tone="info">latest</Badge>}</td>
+                    <td className="num mono">{fmtBytes(b.size)}</td>
+                    <td className="mono small break-all">{b.key}</td>
+                    <td className="actions nowrap">
+                      <Button variant="ghost" size="sm" icon={I.download} onClick={() => download(b.key)} disabled={busy}>Download</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setConfirmKey(b.key)} disabled={busy || !mayWrite} title={writeGate}>Restore</Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </Card>
+        ) : <BackupSetup />}
 
-      {/* snapshot restore confirm */}
+        <Card title="Import history" sub="A snapshot is taken before every restore, import or rollback (the last 10). Rolling back restores it in full, and keeps a snapshot of what it replaces." pad="none">
+          <Table className="compact">
+            <thead><tr><th>When</th><th>Taken before</th><th>By</th><th>Contents</th><th className="actions" /></tr></thead>
+            <tbody>
+              {(history?.length ?? 0) === 0 && <EmptyRow colSpan={5}>Nothing restored or imported yet.</EmptyRow>}
+              {history?.map((h) => (
+                <tr key={h.id}>
+                  <td className="nowrap">{fmtDate(h.takenAt)}</td>
+                  <td><Badge>{h.reason.replace('pre-', '')}</Badge></td>
+                  <td className="mono">{h.actor || 'jinbe'}</td>
+                  <td className="small muted">
+                    {h.counts.services} services · {h.counts.groups} groups · {h.counts.roles} roles
+                    {h.counts.sites !== undefined && <> · {h.counts.sites} sites</>}
+                    {h.counts.organizations !== undefined && <> · {h.counts.organizations} organizations</>}
+                  </td>
+                  <td className="actions">
+                    <Button variant="ghost" size="sm" disabled={busy || rollbackImport.isPending || !mayWrite} title={writeGate} onClick={() => setConfirmRollback(h.id)}>Roll back</Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </Card>
+
+        <SnapshotContents />
+      </div>
+
       <ConfirmDialog
         open={!!confirmKey}
         title="Restore this backup?"
         danger
-        confirmLabel="Restore (full replace)"
-        blastRadius={<>This replaces ALL current RBAC config (services, groups, roles, route maps, Oathkeeper rules) with the snapshot, then refreshes OPA. Current config not in the snapshot is removed.</>}
-        body={<>Restoring <span className="mono">{confirmKey}</span>.</>}
+        confirmLabel="Restore (full)"
+        blastRadius={<>Each section of the snapshot replaces what is there now — the access model, people’s direct grants and settings; what the snapshot lacks in them is removed. Organizations in the snapshot are restored exactly; organizations created since are left untouched, never deleted. Sites that exist now are kept; sites gone since are written back. Every applied site is then published again. Accounts and gateway rules are not touched.</>}
+        body={<>Restoring <span className="mono">{confirmKey}</span>. A snapshot of the current state is kept in the import history.</>}
         requireText="RESTORE"
         busy={busy}
-        onConfirm={() => confirmKey && doRestore(confirmKey)}
+        onConfirm={() => confirmKey && restoreKey(confirmKey)}
         onCancel={() => setConfirmKey(null)}
       />
 
-      {/* file restore confirm */}
       <ConfirmDialog
-        open={!!pendingFile}
-        title="Restore from this file?"
+        open={!!confirmRollback}
+        title="Roll back to this snapshot?"
         danger
-        confirmLabel="Restore (full replace)"
-        blastRadius={<>This replaces ALL current RBAC config with the uploaded bundle and refreshes OPA.</>}
-        body={<>Uploaded <span className="mono">{pendingFile?.name}</span>.</>}
-        requireText="RESTORE"
-        busy={busy}
-        onConfirm={confirmFileRestore}
-        onCancel={() => setPendingFile(null)}
+        confirmLabel="Roll back"
+        body={<>The snapshot is restored in full, as a backup would be. A snapshot of the current state is kept, so you can roll forward again.</>}
+        onCancel={() => setConfirmRollback(null)}
+        onConfirm={() => confirmRollback && rollback(confirmRollback)}
       />
 
-      {/* export select-all modal (shared with Settings) */}
-      <ExportBundleModal open={exportOpen} onClose={() => setExportOpen(false)} />
+      <RestoreFileDialog
+        file={pendingFile}
+        selected={sections}
+        onSelect={setSections}
+        busy={busy}
+        onConfirm={restoreFile}
+        onCancel={() => setPendingFile(null)}
+      />
     </>
   );
 }

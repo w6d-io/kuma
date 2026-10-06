@@ -6,7 +6,7 @@ describe('the rail', () => {
   it('reads in the K-4 order, with People, Access and Compliance as headings', () => {
     const blocks = navBlocks(NAV).map((b) => b.section ?? b.items[0].name);
     expect(blocks).toEqual([
-      'Home', 'Sites', 'People', 'Access', 'Organizations', 'API keys', 'Connections & keys', 'Audit', 'Settings', 'Backup', 'Compliance', 'My org',
+      'Home', 'Sites', 'People', 'Access', 'Organizations', 'API keys', 'Connections & keys', 'Audit', 'Settings', 'Backup & restore', 'Compliance', 'My org',
     ]);
   });
 

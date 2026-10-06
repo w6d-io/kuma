@@ -37,8 +37,8 @@ export const NAV: NavItem[] = [
   { id: "connections", name: "Connections & keys", ico: I.sparkle, perms: [] },
   { id: "audit",     name: "Audit",     ico: I.audit,   perms: ["audit:read"] },
   { id: "settings",  name: "Settings",  ico: I.cog,     perms: [] },
-  // Backup only appears when the chart enabled backup.
-  { id: "backup",    name: "Backup",    ico: I.box,     perms: ["policy.bundle:read"] },
+  // Download and restore from a file work everywhere; S3 snapshots where the chart turned them on.
+  { id: "backup",    name: "Backup & restore", ico: I.box, perms: ["policy.bundle:read"] },
   { id: "accessreview", name: "Access review", ico: I.check, section: "Compliance", perms: ["access:read"] },
   { id: "grants", name: "Direct grants", ico: I.key, section: "Compliance", perms: ["users.grants:read"] },
   { id: "recertification", name: "Recertification", ico: I.clock, section: "Compliance", perms: ["recert:read"] },

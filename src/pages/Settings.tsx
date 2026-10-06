@@ -1,29 +1,15 @@
-import { useRef, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useAuthMethods, useSetAuthMethods, useImportHistory, useRollbackImport, useSession } from '../api/hooks';
+import { useAuthMethods, useSetAuthMethods, useSession } from '../api/hooks';
 import { holds } from '../policy/model';
-import { I, Badge, Button, Callout, Card, Checkbox, ConfirmDialog, Dialog, PageHeader, Switch, Table } from '../components/ui';
-import { api } from '../api/client';
+import { I, Badge, Callout, Card, Checkbox, PageHeader, Switch } from '../components/ui';
 import { stepUpOnRefusal } from '../lib/resume';
-import type { BundleImportResult, AuthMethodName } from '../api/client';
-import { ExportBundleModal } from '../components/ExportBundleModal';
+import type { AuthMethodName } from '../api/client';
 import { ZonesSettings } from '../components/ZonesSettings';
 import { SecondFactorSettings } from '../components/SecondFactorSettings';
 import { SignInProtectionSettings } from '../components/SignInProtectionSettings';
 import { McpSettings } from '../components/McpSettings';
 import { OwnSecondFactor } from '../components/OwnSecondFactor';
 
-// Shape of a bundle we can preview before importing. Counts drive the confirm
-// dialog; the raw parsed object is POSTed on confirm.
-interface PendingBundle {
-  bundle: unknown;
-  fileName: string;
-  counts: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number; orgSites: number; orgAssignments: number };
-}
-
-// Section picker for import — mirrors ExportBundleModal. Keeping ALL selected is
-// a full 1:1 restore (prunes anything not in the file); deselecting switches to
-// a selective override/add that removes nothing outside the chosen sections.
 // Auth methods surfaced as toggles. Order = display order. Methods needing a
 // config block in kratos.yml (webauthn/passkey/oidc) render locked until
 // configured — jinbe rejects enabling them anyway, this just explains why.
@@ -37,41 +23,17 @@ const AUTH_METHODS: { id: AuthMethodName; label: string; hint: string; needsConf
   { id: 'lookup_secret', label: 'Backup codes',       hint: 'One-time recovery codes.' },
 ];
 
-/** Offered only when the file carries them: an older bundle has neither. */
-const OPTIONAL_SECTIONS: ReadonlySet<string> = new Set(['orgSites', 'orgAssignments']);
-
-const IMPORT_SECTIONS: { id: keyof PendingBundle['counts']; label: string }[] = [
-  { id: 'services', label: 'Services' },
-  { id: 'groups', label: 'Groups' },
-  { id: 'roles', label: 'Roles' },
-  { id: 'routeMaps', label: 'Route maps' },
-  { id: 'oathkeeperRules', label: 'Oathkeeper rules' },
-  { id: 'orgSites', label: 'Org → site entitlements' },
-  { id: 'orgAssignments', label: 'Org role assignments' },
-];
-
 export function SettingsPage() {
-  const { pushToast, refetch } = useApp();
+  const { pushToast } = useApp();
   // Each admin section asks only with the permission jinbe checks for it: a viewer (no
-  // settings:read, zones:read or policy.bundle:read since the role trim) got a page of 403s.
+  // settings:read or zones:read since the role trim) got a page of 403s. Backup & restore has its own page.
   const { data: session } = useSession();
   const settingsRead = holds(session, 'settings:read');
   const zonesRead = holds(session, 'zones:read');
-  const bundleRead = holds(session, 'policy.bundle:read');
   const authDomain = (window as any).__AUTH_DOMAIN__ || '';
   const accountUrl = authDomain
     ? `https://${authDomain}/settings?return_to=${encodeURIComponent(window.location.href)}`
     : null;
-
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const { data: importHistory } = useImportHistory({ enabled: bundleRead });
-  const rollbackImport = useRollbackImport();
-  const [confirmRollback, setConfirmRollback] = useState<string | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<BundleImportResult | null>(null);
-  const [pending, setPending] = useState<PendingBundle | null>(null);
-  const [importSections, setImportSections] = useState<string[]>([]);
 
   // ─── Kratos auth-method toggles (hot-reload; hidden when jinbe lacks KRATOS_CONFIG_PATH) ───
   const { data: authConfig, error: authMethodsError } = useAuthMethods({ enabled: settingsRead });
@@ -123,93 +85,6 @@ export function SettingsPage() {
     );
   }
 
-  // ─── Bundle export/import ───
-  // Export goes through ExportBundleModal (choose-what-to-export). Import stays inline below.
-
-  function handleImportClick() {
-    fileRef.current?.click();
-  }
-
-  // Parse + validate the selected file and open a confirm dialog. Import is a
-  // full-snapshot overwrite of RBAC config, so it must never fire on file
-  // selection alone (UX-8) — the user confirms after seeing what it contains.
-  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const fileName = file.name;
-    e.target.value = '';
-    setImportResult(null);
-    try {
-      const bundle: any = JSON.parse(await file.text());
-      if (!bundle?.version || !bundle?.rbac) {
-        pushToast('Invalid bundle file', { err: true, sub: 'Missing version or rbac fields' });
-        return;
-      }
-      const rbac = bundle.rbac;
-      const counts = {
-        services:        Array.isArray(rbac.services) ? rbac.services.length : Object.keys(rbac.services ?? {}).length,
-        groups:          Object.keys(rbac.groups ?? {}).length,
-        roles:           Object.keys(rbac.roles ?? {}).length,
-        routeMaps:       Object.keys(rbac.routeMaps ?? {}).length,
-        oathkeeperRules: Array.isArray(rbac.oathkeeperRules) ? rbac.oathkeeperRules.length : 0,
-        orgSites:        Object.keys(rbac.orgSites ?? {}).length,
-        orgAssignments:  Object.keys(rbac.orgAssignments ?? {}).length,
-      };
-      setPending({ bundle, fileName, counts });
-      // Default to a full restore: every section available in the file is selected.
-      setImportSections(IMPORT_SECTIONS.filter(s => !OPTIONAL_SECTIONS.has(s.id) || counts[s.id] > 0).map(s => s.id));
-    } catch (err: any) {
-      pushToast(err.message || 'Could not read bundle file', { err: true, sub: 'Not valid JSON?' });
-    }
-  }
-
-  // Sections offered for THIS file — the org sections only when the file carries them.
-  const availableSections = pending
-    ? IMPORT_SECTIONS.filter(s => !OPTIONAL_SECTIONS.has(s.id) || pending.counts[s.id] > 0)
-    : [];
-  // Keeping every available section selected = full 1:1 restore (send no sections
-  // param so the backend prunes); any deselection = selective override/add.
-  const isFullRestore = pending != null && importSections.length === availableSections.length;
-
-  async function confirmImport() {
-    if (!pending || importSections.length === 0) return;
-    setImporting(true);
-    try {
-      const res = await api.importBundle(pending.bundle, isFullRestore ? undefined : importSections);
-      setImportResult(res.imported);
-      const r = res.imported.rbac;
-      pushToast(isFullRestore ? 'Bundle restored' : 'Sections imported', {
-        sub: isFullRestore
-          ? `${r.services} services, ${r.groups} groups, ${r.roles} roles`
-          : `${importSections.length} section${importSections.length === 1 ? '' : 's'} applied`,
-      });
-      refetch();
-    } catch (e: any) {
-      if (stepUpOnRefusal(e, pushToast, { redo: 'Import the bundle again: nothing was imported before the check.' })) return;
-      // Validation rejections carry the failing rules — surface WHICH ones so
-      // the operator can fix the bundle instead of guessing.
-      const failures: { id: string; reason: string }[] | undefined = e?.details?.failures;
-      pushToast(e.message || 'Import failed', {
-        err: true,
-        sub: failures?.length ? failures.slice(0, 3).map(f => `${f.id}: ${f.reason}`).join(' · ') : undefined,
-      });
-    } finally {
-      setImporting(false);
-      setPending(null);
-    }
-  }
-
-  function doRollback(id: string) {
-    rollbackImport.mutate(id, {
-      onSuccess: () => { pushToast('Configuration rolled back', { sub: 'A pre-rollback snapshot of the replaced state was kept.' }); refetch(); },
-      onError: (e: Error) => {
-        if (stepUpOnRefusal(e, pushToast, { redo: 'Roll the configuration back again: nothing was changed before the check.' })) return;
-        pushToast(e.message || 'Rollback failed', { err: true });
-      },
-    });
-  }
-
-
   return (
     <>
       <PageHeader title="Admin settings" sub="Admin operations." />
@@ -232,9 +107,9 @@ export function SettingsPage() {
 
       <OwnSecondFactor />
 
-      {!settingsRead && !zonesRead && !bundleRead && (
+      {!settingsRead && !zonesRead && (
         <Callout tone="neutral" icon={I.lock} title="Nothing to administer here for your access">
-          <div className="small">Your own account and two-step sign-in are above. The platform settings, zones and RBAC bundle need roles you don’t hold.</div>
+          <div className="small">Your own account and two-step sign-in are above. The platform settings and zones need roles you don’t hold.</div>
         </Callout>
       )}
 
@@ -298,142 +173,6 @@ export function SettingsPage() {
 
       {zonesRead && <ZonesSettings />}
 
-      {/* ─── RBAC bundle ─── */}
-      {bundleRead && (
-        <Card
-          title="RBAC bundle"
-          sub="Export or import a full snapshot of RBAC configuration (services, groups, roles, route maps, Oathkeeper rules)."
-        >
-          <div className="row wrap gap-8">
-            <Button icon={I.download} onClick={() => setExportOpen(true)}>
-              Export bundle
-            </Button>
-            <Button icon={I.upload} onClick={handleImportClick} disabled={importing}>
-              {importing ? 'Importing…' : 'Import bundle'}
-            </Button>
-            <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleFileSelected} />
-          </div>
-
-          {importResult && (
-            <div className="mt-12 text-sm text-muted">
-              <div className="fw-medium mb-4">Import summary</div>
-              <div>{importResult.rbac.services} services, {importResult.rbac.groups} groups, {importResult.rbac.roles} roles, {importResult.rbac.routeMaps} route maps, {importResult.rbac.oathkeeperRules} Oathkeeper rules</div>
-            </div>
-          )}
-
-          {/* ─── Import history — automatic pre-import snapshots, one-click reroll ─── */}
-          {(importHistory?.length ?? 0) > 0 && (
-            <div className="mt-16">
-              <div className="fw-medium text-base mb-4">Import history</div>
-              <div className="small muted mb-8">
-                A snapshot is taken automatically before every import, restore or rollback. Rolling back re-applies the snapshot as a full restore (and keeps a snapshot of what it replaces).
-              </div>
-              <Table className="compact">
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th>Taken before</th>
-                    <th>By</th>
-                    <th>Contents</th>
-                    <th className="actions" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {importHistory!.map(h => (
-                    <tr key={h.id}>
-                      <td className="nowrap">{new Date(h.takenAt).toLocaleString()}</td>
-                      <td><Badge>{h.reason.replace('pre-', '')}</Badge></td>
-                      <td className="mono">{h.actor || '—'}</td>
-                      <td className="small muted">
-                        {h.counts.services} svc · {h.counts.groups} groups · {h.counts.roles} roles · {h.counts.oathkeeperRules} rules
-                      </td>
-                      <td className="actions">
-                        <Button variant="ghost" size="sm" disabled={rollbackImport.isPending} onClick={() => setConfirmRollback(h.id)}>
-                          Roll back
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Confirm before import (UX-8) — pick which sections to apply. */}
-      <Dialog
-        open={!!pending}
-        onClose={() => { if (!importing) setPending(null); }}
-        eyebrow="Settings"
-        title="Import RBAC bundle?"
-        footer={
-          <>
-            <Button onClick={() => setPending(null)} disabled={importing}>Cancel</Button>
-            <Button variant="primary" onClick={confirmImport} disabled={importing || importSections.length === 0}>
-              {importing
-                ? 'Importing…'
-                : isFullRestore
-                  ? 'Restore full config'
-                  : `Import ${importSections.length} section${importSections.length === 1 ? '' : 's'}`}
-            </Button>
-          </>
-        }
-      >
-        {pending && (
-          <div className="col gap-12 text-base">
-            <Callout
-              tone={isFullRestore ? 'warning' : 'neutral'}
-              icon={I.alert}
-              title={isFullRestore ? 'This replaces your entire RBAC configuration' : 'Selective import — nothing is removed'}
-            >
-              <div className="small">
-                {isFullRestore
-                  ? <>Every section is applied from <span className="mono">{pending.fileName}</span> and anything not in the file (extra services, groups, rules) is removed. This cannot be undone.</>
-                  : <>Only the checked sections are overwritten or added from <span className="mono">{pending.fileName}</span>. Unchecked sections, and anything not in the file, are left untouched.</>}
-              </div>
-            </Callout>
-            <div>
-              <div className="small muted mb-4">Choose what to import</div>
-              <Checkbox
-                className="settings-check all"
-                disabled={importing}
-                checked={importSections.length === availableSections.length}
-                indeterminate={importSections.length > 0 && importSections.length < availableSections.length}
-                onChange={(on) => setImportSections(on ? availableSections.map(s => s.id) : [])}
-                label="Select all (full restore)"
-              />
-              {availableSections.map((s) => (
-                <Checkbox
-                  key={s.id}
-                  className="settings-check"
-                  disabled={importing}
-                  checked={importSections.includes(s.id)}
-                  onChange={(on) => setImportSections((cur) => (on ? [...cur, s.id] : cur.filter((x) => x !== s.id)))}
-                  label={
-                    <span className="row justify-between">
-                      <span>{s.label}</span>
-                      <span className="mono muted text-xs">{pending.counts[s.id]}</span>
-                    </span>
-                  }
-                />
-              ))}
-            </div>
-          </div>
-        )}
-      </Dialog>
-
-      <ConfirmDialog
-        open={!!confirmRollback}
-        title="Roll back RBAC configuration?"
-        danger
-        confirmLabel="Roll back"
-        body={<>The entire RBAC configuration (services, groups, roles, route maps, Oathkeeper rules) is replaced by this snapshot. A snapshot of the current state is kept, so you can roll forward again.</>}
-        onCancel={() => setConfirmRollback(null)}
-        onConfirm={() => { if (confirmRollback) doRollback(confirmRollback); setConfirmRollback(null); }}
-      />
-
-      <ExportBundleModal open={exportOpen} onClose={() => setExportOpen(false)} />
       </div>
     </>
   );

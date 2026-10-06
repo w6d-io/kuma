@@ -57,6 +57,19 @@ function parseBody(text: string): ErrorBody {
   }
 }
 
+/** GET a JSON document and hand it to the browser as a file named `filename`. */
+async function saveJson(url: string, filename: string): Promise<void> {
+  const res = await fetch(url, { credentials: 'include' });
+  if (!res.ok) throw await errorFrom(res);
+  const blob = new Blob([JSON.stringify(await res.json(), null, 2)], { type: 'application/json' });
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = href;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(href);
+}
+
 export async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   // A token when the deployment signs in against an authority, the session cookie otherwise. Sent
   // together rather than exclusively: which one the API accepts is its decision, and a console that
@@ -322,21 +335,13 @@ export const api = {
     URL.revokeObjectURL(url);
   },
 
-  // ─── Bundle export / import / S3 backups ───
-  exportBundle: async (sections?: string[]): Promise<void> => {
-    const q = sections && sections.length ? `?sections=${sections.join(',')}` : '';
-    const res = await fetch(`${BASE}/admin/rbac/bundle/export${q}`, { credentials: 'include' });
-    if (!res.ok) throw await errorFrom(res);
-    const bundle = await res.json();
-    const filename = `auth-bundle-${new Date().toISOString().slice(0, 10)}.json`;
-    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  },
+  // ─── Backup & restore: the snapshot as a file, in S3, and the import history ───
+  // The current snapshot, saved as a file (policy.bundle:read; works with S3 off).
+  downloadSnapshot: () =>
+    saveJson(`${BASE}/admin/rbac/bundle/export`, `auth-snapshot-${new Date().toISOString().slice(0, 10)}.json`),
+  // One S3 snapshot, saved as a file.
+  downloadBackup: (key: string) =>
+    saveJson(`${BASE}/admin/rbac/bundle/backups/download?key=${encodeURIComponent(key)}`, `auth-backup-${key.split('/').pop() || 'snapshot.json'}`),
 
   // `sections` (optional) applies only the chosen parts of the uploaded (full)
   // snapshot — override/add, no prune. Omitted → full 1:1 restore.
@@ -353,7 +358,7 @@ export const api = {
   getImportHistory: () =>
     request<{ history: ImportHistoryEntry[] }>('/admin/rbac/bundle/history').then(r => r.history),
   rollbackImport: (id: string) =>
-    request<{ success: boolean }>(`/admin/rbac/bundle/history/${encodeURIComponent(id)}/rollback`, { method: 'POST' }),
+    request<{ success: boolean; imported: BundleImportResult }>(`/admin/rbac/bundle/history/${encodeURIComponent(id)}/rollback`, { method: 'POST' }),
 
   // S3 backup snapshots (only meaningful when the chart enabled backup).
   listBackups: () =>
@@ -476,7 +481,7 @@ export interface ImportHistoryEntry {
   takenAt: string;
   actor: string | null;
   reason: 'pre-import' | 'pre-restore' | 'pre-rollback';
-  counts: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number; orgSites?: number; orgAssignments?: number };
+  counts: { services: number; groups: number; roles: number; routeMaps: number; orgSites?: number; orgAssignments?: number; directGrants?: number; sites?: number; organizations?: number };
 }
 
 // Gateway sign-in methods per service — ordered fallback cookie → bearer →
@@ -781,8 +786,17 @@ export interface RecertItem {
   context: { tier: number | null; flags: string[]; lastActive: string | null };
 }
 
+/** What a restore did (jinbe rbac-bundle.service ImportResult). Older jinbe answers carry `rbac` only. */
 export interface BundleImportResult {
-  rbac: { services: number; groups: number; roles: number; routeMaps: number; oathkeeperRules: number };
+  rbac: { services: number; groups: number; roles: number; routeMaps: number; orgSites?: number; orgAssignments?: number; directGrants?: number };
+  stores?: {
+    sites?: { restored: string[]; kept: string[] };
+    settings?: number; organizations?: number; signup?: number; metadata?: number;
+  };
+  /** Every applied site published again after the restore. */
+  sites?: { published: string[]; failed: { site: string; error: string }[] };
+  /** What the restore left out, and why (gateway rules of an old file, sections it lacks). */
+  notes?: string[];
 }
 
 export interface BackupSnapshot { key: string; lastModified: string | null; size: number }
