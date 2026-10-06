@@ -17,7 +17,11 @@ import {
   useServices,
   useAllRoles,
   useAllRoutes,
+  useSession,
 } from './hooks';
+import { holds } from '../policy/model';
+import type { PlatformPermission } from '../policy/catalog';
+import { statusOf } from '../lib/apiError';
 import type { AppState, GroupsMap, GroupsMetaMap, RolesMap, Service } from './types';
 
 export interface StoreResult {
@@ -41,7 +45,12 @@ export interface StoreOptions {
 }
 
 export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreResult {
-  const usersQ = useUsers();
+  // Each admin read only for whoever holds what it asks (jinbe rbac.routes / user-management.routes):
+  // a staff role without users:read (developer, ops) or groups:read (support) still gets every page
+  // it may use — the part it may not read stays empty instead of refusing the whole console.
+  const { data: session, isSuccess: sessionReady } = useSession();
+  const may = (permission: PlatformPermission) => sessionReady && holds(session, permission);
+  const usersQ = useUsers(undefined, may('users:read'));
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = usersQ;
 
   // Background directory fill: after the first page paints, keep pulling the
@@ -54,8 +63,8 @@ export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreRes
     if (fillDirectory && hasNextPage && !isFetchingNextPage) fetchNextPage();
   }, [fillDirectory, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const groupsQ = useGroups();
-  const servicesQ = useServices();
+  const groupsQ = useGroups(may('groups:read'));
+  const servicesQ = useServices(may('sites:read'));
 
   const serviceNames = useMemo(
     () => (servicesQ.data ?? []).map(s => s.name),
@@ -121,21 +130,20 @@ export function useStore({ fillDirectory = false }: StoreOptions = {}): StoreRes
     };
   }, [usersQ.users, usersQ.usersLoading, groupsQ.data, servicesQ.data, rolesQ.data, rolesQ.isSuccess, routesQ.data, routesQ.isSuccess]);
 
-  // Any admin endpoint (groups/services/users) 401/403s identically when
-  // the caller lacks access, so any of them is a valid auth probe. Surface the
-  // first error from any critical query.
+  // The console-wide error: a dead session (401) or an engine that cannot answer (503), never a 403.
+  // A refusal is about one page and is said there (PageForbidden, ApiErrorState); folding a 403 of
+  // the user directory in here once replaced every page of a developer with "access denied".
   const apiError =
-    (groupsQ.error ?? servicesQ.error ?? usersQ.error) as Error | null;
+    ([groupsQ.error, servicesQ.error, usersQ.error].find((e) => e && statusOf(e) !== 403) ?? null) as Error | null;
 
-  // Gate first paint on the lighter admin queries — NOT on the (potentially
-  // large) user directory. This preserves the old fast-first-paint behaviour
-  // where the dashboard rendered before the full directory streamed in; the
-  // Users list / counts fill in via `usersLoading` once the users query lands.
+  // Gate first paint on the session and the lighter admin queries — NOT on the (potentially large)
+  // user directory, whose list / counts fill in via `usersLoading`. A query the session may not run
+  // is not loading.
   const isLoading =
-    groupsQ.isLoading || servicesQ.isLoading;
+    !sessionReady || groupsQ.isLoading || servicesQ.isLoading;
 
   const isLive =
-    groupsQ.isSuccess && servicesQ.isSuccess && !apiError;
+    sessionReady && !groupsQ.isError && !servicesQ.isError && !apiError;
 
   return { state, isLive, isLoading, apiError };
 }

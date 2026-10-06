@@ -38,6 +38,7 @@ import { BackupPage } from './pages/Backup';
 import { DesignPage } from './pages/design/DesignPage';
 import { UserMenu } from './components/UserMenu';
 import { ApiErrorState } from './components/ApiErrorState';
+import { PageGate } from './components/PageForbidden';
 import * as Dialog from '@radix-ui/react-dialog';
 
 // The "Forbidden" tweak fakes a 403 across the whole app (blanks the UI). It is
@@ -95,10 +96,10 @@ function RailDrawer({ onOpenTweaks }: { onOpenTweaks: () => void }) {
  * screen opens — because two copies of a navigation is how the two stop agreeing.
  */
 function RailContent({ onNavigate, onOpenTweaks, compact }: { onNavigate?: () => void; onOpenTweaks: () => void; compact?: boolean }) {
-  const { page, setPage, state, tweaks, apiError } = useApp();
+  const { page, setPage, state, tweaks } = useApp();
   const showCounts = tweaks?.showCounts !== false;
-  // Home is scoped to whoever is looking; the admin API refusing them is not news there.
-  const isForbidden = page !== "dashboard" && (simulatingForbidden(tweaks) || ((apiError as any)?.status === 403 && !edgeBlocked(apiError)));
+  // Only the development aid blanks the console: a refusal belongs to the page it is about.
+  const isForbidden = page !== "dashboard" && simulatingForbidden(tweaks);
 
   const { data: session } = useSession();
   const { data: stats } = useStats();
@@ -197,7 +198,7 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
     const redo = takeRedo();
     if (redo) pushToast("Second factor confirmed · nothing was done yet", { sub: redo, ttl: 15000 });
   }, [pushToast]);
-  const isForbidden = page !== "dashboard" && (simulatingForbidden(tweaks) || ((apiError as any)?.status === 403 && !edgeBlocked(apiError)));
+  const isForbidden = page !== "dashboard" && simulatingForbidden(tweaks);
 
   useEffect(() => {
     if ((apiError as any)?.status === 401) {
@@ -393,8 +394,8 @@ function TweaksPanel({ open, onClose }: { open: boolean; onClose: () => void }) 
 }
 
 /**
- * The page could not load its data at all: a 403 (a decision) or a 503 (the engine could not be
- * asked). Worded by the shared helper, so "no groups assigned" appears only when it is true.
+ * The console could not load its data at all: the engine could not be asked (503), or the
+ * development aid simulates a refusal. A real refusal is the page's own (PageForbidden).
  */
 function BlockedPage() {
   const { apiError, refetch, tweaks } = useApp();
@@ -407,7 +408,7 @@ function BlockedPage() {
 }
 
 function AppShell() {
-  const { page, setPage, toasts, apiError, tweaks } = useApp();
+  const { page, toasts, apiError, tweaks } = useApp();
   const { data: session, isSuccess: sessionReady } = useSession();
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [tweaksOpen, setTweaksOpen] = useState(false);
@@ -426,19 +427,6 @@ function AppShell() {
   // console reflects changes sub-second without polling.
   useRealtime(holds(session, 'stats:read'));
 
-  // If the user landed on a page they cannot access (direct URL / reload),
-  // bounce to Overview. Only act once the session query has SUCCESSFULLY
-  // resolved: while it is still loading, session.permissions is undefined and
-  // bouncing here would wrongly redirect every reload/navigation to the
-  // dashboard. A failed/401 session is handled by the Topbar redirect, not here.
-  useEffect(() => {
-    if (!sessionReady) return
-    // An old id with no rail entry of its own inherits the gate of the page that replaced it.
-    const nav = navItemFor(page)
-    if (!nav) return
-    // Home is scoped to whoever is looking, so it is a surface everybody can use.
-    if (!hasAnyPerm(session, nav.perms)) setPage('dashboard')
-  }, [page, sessionReady, session, setPage])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -462,7 +450,9 @@ function AppShell() {
         <div className="content page-enter" key={page}>
           {/* Home asks its own endpoint, scoped to whoever is looking: a refusal from the admin API
               (support, an org admin) must not replace the one page built for them. */}
-          {page !== "dashboard" && (simulatingForbidden(tweaks) || [403, 503].includes((apiError as any)?.status)) ? <BlockedPage /> : <>
+          {/* PageGate: nothing before the session answers, the page's refusal when it is not theirs. */}
+          <PageGate page={page}>
+          {page !== "dashboard" && (simulatingForbidden(tweaks) || (apiError as { status?: number } | null)?.status === 503) ? <BlockedPage /> : <>
             {page === "dashboard" && <HomePage />}
             {page === "users" && <UsersPage />}
             {page === "groups" && <GroupsPage />}
@@ -482,6 +472,7 @@ function AppShell() {
             {page === "accesscheck" && <AccessCheckPage />}
             {page === "design" && <DesignPage />}
           </>}
+          </PageGate>
         </div>
       </div>
       <UserDrawer />

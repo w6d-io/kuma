@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Forbidden } from '../../components/Forbidden';
 import { useQuery } from '@tanstack/react-query';
 import { auditApi, auditErrorKind, type GatewayAccess } from '../../api/audit';
 import { Button, Callout, Card, Checkbox, EmptyRow, I, SkeletonText, Stat, Table, Th } from '../../components/ui';
@@ -27,7 +28,7 @@ export function AuditAccess({ range, onOpenUser }: { range: { from: string; to: 
 
   if (q.isError) {
     if ((q.error as { status?: number } | null)?.status === 403 && !edgeBlocked(q.error)) {
-      return <Callout tone="info" icon={I.info} title="For platform readers">Gateway decisions name no organisation, so they cannot be cut to yours. Your organisation&rsquo;s events are under Events.</Callout>;
+      return <Forbidden title="Gateway decisions are for platform readers" detail={<>Gateway decisions name no organisation, so they cannot be cut to yours. Your organisation&rsquo;s events are under Events.</>} />;
     }
     return <AuditError error={q.error} onRetry={() => q.refetch()} />;
   }
