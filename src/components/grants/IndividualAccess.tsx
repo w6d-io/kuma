@@ -17,8 +17,10 @@ type PushToast = ReturnType<typeof useApp>['pushToast'];
  * their org roles), each with its reason, who granted it, and its countdown. `org` scopes it to one
  * organization (org user management); without it, the platform and every org they are in.
  */
-export function IndividualAccess({ userId, who, org, orgName, mayGrant, pushToast }: {
+export function IndividualAccess({ userId, who, org, orgName, mayGrant, pushToast, fromGroups }: {
   userId: string;
+  /** The person's platform groups: what they give shows ticked and locked when adding. */
+  fromGroups?: readonly string[];
   who: string;
   org?: string;
   orgName?: (org: string | undefined) => string;
@@ -58,7 +60,7 @@ export function IndividualAccess({ userId, who, org, orgName, mayGrant, pushToas
         : q.isError
           ? <Callout tone="danger" icon={I.alert}>{describeApiError(q.error).detail}</Callout>
           : <GrantsList grants={q.data ?? []} loading={q.isLoading} orgName={org ? undefined : orgName} onRemove={mayGrant ? setRemoving : undefined} />}
-      {adding && <AddGrantsDrawer userId={userId} who={who} org={org} pushToast={pushToast} onClose={() => setAdding(false)} />}
+      {adding && <AddGrantsDrawer userId={userId} who={who} org={org} fromGroups={fromGroups} pushToast={pushToast} onClose={() => setAdding(false)} />}
       <ConfirmDialog
         open={!!removing}
         danger
@@ -74,8 +76,8 @@ export function IndividualAccess({ userId, who, org, orgName, mayGrant, pushToas
 }
 
 /** Adds grants to one person: the picker, then jinbe's answer — refusals named one by one. */
-export function AddGrantsDrawer({ userId, who, org, pushToast, onClose }: {
-  userId: string; who: string; org?: string; pushToast: PushToast; onClose: () => void;
+export function AddGrantsDrawer({ userId, who, org, pushToast, onClose, fromGroups }: {
+  userId: string; who: string; org?: string; pushToast: PushToast; onClose: () => void; fromGroups?: readonly string[];
 }) {
   const add = useAddGrants(userId, org);
   const [drafts, setDrafts] = useState<GrantDraft[]>([]);
@@ -114,7 +116,7 @@ export function AddGrantsDrawer({ userId, who, org, pushToast, onClose }: {
       </>}
     >
       <div className="stack gap-12">
-        <GrantPicker org={org} onChange={(d, ok) => { setDrafts(d); setValid(ok); }} />
+        <GrantPicker org={org} fromGroups={fromGroups} onChange={(d, ok) => { setDrafts(d); setValid(ok); }} />
         <RefusedGrants refused={refused} />
       </div>
     </Drawer>

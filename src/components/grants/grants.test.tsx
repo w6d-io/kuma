@@ -12,7 +12,7 @@ const h = vi.hoisted(() => ({ toasts: [] as unknown[][] }));
 vi.mock('../../auth/session', () => ({ bearerToken: async () => null }));
 vi.mock('../../contexts/AppContext', () => ({
   useApp: () => ({
-    state: { services: [{ name: 'jinbe', system: true }, { name: 'payroll' }], roles: { jinbe: { support: ['users:read', 'users:delete'] }, payroll: { editor: ['pay:write'] } } },
+    state: { services: [{ name: 'jinbe', system: true }, { name: 'payroll' }], groups: { 'staff-support': { jinbe: ['support'] } }, roles: { jinbe: { support: ['users:read', 'users:delete'] }, payroll: { editor: ['pay:write'] } } },
     pushToast: (...a: unknown[]) => h.toasts.push(a),
   }),
 }));
@@ -45,9 +45,9 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 async function settle() { for (let i = 0; i < 8; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); }
-const mount = () => render(
+const mount = (fromGroups?: string[]) => render(
   <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-    <IndividualAccess userId={U} who="bob@example.com" mayGrant pushToast={(...a: unknown[]) => h.toasts.push(a)} />
+    <IndividualAccess userId={U} who="bob@example.com" mayGrant fromGroups={fromGroups} pushToast={(...a: unknown[]) => h.toasts.push(a)} />
   </QueryClientProvider>,
 );
 const text = () => document.body.textContent ?? '';
@@ -107,5 +107,18 @@ describe('IndividualAccess', () => {
     expect(text()).toContain('it gives what you do not hold');
     expect(text()).toContain('you would need users:delete');
     expect(text()).toContain('held through super_admins');
+  });
+
+  it("shows what the person's groups already give ticked and locked, from that group, and never sends it", async () => {
+    mount(['staff-support']);
+    await settle();
+    await act(async () => { button('Add individual access')!.click(); });
+    await settle();
+    for (const name of ['support', 'users:read', 'users:delete']) {
+      expect(box(name)?.checked).toBe(true);
+      expect(box(name)?.disabled).toBe(true);
+    }
+    expect(box('users:read')!.closest('label')!.textContent).toContain('from staff-support');
+    expect(button('Grant')!.disabled).toBe(true);
   });
 });

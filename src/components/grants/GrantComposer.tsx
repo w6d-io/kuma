@@ -7,8 +7,10 @@ import { GrantPicker } from './GrantPicker';
  * "Individual roles / permissions" in an add or invite flow, beside Groups: off by default, the
  * picker once switched on. Switching it off drops what was picked, so nothing hidden is sent.
  */
-export function GrantComposer({ org, onChange, hint }: {
+export function GrantComposer({ org, onChange, hint, fromGroups }: {
   org?: string;
+  /** Groups ticked beside it: what they give shows ticked and locked in the picker. */
+  fromGroups?: readonly string[];
   onChange: (drafts: GrantDraft[], valid: boolean) => void;
   hint?: string;
 }) {
@@ -22,7 +24,7 @@ export function GrantComposer({ org, onChange, hint }: {
       >
         <Switch on={on} onChange={(v) => { setOn(v); if (!v) onChange([], true); }} label="Individual roles / permissions" />
       </Field>
-      {on && <Card pad="md"><GrantPicker org={org} onChange={onChange} /></Card>}
+      {on && <Card pad="md"><GrantPicker org={org} onChange={onChange} fromGroups={fromGroups} /></Card>}
     </div>
   );
 }

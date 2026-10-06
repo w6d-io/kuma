@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../contexts/AppContext';
 import { accountsApi, type PersonalKeySecretView } from '../../api/accounts';
@@ -50,7 +50,7 @@ function permissionGroups(entries: readonly PlatformScope[], stepUp: (p: string)
  * default: it follows what you hold at each call) or only the ones you choose among them. 30 days at
  * most — then the key, once, with how to paste it into an MCP client.
  */
-export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+export function CreatePersonalKeyDrawer({ onClose, onCreated, ownerField }: { onClose: () => void; onCreated: () => void; ownerField?: ReactNode }) {
   const { pushToast } = useApp();
   const [label, setLabel] = useState('');
   // The administrator's maximum (Settings → AI assistants) when jinbe says it; 30 days otherwise.
@@ -121,7 +121,7 @@ export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () =>
     <Drawer
       open
       onClose={onClose}
-      eyebrow="Connections & keys"
+      eyebrow="API keys"
       title="Create a personal key"
       footer={<>
         <span className="small muted">The key is shown once, after creating.</span>
@@ -133,6 +133,7 @@ export function CreatePersonalKeyDrawer({ onClose, onCreated }: { onClose: () =>
     >
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <FormGrid>
+          {ownerField}
           <Field label="Label" required error={error ?? undefined} hint={error ? undefined : 'Where the key is used, so you can tell your keys apart.'}>
             <Input placeholder="e.g. Assistant on my laptop" value={label} maxLength={200} onChange={(e) => setLabel(e.target.value)} />
           </Field>

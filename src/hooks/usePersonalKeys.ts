@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { accountsApi } from '../api/accounts';
+import { useMcpStatus } from '../api/hooks';
 import { statusOf } from '../lib/apiError';
 
 export const MY_API_KEYS = ['my-api-keys'] as const;
@@ -21,4 +22,11 @@ export function personalKeysOff(err: unknown): boolean {
 export function usePersonalKeysEnabled(): boolean {
   const q = useMyApiKeys();
   return q.isSuccess || (q.isError && !personalKeysOff(q.error));
+}
+
+/** Whether personal keys can be made now: on in jinbe and not turned off in Settings → AI assistants. */
+export function usePersonalKeysAvailable(): boolean {
+  const q = useMyApiKeys();
+  const status = useMcpStatus();
+  return !personalKeysOff(q.error) && status.data?.off !== 'administrator';
 }

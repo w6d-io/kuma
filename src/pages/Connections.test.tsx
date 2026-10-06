@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, click, render, type } from '../components/ui/testing';
 
-// Connections & keys: a person's own MCP keys. Off on the platform (404) is a calm state, not an
+// Connections (signed-in apps, how to connect a client) and a person's own MCP keys, which live on API
+// keys → My keys, the one place keys are made. Off on the platform (404) is a calm state, not an
 // error; a key belongs to no organization, carries all the person's permissions unless narrowed,
 // lives 30 days at most, and is shown once with how to paste it.
 
@@ -19,7 +20,9 @@ const api = vi.hoisted(() => ({
   status: { data: undefined as unknown },
 }));
 vi.mock('../api/accounts', () => ({ accountsApi: api }));
-vi.mock('../contexts/AppContext', () => ({ useApp: () => ({ pushToast: api.toast }) }));
+const nav = vi.hoisted(() => ({ setPage: vi.fn() }));
+vi.mock('../contexts/AppContext', () => ({ useApp: () => ({ pushToast: api.toast, pageParam: null, setPage: nav.setPage }) }));
+vi.mock('../api/orgCatalog', () => ({ useOrgCatalog: () => ({ orgs: [], isLoading: false, error: null }) }));
 vi.mock('../api/hooks', () => ({
   useSession: () => ({ data: { identity_id: 'me', groups: [], permissions: [] } }),
   useUserIdentity: () => ({ data: undefined }),
@@ -27,12 +30,15 @@ vi.mock('../api/hooks', () => ({
 }));
 
 import { ConnectionsPage } from './Connections';
+import { ApiKeysPage } from './ApiKeys';
 
 const err = (status: number, extra: object = {}) => Object.assign(new Error('refused'), { status, ...extra });
 async function settle() {
   for (let i = 0; i < 8; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 }
 const mount = () => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ConnectionsPage /></QueryClientProvider>);
+// API keys, opened on My keys, for somebody who may not make organization keys.
+const mountKeys = () => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ApiKeysPage /></QueryClientProvider>);
 const inDrawer = (label: RegExp) => [...document.querySelectorAll('.drawer button')].find((b) => label.test(b.textContent?.trim() ?? '')) as HTMLButtonElement;
 const button = (label: RegExp) => [...document.querySelectorAll('button')].find((b) => label.test(b.textContent?.trim() ?? '')) as HTMLButtonElement;
 const text = () => document.body.textContent ?? '';
@@ -51,7 +57,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); delete (window as unknown as { __MCP_SERVER_URL__?: string }).__MCP_SERVER_URL__; });
 
-describe('Connections & keys', () => {
+describe('Connections and personal keys', () => {
   it('says calmly that personal keys are off on this platform', async () => {
     api.listMyApiKeys.mockRejectedValue(err(404));
     mount();
@@ -81,7 +87,7 @@ describe('Connections & keys', () => {
 
   it('offers expiries up to the administrator maximum only, defaulting to it', async () => {
     api.status.data = { enabled: true, serverUrl: null, off: null, personalKeys: { maxDays: 7 } };
-    mount();
+    mountKeys();
     await settle();
     click(button(/^Create key$/));
     await settle();
@@ -90,18 +96,25 @@ describe('Connections & keys', () => {
     expect(select.value).toBe('7');
   });
 
-  it('lists your keys without the mcp scope or an organization, and shows how to connect a client', async () => {
+  it('lists your keys on API keys without the mcp scope or an organization; Connections only shows how to connect and points there', async () => {
     (window as unknown as { __MCP_SERVER_URL__: string }).__MCP_SERVER_URL__ = 'https://mcp.dev.example.com/mcp';
     api.listMyApiKeys.mockResolvedValue({ data: [
       { client_id: 'c1', organization_id: null, label: 'Laptop', scopes: ['users:read', 'mcp'], all_permissions: false, created_by: 'me', created_at: '2026-09-27T10:00:00Z', expires_at: '2026-10-27T10:00:00Z', kind: 'personal' },
       { client_id: 'c2', organization_id: null, label: 'Desktop', scopes: ['mcp'], all_permissions: true, created_by: 'me', created_at: '2026-09-27T10:00:00Z', expires_at: '2026-10-27T10:00:00Z', kind: 'personal' },
     ], total: 2 });
-    mount();
+    mountKeys();
     await settle();
     expect(text()).toContain('Laptop');
     expect([...document.querySelectorAll('th')].map((t) => t.textContent)).not.toContain('Organization');
     expect([...document.querySelectorAll('.tag-list .badge')].map((b) => b.textContent)).toEqual(['users:read']);
     expect(text()).toContain('All my permissions');
+    cleanup();
+    mount();
+    await settle();
+    expect(text()).not.toContain('Laptop');
+    expect(button(/^Create key$/)).toBeUndefined();
+    click(button(/^Open API keys$/));
+    expect(nav.setPage).toHaveBeenCalledWith('apikeys', null);
     expect((document.querySelector('.copy-field input') as HTMLInputElement).value).toBe('https://mcp.dev.example.com/mcp');
     expect(text()).toContain("export KUMA_MCP_KEY='stk_mcp_<your key>'");
     expect(text()).toContain('claude mcp add --transport http --scope user kuma https://mcp.dev.example.com/mcp');
@@ -134,7 +147,7 @@ describe('Connections & keys', () => {
 
   it('creates a key with all your permissions by default, without asking for an organization, and shows it once', async () => {
     api.createMyApiKey.mockResolvedValue({ client_id: 'c2', organization_id: null, label: 'Laptop', scopes: ['mcp'], all_permissions: true, created_by: 'me', created_at: 't', expires_at: '2026-10-28T10:00:00Z', kind: 'personal', client_secret: 's', key: 'stk_mcp_c2.s' });
-    mount();
+    mountKeys();
     await settle();
     click(button(/^Create key$/));
     await settle();
@@ -153,7 +166,7 @@ describe('Connections & keys', () => {
 
   it('narrows a key to permissions ticked from your own, grouped by resource', async () => {
     api.createMyApiKey.mockResolvedValue({ client_id: 'c3', organization_id: null, label: 'Reader', scopes: ['users:read', 'mcp'], all_permissions: false, created_by: 'me', created_at: 't', expires_at: '2026-10-28T10:00:00Z', kind: 'personal', client_secret: 's', key: 'stk_mcp_c3.s' });
-    mount();
+    mountKeys();
     await settle();
     click(button(/^Create key$/));
     await settle();
@@ -178,7 +191,7 @@ describe('Connections & keys', () => {
   it('says when your groups may not use AI assistants', async () => {
     api.status.data = { enabled: true, serverUrl: null, off: null, personalKeys: { maxDays: 30 }, allowed: false };
     api.createMyApiKey.mockRejectedValue(err(403, { details: { error: 'mcp_disabled', reason: 'group_not_allowed' } }));
-    mount();
+    mountKeys();
     await settle();
     expect(text()).toContain('AI assistants are not enabled for your groups');
     click(button(/^Create key$/));

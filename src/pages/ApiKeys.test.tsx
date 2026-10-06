@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, click, render, type } from '../components/ui/testing';
 
-// Organizations' API keys: scopes as compact tags, listed and revoked here; created here only, by
-// platform staff, for any organization picked in a drawer whose scopes are ticked by kind (never typed
-// while a catalogue exists), the secret shown once with a confirm before closing uncopied — and nothing
-// about personal keys, which belong to people, not to organizations.
+// API keys, the one place keys are made: an organization's keys as compact tags, listed and revoked;
+// Create key for me (a personal key) or, for platform staff, for any organization picked in the form,
+// whose scopes are ticked by kind (never typed while a catalogue exists), the secret shown once with a
+// confirm before closing uncopied. My keys (personal) are tested with Connections.
 
 const ORG = '3cb95fec-bc9f-48b1-8fa7-f3da8ed9fff8';
 const OTHER = '9d0c1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f';
@@ -18,6 +18,7 @@ const api = vi.hoisted(() => ({
   apiKeyScopes: vi.fn(),
   createApiKey: vi.fn(),
   revokeApiKey: vi.fn(),
+  listMyApiKeys: vi.fn(),
   toast: vi.fn(),
 }));
 vi.mock('../api/accounts', () => ({ accountsApi: api }));
@@ -26,6 +27,7 @@ vi.mock('../api/orgCatalog', () => ({ useOrgCatalog: () => ({ orgs: [{ id: ORG, 
 vi.mock('../api/hooks', () => ({
   useSession: () => ({ data: { identity_id: ME, groups: ['admins'], permissions: perms.list } }),
   useUserIdentity: () => ({ data: undefined }),
+  useMcpStatus: () => ({ data: undefined }),
 }));
 
 import { ApiKeysPage } from './ApiKeys';
@@ -52,6 +54,8 @@ beforeEach(() => {
   nav.setPage.mockReset();
   perms.list = [];
   api.listApiKeys.mockResolvedValue({ data: [key], total: 1 });
+  // Personal keys off unless a test turns them on.
+  api.listMyApiKeys.mockRejectedValue(Object.assign(new Error('off'), { status: 404 }));
   api.apiKeyScopes.mockResolvedValue([
     { scope: 'fleet:write', kind: 'permission', sites: ['fleet'], permissions: [] },
     { scope: 'fleet:read', kind: 'permission', sites: ['fleet'], permissions: [] },
@@ -92,7 +96,7 @@ describe('API keys', () => {
     await settle();
     click(button(/^Create key$/));
     await settle();
-    const picker = document.querySelector('.drawer select[aria-label="Organization"]') as HTMLSelectElement;
+    const picker = document.querySelector('.drawer select[aria-label="Key for"]') as HTMLSelectElement;
     expect(picker.value).toBe(ORG);
     await act(async () => { picker.value = OTHER; picker.dispatchEvent(new Event('change', { bubbles: true })); });
     await settle();
@@ -102,6 +106,26 @@ describe('API keys', () => {
     await settle();
     expect(api.createApiKey).toHaveBeenCalledWith(OTHER, { label: 'Sync', scopes: ['fleet:read'], expires_in_days: 90 });
     expect(nav.setPage).toHaveBeenCalledWith('apikeys', OTHER);
+  });
+
+  it('creates a personal key for somebody without orgs.keys:write, with no organization to pick; staff pick "Me" for one', async () => {
+    api.listMyApiKeys.mockResolvedValue({ data: [], total: 0 });
+    mount();
+    await settle();
+    click(button(/^Create key$/));
+    await settle();
+    expect(document.querySelector('.drawer')!.textContent).toContain('Create a personal key');
+    expect(document.querySelector('.drawer select[aria-label="Key for"]')).toBeNull();
+    cleanup();
+    mountStaff();
+    await settle();
+    click(button(/^Create key$/));
+    await settle();
+    const picker = document.querySelector('.drawer select[aria-label="Key for"]') as HTMLSelectElement;
+    await act(async () => { picker.value = ''; picker.dispatchEvent(new Event('change', { bubbles: true })); });
+    await settle();
+    expect(document.querySelector('.drawer')!.textContent).toContain('Create a personal key');
+    expect(document.querySelector('.drawer')!.textContent).toContain('acts as you');
   });
 
   it('revokes through the admin route with orgs.keys:write, and through the org route otherwise', async () => {

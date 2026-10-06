@@ -89,7 +89,7 @@ export function McpSettings() {
           </div>
           <div className="small muted">
             {draft.enabled
-              ? 'People can create personal keys on Connections & keys and use them, or sign in an assistant, to act as themselves.'
+              ? 'People can create personal keys on API keys and use them, or sign in an assistant, to act as themselves.'
               : 'Personal keys cannot be created or used, and assistants are refused. Existing keys are kept and work again when this is turned back on.'}
           </div>
         </div>
@@ -129,7 +129,7 @@ export function McpSettings() {
 
       <Field
         label="MCP server address"
-        hint="Shown to people on Connections & keys, with the client configuration to paste. Empty: the console's own setting, if it has one."
+        hint="Shown to people on Connections, with the client configuration to paste. Empty: the console's own setting, if it has one."
         error={problems.serverUrl}
       >
         <Input mono value={draft.serverUrl} onChange={(e) => patch({ serverUrl: e.target.value })} placeholder="https://mcp.example.com/mcp" />

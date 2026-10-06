@@ -4,18 +4,19 @@ import { useApp } from '../contexts/AppContext';
 import { useSession } from '../api/hooks';
 import { useOrgCatalog } from '../api/orgCatalog';
 import { OrgPicker } from '../components/OrgPicker';
-import { Button, Card, EmptyState, I, PageHeader } from '../components/ui';
+import { Button, I, PageHeader } from '../components/ui';
+import { MY_API_KEYS, usePersonalKeysAvailable } from '../hooks/usePersonalKeys';
 import { orgLabel } from '../lib/orgOptions';
 import { holds } from '../policy/model';
-import { CreateOrgKeyDrawer } from './apikeys/CreateOrgKeyDrawer';
+import { CreateKeyDrawer } from './apikeys/CreateKeyDrawer';
 import { OrgKeys } from './apikeys/OrgKeys';
+import { PersonalKeys } from './apikeys/PersonalKeys';
 
 /**
- * Organizations' API keys: machine credentials that belong to an organization, not to a person, valid
- * on every site serving it. The only place keys are made: platform staff (orgs.keys:write) create one
- * for any organization, picked in the form; here they are also listed and revoked. The organization
- * shown is the address (`#/apikeys/<org id>`). Personal keys are not here: they belong to a person
- * (Connections & keys).
+ * Every API key, and the one place keys are made. It opens on My keys: the person's own keys, acting
+ * as them. The picker shows an organization's keys instead — machine credentials of the organization,
+ * valid on every site serving it (`#/apikeys/<org id>`). Create key makes either: for me, or, for
+ * platform staff (orgs.keys:write), for any organization picked in the form.
  */
 export function ApiKeysPage() {
   const { pageParam, setPage } = useApp();
@@ -25,33 +26,37 @@ export function ApiKeysPage() {
   const org = pageParam ?? '';
   // Staff read every organization's keys from the admin route; anybody else from the org's own.
   const from = holds(session, 'orgs:read') ? 'admin' : 'org';
-  const mayCreate = holds(session, 'orgs.keys:write');
+  const mayCreateOrgKeys = holds(session, 'orgs.keys:write');
+  const personalAvailable = usePersonalKeysAvailable();
   const [creating, setCreating] = useState(false);
+  const mayCreate = mayCreateOrgKeys || personalAvailable;
 
   return (
     <>
       <PageHeader
         title="API keys"
-        sub="Keys that let a program call an organization’s sites without a person signing in"
+        sub="Keys that let a program call the platform: as you, or for an organization’s sites"
         actions={
           <div className="row gap-8">
             <div className="settings-org-picker">
-              <OrgPicker value={org} onChange={(id) => setPage('apikeys', id || null)} />
+              <OrgPicker value={org} onChange={(id) => setPage('apikeys', id || null)} ariaLabel="Show keys of" noneLabel="My keys" />
             </div>
             {mayCreate && <Button variant="primary" icon={I.plus} onClick={() => setCreating(true)}>Create key</Button>}
           </div>
         }
       />
       {org
-        ? <OrgKeys key={org} org={org} orgName={orgLabel(org, orgs)} from={from} adminRevoke={mayCreate} />
-        : <Card><EmptyState icon={I.key} title="Choose an organization">Its API keys show here.</EmptyState></Card>}
+        ? <OrgKeys key={org} org={org} orgName={orgLabel(org, orgs)} from={from} adminRevoke={mayCreateOrgKeys} />
+        : <PersonalKeys />}
       {creating && (
-        <CreateOrgKeyDrawer
-          initialOrg={org}
+        <CreateKeyDrawer
+          initialOwner={org}
+          mayCreateOrgKeys={mayCreateOrgKeys}
+          personalAvailable={personalAvailable}
           onClose={() => setCreating(false)}
-          onCreated={(made) => {
-            void qc.invalidateQueries({ queryKey: ['api-keys', made] });
-            if (made !== org) setPage('apikeys', made);
+          onCreated={(owner) => {
+            void qc.invalidateQueries({ queryKey: owner ? ['api-keys', owner] : MY_API_KEYS });
+            if (owner !== org) setPage('apikeys', owner || null);
           }}
         />
       )}

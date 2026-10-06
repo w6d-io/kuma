@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../contexts/AppContext';
 import { accountsApi, type ApiKeySecretView } from '../../api/accounts';
 import { useOrgCatalog } from '../../api/orgCatalog';
-import { OrgPicker } from '../../components/OrgPicker';
 import { Button, Drawer, Field, FormGrid, Input, Select } from '../../components/ui';
 import { orgLabel } from '../../lib/orgOptions';
 import { toastFor } from '../../lib/apiError';
@@ -13,18 +12,17 @@ import { ScopeField } from './parts';
 import { SecretDrawer } from './SecretDrawer';
 
 /**
- * A new machine key, made by platform staff (orgs.keys:write, a recent second factor) on the API keys
- * page, the only place keys are made: the organization (any; `initialOrg` preselects the page's), a
- * label, scopes ticked by kind (permissions, site roles, groups), an expiry — then its secret, once.
- * The key works on every site serving the organization. The catalogue is the chosen organization's,
- * from jinbe; when it cannot be read, the scopes are typed.
+ * A new machine key for an organization, made by platform staff (orgs.keys:write, a recent second
+ * factor) from Create key on the API keys page (CreateKeyDrawer, whose "For" field is `ownerField`):
+ * a label, scopes ticked by kind (permissions, site roles, groups), an expiry — then its secret, once.
+ * The key works on every site serving the organization. The catalogue is the organization's, from
+ * jinbe; when it cannot be read, the scopes are typed. No organization yet: the scopes wait for one.
  */
-export function CreateOrgKeyDrawer({ initialOrg, onClose, onCreated }: {
-  initialOrg: string; onClose: () => void; onCreated: (org: string) => void;
+export function CreateOrgKeyDrawer({ org, ownerField, onClose, onCreated }: {
+  org: string; ownerField?: ReactNode; onClose: () => void; onCreated: (org: string) => void;
 }) {
   const { pushToast } = useApp();
   const { orgs } = useOrgCatalog();
-  const [org, setOrg] = useState(initialOrg);
   const orgName = org ? orgLabel(org, orgs) : '';
   const [label, setLabel] = useState('');
   const catalogue = useQuery({ queryKey: ['api-keys', org, 'scopes'], queryFn: () => accountsApi.apiKeyScopes(org), staleTime: 60_000, retry: false, enabled: !!org });
@@ -41,8 +39,6 @@ export function CreateOrgKeyDrawer({ initialOrg, onClose, onCreated }: {
   const allowed = entries?.map((e) => e.scope);
   const scopes = allowed ? (picked ?? []).filter((s) => allowed.includes(s)) : parseScopes(scopesText);
   const ready = !!org && !!label.trim() && scopes.length > 0;
-  // Another organization, another catalogue: nothing ticked for the last one carries over.
-  const chooseOrg = (id: string) => { setOrg(id); setPicked(null); setRefusedWith(null); setScopesText(''); };
 
   const submit = async () => {
     if (!ready) return;
@@ -95,9 +91,7 @@ export function CreateOrgKeyDrawer({ initialOrg, onClose, onCreated }: {
     >
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <FormGrid>
-          <Field label="Organization" required hint="The key belongs to it and works on every site serving it.">
-            <OrgPicker value={org} onChange={chooseOrg} />
-          </Field>
+          {ownerField}
           <Field label="Label" required hint="What the key is for, so it can be told apart later.">
             <Input placeholder="e.g. Billing sync" value={label} maxLength={200} autoFocus onChange={(e) => setLabel(e.target.value)} />
           </Field>

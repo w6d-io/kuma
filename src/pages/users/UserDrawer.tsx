@@ -161,6 +161,7 @@ export function UserDrawer() {
         )}
         {mayGrant && (
           <GrantComposer
+            fromGroups={newGroups}
             hint="Single roles or permissions on jinbe or a site, beside their groups. Access inside an organization is given there once they are a member."
             onChange={(drafts, valid) => setNewGrants({ drafts, valid })}
           />
@@ -231,6 +232,7 @@ export function UserDrawer() {
               {mayReadGrants && <div className="mt-16">
                 <IndividualAccess
                   userId={user.id}
+                  fromGroups={user.groups}
                   who={user.name || user.email}
                   mayGrant={mayGrant}
                   orgName={(o) => orgLabel(o ?? '', orgCatalog)}

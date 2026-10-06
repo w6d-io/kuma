@@ -132,6 +132,7 @@ export function InviteDialog({ open, onClose }: { open: boolean; onClose: () => 
           )}
           {mayGrant && (
             <GrantComposer
+              fromGroups={groups}
               hint="The same single roles or permissions on jinbe or a site for each of them, beside their groups. Needs a recent second factor."
               onChange={(drafts, valid) => setGrants({ drafts, valid })}
             />

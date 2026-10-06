@@ -34,7 +34,7 @@ export const NAV: NavItem[] = [
   { id: "apikeys",   name: "API keys",  ico: I.key,     perms: [] },
   // Your own keys (MCP). perms [] — the rail shows it only where jinbe serves personal keys
   // (usePersonalKeysEnabled): a 404 there means the platform has them switched off.
-  { id: "connections", name: "Connections & keys", ico: I.sparkle, perms: [] },
+  { id: "connections", name: "Connections", ico: I.sparkle, perms: [] },
   { id: "audit",     name: "Audit",     ico: I.audit,   perms: ["audit:read"] },
   { id: "settings",  name: "Settings",  ico: I.cog,     perms: [] },
   // Download and restore from a file work everywhere; S3 snapshots where the chart turned them on.
