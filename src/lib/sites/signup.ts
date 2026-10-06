@@ -8,11 +8,14 @@ import type { Access, Site, SiteSignUp } from './types';
  * meets them with the sign-up roles.
  */
 
-/** Closed, `user` when the site has it (the standard set), a personal org. Opening it is one switch. */
-export function defaultSignUp(site: Pick<Site, 'name' | 'roles' | 'routes'>): SiteSignUp {
+/**
+ * Closed, `user` when the site has it (the standard set), a personal org when the site has
+ * organizations on — none otherwise, which is all it may do then. Opening it is one switch.
+ */
+export function defaultSignUp(site: Pick<Site, 'name' | 'roles' | 'routes' | 'organizations'>): SiteSignUp {
   const roles = Object.keys(expandRolePermissions(site));
   const role = roles.includes('user') ? 'user' : roles.includes('viewer') ? 'viewer' : roles.find((r) => r !== 'admin');
-  return { mode: 'closed', domains: [], roles: role ? [role] : [], orgs: 'personal' };
+  return { mode: 'closed', domains: [], roles: role ? [role] : [], orgs: site.organizations?.enabled ? 'personal' : 'none' };
 }
 
 export type Reach = 'everyone' | 'signed-in' | 'role' | 'no';

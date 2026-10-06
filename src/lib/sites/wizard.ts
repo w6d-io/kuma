@@ -1,4 +1,4 @@
-import { buildSite, orgGrantableFor, type TemplateId } from './templates';
+import { buildSite, withOrganizationTemplate, type TemplateId } from './templates';
 import { labelProblem, nameProblem, namespaceProblem, portProblem, serviceProblem } from './validate';
 import type { RolesPreset, Site } from './types';
 
@@ -21,14 +21,13 @@ export interface WizardState {
   groups: Record<string, string>;
   orgsOn: boolean;
   orgs: string[];
-  orgGrantable: boolean;
   /** Ephemeral: paused this many seconds after the first save; null or absent for a permanent site. */
   ttl?: number | null;
 }
 
 export const INITIAL: WizardState = {
   paste: '', label: '', zone: '', pathPrefix: '', service: '', namespace: '', port: '8080', name: '', displayName: '', nameTouched: false,
-  template: 'web-api', shellPublic: false, roles: 'standard', groups: {}, orgsOn: false, orgs: [], orgGrantable: true,
+  template: 'web-api', shellPublic: false, roles: 'standard', groups: {}, orgsOn: false, orgs: [],
 };
 
 export const WIZARD_STORE = 'kuma.sites.wizard';
@@ -55,13 +54,16 @@ export function siteFrom(s: WizardState): Site {
     name: s.name, displayName: s.displayName || s.name, host: `${s.label}.${s.zone}`, pathPrefix: s.pathPrefix || undefined,
     service: s.service, namespace: s.namespace, port: Number(s.port),
   }, { shellPublic: s.shellPublic });
-  return {
+  const site: Site = {
     ...base,
     roles: s.roles,
     groups: {
       platform: Object.fromEntries(Object.entries(s.groups).filter(([, r]) => r).map(([g, r]) => [g, [r]])),
-      orgGrantable: s.orgsOn && s.orgGrantable && s.roles !== 'readonly' ? orgGrantableFor(s.name, s.displayName || s.name) : s.orgsOn && s.orgGrantable ? { [`${s.name}-viewers`]: { label: `${s.displayName || s.name} viewers`, roles: ['viewer'] } } : {},
+      orgGrantable: {},
     },
     orgs: s.orgsOn ? s.orgs : [],
   };
+  // Organizations on: the template — the switch (owners hold admin), the organization gate, the
+  // /orgs/:orgId/… route and the org roles <site>-admin and <site>-member.
+  return s.orgsOn ? withOrganizationTemplate(site) : site;
 }

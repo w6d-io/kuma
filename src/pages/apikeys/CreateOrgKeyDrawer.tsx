@@ -10,9 +10,10 @@ import { ScopeField } from './parts';
 import { SecretDrawer } from './SecretDrawer';
 
 /**
- * A new machine key for an organization: a label, scopes ticked from what the creator holds there
- * (by site), an expiry — then its secret, once. The catalogue comes from jinbe up front; on a jinbe
- * without it, from the first refused create, and until then the scopes are typed.
+ * A new machine key for an organization, made by platform staff (orgs.keys:write, a recent second
+ * factor): a label, scopes ticked by kind (permissions, site roles, groups), an expiry — then its
+ * secret, once. The key works on every site serving the organization. The catalogue comes from jinbe
+ * up front; when it cannot be read, the scopes are typed.
  */
 export function CreateOrgKeyDrawer({ org, orgName, onClose, onCreated }: {
   org: string; orgName: string; onClose: () => void; onCreated: () => void;
@@ -63,7 +64,7 @@ export function CreateOrgKeyDrawer({ org, orgName, onClose, onCreated }: {
       >
         <p className="small muted m-0">
           A program exchanges the client ID and secret for a token (OAuth2 client credentials), then calls
-          the organization’s sites with it. {created.expires_at ? <>The key stops working on {new Date(created.expires_at).toLocaleDateString()}.</> : <>The key does not expire; revoke it when it is no longer needed.</>}
+          any site serving the organization with it. {created.expires_at ? <>The key stops working on {new Date(created.expires_at).toLocaleDateString()}.</> : <>The key does not expire; revoke it when it is no longer needed.</>}
         </p>
       </SecretDrawer>
     );

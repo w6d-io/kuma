@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   nameProblem, labelProblem, serviceProblem, namespaceProblem, portProblem, welcomeProblem, helpUrlProblem,
-  logoProblem, routeProblems, secretLooking, headerNameProblem, accentProblem, COOKIE_RESERVED,
+  logoProblem, routeProblems, secretLooking, headerNameProblem, accentProblem, COOKIE_RESERVED, upstreamPathProblem,
 } from './validate';
 import { contrastRatio, parseHex } from './color';
 import type { Route } from './types';
@@ -26,6 +26,14 @@ describe('site fields', () => {
     expect(portProblem('8080')).toBeNull();
     expect(portProblem('0')).not.toBeNull();
     expect(portProblem('x')).not.toBeNull();
+  });
+  it('upstream base path is literal, absolute, without a trailing slash, like jinbe', () => {
+    expect(upstreamPathProblem('')).toBeNull();
+    expect(upstreamPathProblem('/api/external')).toBeNull();
+    expect(upstreamPathProblem('/api/')).not.toBeNull();
+    expect(upstreamPathProblem('api')).not.toBeNull();
+    expect(upstreamPathProblem('/api/:id')).not.toBeNull();
+    expect(upstreamPathProblem('/a b')).not.toBeNull();
   });
 });
 

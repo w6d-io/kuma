@@ -1,25 +1,24 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useState, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { I } from '../components/ui/Icons';
-import { MultiSelectPills } from '../components/ui/Primitives';
-import { Badge, Button, ButtonBase, Card, Drawer, EmptyHint, Field, Input, PageHeader, cx } from '../components/ui';
+import { Badge, Button, ButtonBase, Card, EmptyHint, Input, PageHeader, cx } from '../components/ui';
 import { useAllOrganizations, useOrgUsers, useSession } from '../api/hooks';
 import { useMyOrgPermissions, useOrgMemberRoles, useOrgRoles } from '../api/orgRoles';
 import { OrgMembers } from './orgadmin/OrgMembers';
 import { CreateOrgDialog, DeleteOrgDialog, EditOrgDialog } from './organizations/OrgDialogs';
-import { orgAccessApi, OWNER_ROLE } from '../api/orgAccess';
-import { entitledSites, ownersOf } from '../lib/orgRoles';
-import { toastFor } from '../lib/apiError';
+import { ORG_OWNERS, OwnerBadge, OwnersDrawer, type OwnersResume } from './organizations/OwnersDrawer';
+import { OrgKeys } from './apikeys/OrgKeys';
+import { entitledSites, ownersOf, sameSet } from '../lib/orgRoles';
 import { ApiErrorState } from '../components/ApiErrorState';
 import { holds, holdsIn } from '../policy/model';
-import { stepUpAndResume, useResume } from '../lib/resume';
+import { useResume } from '../lib/resume';
 
 // The Organizations hub — the platform-level view of EVERY tenant, as opposed to "My org" (one
 // organization from the inside). jinbe owns the records (name, tenant), the memberships and the org
-// roles; this screen creates, renames and deletes organisations, names their owners, and shows their
-// people and roles in one place. Which sites an organization may use is each site's intent, shown here
-// read-only. Each control asks the permission its route declares, exactly.
+// roles; this screen creates organisations for their owner, renames and deletes them, names their
+// owners, creates their API keys, and shows their people, invitations and roles in one place. Which
+// sites an organization may use is each site's intent, shown here read-only. Each control asks the
+// permission its route declares, exactly.
 
 export function OrganizationsPage() {
   const { pageParam, setPage, pushToast } = useApp();
@@ -96,7 +95,7 @@ export function OrganizationsPage() {
         <Card className="p-32">
           <EmptyHint>
             {mayWrite
-              ? <>No organization yet. Create one, then name its owners.</>
+              ? <>No organization yet. Create one for its owner.</>
               : <>No organization yet. Somebody who may manage organizations can create one.</>}
           </EmptyHint>
           {mayWrite && (
@@ -172,18 +171,18 @@ function OrgDetail({ org, name, tenant, listedOwners, listedSites, mayWrite, may
   listedOwners?: string[]; listedSites?: string[];
   mayWrite: boolean; mayDelete: boolean; onDeleted: () => void;
 }) {
-  const { pushToast, setPage } = useApp();
+  const { pushToast } = useApp();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const { data: session } = useSession();
   const mayNameOwners = holds(session, 'orgs.owners:write');
+  const mayCreateKeys = holds(session, 'orgs.keys:write');
   const orgPermissions = useMyOrgPermissions().data;
   // Inside the org the platform list means nothing: what the caller holds HERE decides (the org
   // roles assigned to them, or the every-org map). An org their answer does not list is left to jinbe.
   const unlisted = !!orgPermissions && !(org in orgPermissions);
   const mayManage = holdsIn(orgPermissions, org, 'org.members:write');
   const mayReadMembers = holdsIn(orgPermissions, org, 'org.members:read') || unlisted;
-  const mayKeys = holdsIn(orgPermissions, org, 'org.keys:read') || unlisted;
 
   const usersQ = useOrgUsers(org);
   const users = useMemo(() => usersQ.data?.data ?? [], [usersQ.data]);
@@ -197,7 +196,7 @@ function OrgDetail({ org, name, tenant, listedOwners, listedSites, mayWrite, may
   const sites = (listedSites ?? entitledSites(rolesQ.data ?? [])).filter((s) => s !== 'jinbe');
   const ownersKnown = !!listedOwners || (mayReadMembers && (rolesListed || !memberRoles.isLoading));
   const sitesKnown = !!listedSites || !rolesQ.isLoading;
-  const label = (id: string) => users.find((u) => u.id === id)?.traits?.email ?? id;
+  const emailOf = (id: string) => users.find((u) => u.id === id)?.traits?.email;
 
   const [editOwners, setEditOwners] = useState(false);
   const [resumeOwners, setResumeOwners] = useState<{ owners: string[]; auto: boolean } | undefined>();
@@ -224,7 +223,6 @@ function OrgDetail({ org, name, tenant, listedOwners, listedSites, mayWrite, may
         <div className="row gap-8">
           {mayWrite && <Button size="sm" variant="ghost" icon={I.edit} onClick={() => setEditing(true)}>Edit</Button>}
           {mayDelete && <Button size="sm" variant="ghost" icon={I.trash} onClick={() => setDeleting(true)}>Delete</Button>}
-          {mayKeys && <Button size="sm" onClick={() => setPage('apikeys', org)}>API keys</Button>}
         </div>
       </div>
 
@@ -233,7 +231,7 @@ function OrgDetail({ org, name, tenant, listedOwners, listedSites, mayWrite, may
       <Card pad="md" className="mb-12">
         <div className="fw-medium text-base">Sites</div>
         <div className="small muted mt-2">
-          The sites whose roles can be assigned here. Each site&apos;s intent lists the organizations it serves; change it on the site.
+          The sites serving this organization: their roles can be assigned here, and its API keys work there. Read-only — change it on the site.
         </div>
         <div className="row wrap gap-4 mt-8">
           {!sitesKnown
@@ -258,7 +256,7 @@ function OrgDetail({ org, name, tenant, listedOwners, listedSites, mayWrite, may
                 ? <span className="small muted">{mayReadMembers ? 'reading…' : 'You cannot see this organization\'s members.'}</span>
                 : owners.length === 0
                     ? <span className="small muted">No owner yet — nobody assigns roles here.</span>
-                    : owners.map((id) => <Badge key={id} tone="accent">{label(id)}</Badge>)}
+                    : owners.map((id) => <OwnerBadge key={id} id={id} email={emailOf(id)} />)}
             </div>
           </div>
           {mayNameOwners && (
@@ -270,6 +268,10 @@ function OrgDetail({ org, name, tenant, listedOwners, listedSites, mayWrite, may
       {mayReadMembers
         ? <OrgMembers org={org} orgName={name ?? org} mayManage={mayManage} pushToast={pushToast} />
         : <Card className="p-32"><EmptyHint>Its members and their roles are visible to whoever holds org.members:read in this organization.</EmptyHint></Card>}
+
+      <div className="mt-12">
+        <OrgKeys org={org} orgName={name ?? org} from="admin" mayCreate={mayCreateKeys} />
+      </div>
 
       {editing && (
         <EditOrgDialog org={org} name={name} tenant={tenant} pushToast={pushToast} onClose={() => setEditing(false)} />
@@ -297,105 +299,5 @@ function OrgDetail({ org, name, tenant, listedOwners, listedSites, mayWrite, may
         />
       )}
     </>
-  );
-}
-
-// The owners editor. A PUT names the org's owners by identity id: each joins the org if needed and
-// holds jinbe:owner there, everyone else loses it. orgs.owners:write and a recent second factor are
-// enforced by jinbe; a stale factor returns reauth_required, handled with a step-up bounce. The
-// picker offers the members, plus anyone already an owner, plus an identity id typed in (onboarding
-// an org that has nobody yet).
-const ORG_OWNERS = 'org-owners';
-type OwnersResume = { owners: string[]; was: string[] };
-const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(x => b.includes(x));
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** `resume`: back from the step-up — the owners chosen, saved once by itself on open when `auto`. */
-function OwnersDrawer({ org, name, current, members, onClose, resume }: {
-  org: string; name?: string; current: string[]; members: { id: string; label: string }[];
-  onClose: () => void; resume?: { owners: string[]; auto: boolean };
-}) {
-  const { pushToast } = useApp();
-  const qc = useQueryClient();
-  const [selected, setSelected] = useState<string[]>(resume?.owners ?? current);
-  const [extra, setExtra] = useState('');
-  const [busy, setBusy] = useState(false);
-  const labels = useMemo(() => new Map(members.map((m) => [m.id, m.label])), [members]);
-  const options = useMemo(() => [...new Set([...members.map((m) => m.id), ...current, ...selected])], [members, current, selected]);
-  const resumed = useRef(false);
-  useEffect(() => {
-    if (!resume?.auto || resumed.current) return;
-    resumed.current = true;
-    void save();
-  });
-  const dirty = !sameSet(selected, current);
-
-  const toggle = (id: string) => setSelected(prev => (prev.includes(id) ? prev.filter(e => e !== id) : [...prev, id]));
-
-  async function save() {
-    if (!dirty || busy) return;
-    setBusy(true);
-    try {
-      await orgAccessApi.setOwners(org, selected);
-      pushToast(`Owners of ${name ?? org} updated`, { sub: `${selected.length} owner${selected.length === 1 ? '' : 's'}` });
-      qc.invalidateQueries({ queryKey: ['org-member-roles', org] });
-      qc.invalidateQueries({ queryKey: ['all-orgs'] });
-      qc.invalidateQueries({ queryKey: ['org-users', org] });
-      onClose();
-    } catch (e) {
-      const err = e as Error & { code?: string };
-      // Step-up: re-verify a recent second factor, then return to retry.
-      if (err.code === 'reauth_required') {
-        const going = stepUpAndResume(`${ORG_OWNERS}:${org}`, { owners: selected, was: current } satisfies OwnersResume);
-        pushToast('Two-factor re-verification required', { err: true, sub: going
-          ? 'Nothing was saved yet. You will be sent to re-verify your second factor; back here the owners are saved by themselves. This is not a sign-out.'
-          : 'Nothing was saved. Re-verify your second factor, then save again.' });
-        return;
-      }
-      pushToast(...toastFor(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Drawer
-      open
-      onClose={onClose}
-      size="lg"
-      eyebrow="Organization owners"
-      title="Name owners"
-      footer={
-        <>
-          <span className="small muted">Needs orgs.owners:write and a recent second factor.</span>
-          <div className="row">
-            <Button onClick={onClose} disabled={busy}>Cancel</Button>
-            <Button variant="primary" onClick={() => void save()} disabled={!dirty || busy}>{busy ? 'Saving…' : `Save ${OWNER_ROLE.split(':')[1]}s`}</Button>
-          </div>
-        </>
-      }
-    >
-      <div className="mb-12">
-        <div className="input-label">Organization</div>
-        <div className={cx('text-base', !name && 'mono')}>{name ?? org}</div>
-      </div>
-      <Field
-        label="Owners"
-        hint="Each selected person holds jinbe:owner here (joining the organization if needed). Saving replaces the whole list; deselect everyone to leave it without an owner."
-      >
-        <Card pad="sm">
-          <MultiSelectPills
-            options={options.map((id) => labels.get(id) ?? id)}
-            selected={selected.map((id) => labels.get(id) ?? id)}
-            onToggle={(l) => toggle(options.find((id) => (labels.get(id) ?? id) === l) ?? l)}
-            empty="No members yet — add an owner by identity id below."
-          />
-        </Card>
-      </Field>
-      <form className="row gap-8 mt-8" onSubmit={(e) => { e.preventDefault(); const v = extra.trim().toLowerCase(); if (UUID.test(v)) { setSelected((s) => [...new Set([...s, v])]); setExtra(''); } }}>
-        <Input size="sm" mono aria-label="Add an owner by identity id" placeholder="identity id (not yet a member)" value={extra} onChange={(e) => setExtra(e.target.value)} />
-        <Button size="sm" type="submit" disabled={!UUID.test(extra.trim())}>Add</Button>
-      </form>
-    </Drawer>
   );
 }

@@ -16,6 +16,8 @@ export interface ApiKeyView {
   expires_at?: string | null;
   /** When a program last used the key. Not served by jinbe yet; shown once it is. */
   last_used_at?: string | null;
+  /** The creator's address, when jinbe resolves it. */
+  created_by_email?: string | null;
 }
 
 /** Answered once, on create. The secret cannot be read again. */
@@ -110,23 +112,28 @@ export const accountsApi = {
   revokeAllSessions: (id: string) =>
     request<void>(`/admin/users/${encodeURIComponent(id)}/sessions`, { method: 'DELETE' }),
 
-  listApiKeys: (orgId: string) =>
-    request<{ data: ApiKeyView[]; total: number }>(`/organizations/${encodeURIComponent(orgId)}/api-keys`),
+  // An organisation's keys. Platform staff list them from the admin route (orgs:read); somebody of
+  // the organisation from its own (org.keys:read there).
+  listApiKeys: (orgId: string, from: 'admin' | 'org' = 'org') =>
+    request<{ data: ApiKeyView[]; total: number }>(`${from === 'admin' ? '/admin' : ''}/organizations/${encodeURIComponent(orgId)}/api-keys`),
 
+  // Keys are created by platform staff only (orgs.keys:write, a recent second factor), valid on every
+  // site serving the organisation; the organisation itself keeps list and revoke.
   createApiKey: (orgId: string, body: { label: string; scopes: string[]; expires_in_days?: number }) =>
-    request<ApiKeySecretView>(`/organizations/${encodeURIComponent(orgId)}/api-keys`, {
+    request<ApiKeySecretView>(`/admin/organizations/${encodeURIComponent(orgId)}/api-keys`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
 
-  // The scopes a key may be given: the permissions of this org's sites that the caller holds there,
-  // each with the sites that ask for it. An older jinbe answers bare strings (normalized, no sites);
-  // one older still answers 404.
+  // What a key may be given, for the sites serving this organisation: permissions, site roles
+  // (`role:<site>:<role>`) and groups (`group:<name>`), each with what it stands for today.
   apiKeyScopes: (orgId: string): Promise<ScopeEntry[]> =>
-    request<{ scopes: unknown }>(`/organizations/${encodeURIComponent(orgId)}/api-keys/scopes`).then(r => normalizeCatalog(r.scopes)),
+    request<{ scopes: unknown }>(`/admin/organizations/${encodeURIComponent(orgId)}/api-keys/scopes`).then(r => normalizeCatalog(r.scopes)),
 
-  revokeApiKey: (orgId: string, clientId: string) =>
-    request<void>(`/organizations/${encodeURIComponent(orgId)}/api-keys/${encodeURIComponent(clientId)}`, {
+  // Platform staff revoke through the admin route (orgs.keys:write, a recent second factor); the
+  // organization through its own (org.keys:revoke there).
+  revokeApiKey: (orgId: string, clientId: string, from: 'admin' | 'org' = 'org') =>
+    request<void>(`${from === 'admin' ? '/admin' : ''}/organizations/${encodeURIComponent(orgId)}/api-keys/${encodeURIComponent(clientId)}`, {
       method: 'DELETE',
     }),
 

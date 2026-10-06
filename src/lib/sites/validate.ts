@@ -31,6 +31,13 @@ export function namespaceProblem(v: string): string | null {
   return DNS_LABEL.test(v) ? null : 'A namespace name: lowercase letters, digits and dashes.';
 }
 
+/** upstream.path: literal and absolute, no :params, no trailing slash (jinbe siteSchema). Empty is fine: none. */
+export function upstreamPathProblem(v: string): string | null {
+  if (!v) return null;
+  if (v.length > 256) return 'At most 256 characters.';
+  return /^(\/[A-Za-z0-9._~@-]+)+$/.test(v) ? null : 'A literal path like /api/external: no :params, no spaces, no trailing slash.';
+}
+
 export function portProblem(v: string): string | null {
   const n = Number(v);
   return Number.isInteger(n) && n >= 1 && n <= 65535 ? null : 'A port between 1 and 65535.';

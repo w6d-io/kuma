@@ -2,7 +2,7 @@ import { Badge, ChecklistGroups, EmptyHint, Field, I, Input, RelativeTime, type 
 import { useSession, useUserIdentity } from '../../api/hooks';
 import { useActorName } from '../../lib/audit/actorNames';
 import { statusOf } from '../../lib/apiError';
-import { expiryLabel, expiryState, groupBySite, scopeHint, type ScopeEntry } from '../../lib/apiKeys';
+import { expiryLabel, expiryState, groupByKind, scopeHint, SCOPE_KIND_LABEL, type ScopeEntry } from '../../lib/apiKeys';
 
 /** Pieces the API-key screens share: the scope picker, and the expiry, creator and last-use cells. */
 
@@ -19,13 +19,13 @@ export function ExpiryCell({ expiresAt }: { expiresAt: string | null | undefined
  * Who created a key: jinbe stores their account id. "You" for your own; a name once the console has
  * one for that id (audit pages, a lookup); otherwise the id, shortened, whole on hover.
  */
-export function CreatorCell({ id, at }: { id: string | null; at: string | null }) {
+export function CreatorCell({ id, at, email }: { id: string | null; at: string | null; email?: string | null }) {
   const { data: session } = useSession();
   const resolved = useActorName(id);
   const looked = useUserIdentity(id ?? undefined, false).data?.traits;
   const who = !id ? null
     : id === session?.identity_id ? 'you'
-    : resolved?.email ?? resolved?.name ?? looked?.email ?? null;
+    : email ?? resolved?.email ?? resolved?.name ?? looked?.email ?? null;
   return (
     <div className="small">
       <div className="muted nowrap">{at ? <RelativeTime at={at} /> : '—'}</div>
@@ -43,12 +43,19 @@ export function LastUsedCell({ at }: { at: string | null | undefined }) {
   return <span className="small muted"><RelativeTime at={at} /></span>;
 }
 
-/** The catalogue as the checklist's groups: one per site, each scope with what it lets a program do. */
+const KIND_HINT = {
+  permission: 'One permission, on every site whose routes ask for it.',
+  role: 'Everything a site role carries, as it changes.',
+  group: 'Everything a group gives on these sites, as it changes.',
+} as const;
+
+/** The catalogue as the checklist's groups: permissions, site roles, groups — each with what it lets a program do. */
 function scopeGroups(entries: readonly ScopeEntry[]): ChecklistGroup[] {
-  return groupBySite(entries).map((g) => ({
-    id: g.site || '-',
-    label: g.site || 'Other scopes',
-    options: g.scopes.map((s) => ({ value: s, label: <span className="mono">{s}</span>, hint: scopeHint(s), search: `${g.site} ${s}` })),
+  return groupByKind(entries).map((g) => ({
+    id: g.kind,
+    label: SCOPE_KIND_LABEL[g.kind],
+    hint: KIND_HINT[g.kind],
+    options: g.entries.map((e) => ({ value: e.scope, label: <span className="mono">{e.scope}</span>, hint: scopeHint(e), search: `${e.scope} ${e.sites.join(' ')}` })),
   }));
 }
 
@@ -56,7 +63,7 @@ function scopeGroups(entries: readonly ScopeEntry[]): ChecklistGroup[] {
 function fallbackReason(error: unknown): string {
   const status = statusOf(error);
   if (status === 404) return 'This server does not list the scopes you can grant.';
-  if (status === 403) return 'The scope list of this organization is for its key managers.';
+  if (status === 403) return 'The scope list is for platform staff who create keys (orgs.keys:write).';
   return 'The scopes you can grant could not be read.';
 }
 
@@ -77,9 +84,9 @@ export function ScopeField({ entries, loading, error, value, onChange, text, onT
 }) {
   if (entries) {
     return (
-      <Field label="Scopes" required hint={hint ?? 'Permissions you hold in this organization, by the site whose routes ask for them. Pick at least one.'}>
+      <Field label="Scopes" required hint={hint ?? 'What the key may do on the sites serving this organization. Pick at least one.'}>
         {entries.length === 0
-          ? <EmptyHint>Nothing to grant: none of this organization’s sites has a route that asks for a permission you hold here.</EmptyHint>
+          ? <EmptyHint>Nothing to grant: no site serving this organization has a permission, role or group a key can hold.</EmptyHint>
           : <ChecklistGroups label="Scopes" groups={scopeGroups(entries)} value={value} onChange={onChange} searchAt={10} />}
       </Field>
     );

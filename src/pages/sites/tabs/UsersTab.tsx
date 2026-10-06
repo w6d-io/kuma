@@ -6,6 +6,7 @@ import { stepUpOnRefusal } from '../../../lib/resume';
 import { Badge, Button, Callout, Card, Checkbox, ConfirmDialog, EmptyRow, Field, FieldRow, I, Input, LoadingRows, RadioGroup, Select, Table } from '../../../components/ui';
 import { expandRolePermissions } from '../../../lib/sites/access';
 import { REACH_WORDS, defaultSignUp, signUpReach } from '../../../lib/sites/signup';
+import { organizationsOn } from '../../../lib/sites/templates';
 import type { Site, SiteSignUp } from '../../../lib/sites/types';
 import type { SiteEditor } from '../useSiteEditor';
 import { useSitePerms } from '../usePerms';
@@ -85,7 +86,14 @@ function SignUpSettings({ site, signUp, set, readOnly, canOpen }: { site: Site; 
           {signUp.roles.includes('admin') && <p className="small text-warning m-0">Everybody who signs up would be an admin of this site.</p>}
           {signUp.roles.length === 0 && <p className="small text-warning m-0">Pick at least one role: without one, sign-up stays closed.</p>}
         </fieldset>
-        <RadioGroup<SiteSignUp['orgs']> label="Organization" name="signup-orgs" value={signUp.orgs} disabled={readOnly} onChange={(orgs) => set((s) => ({ ...s, orgs }))} options={ORGS} />
+        <RadioGroup<SiteSignUp['orgs']>
+          label="Organization"
+          name="signup-orgs"
+          value={signUp.orgs}
+          disabled={readOnly}
+          onChange={(orgs) => set((s) => ({ ...s, orgs }))}
+          options={organizationsOn(site) ? ORGS : ORGS.map((o) => (o.value === 'none' ? o : { ...o, disabled: o.value !== signUp.orgs, hint: 'Needs organizations on (Access → Organizations)' }))}
+        />
       </div>
     </Card>
   );

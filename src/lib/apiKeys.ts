@@ -23,46 +23,61 @@ export function initialScopes(allowed: readonly string[]): string[] {
   return read ? [read] : [];
 }
 
-/** One scope of an organization's catalogue: a permission, and the sites whose routes require it. */
+/** What a key scope is: a permission (`resource:verb`), a site role (`role:<site>:<role>`) or a group (`group:<name>`). */
+export type ScopeKind = 'permission' | 'role' | 'group';
+
+/** One scope of an organization's catalogue: what it is, the sites it reaches, the permissions it stands for. */
 export interface ScopeEntry {
   scope: string;
+  kind: ScopeKind;
   sites: string[];
+  /** For a role or a group: the permissions it carries today. */
+  permissions: string[];
 }
 
+/** The kind a scope's shape says, when jinbe does not. */
+export function scopeKindOf(scope: string): ScopeKind {
+  if (scope.startsWith('role:')) return 'role';
+  if (scope.startsWith('group:')) return 'group';
+  return 'permission';
+}
+
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+
 /**
- * The catalogue as jinbe answers it — `{scope, sites}` entries, or bare strings from a jinbe that
- * predates the per-org catalogue — as entries. Anything else is dropped rather than shown.
+ * The catalogue as jinbe answers it — `{scope, kind, sites, permissions}` entries, or bare strings
+ * from an older jinbe — as entries. Anything else is dropped rather than shown.
  */
 export function normalizeCatalog(raw: unknown): ScopeEntry[] {
   if (!Array.isArray(raw)) return [];
   const out: ScopeEntry[] = [];
   for (const item of raw) {
-    if (typeof item === 'string') out.push({ scope: item, sites: [] });
+    if (typeof item === 'string') out.push({ scope: item, kind: scopeKindOf(item), sites: [], permissions: [] });
     else if (item && typeof item === 'object' && typeof (item as ScopeEntry).scope === 'string') {
-      const sites = (item as { sites?: unknown }).sites;
-      out.push({ scope: (item as ScopeEntry).scope, sites: Array.isArray(sites) ? sites.filter((x): x is string => typeof x === 'string') : [] });
+      const { scope, kind, sites, permissions } = item as { scope: string; kind?: unknown; sites?: unknown; permissions?: unknown };
+      out.push({
+        scope,
+        kind: kind === 'permission' || kind === 'role' || kind === 'group' ? kind : scopeKindOf(scope),
+        sites: strings(sites),
+        permissions: strings(permissions),
+      });
     }
   }
   return out;
 }
 
-/**
- * The catalogue by site, for the picker: each site with the scopes its routes require, sites and
- * scopes in alphabetical order. A scope several sites require appears under each (one choice — the
- * scope opens its routes on all of them). Scopes with no site (older jinbe) come last, under `''`.
- */
-export function groupBySite(entries: readonly ScopeEntry[]): { site: string; scopes: string[] }[] {
-  const bySite = new Map<string, Set<string>>();
-  for (const { scope, sites } of entries) {
-    for (const site of sites.length > 0 ? sites : ['']) {
-      const set = bySite.get(site) ?? new Set<string>();
-      set.add(scope);
-      bySite.set(site, set);
-    }
-  }
-  return [...bySite.entries()]
-    .sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)))
-    .map(([site, scopes]) => ({ site, scopes: sortScopes([...scopes]) }));
+export const SCOPE_KIND_LABEL: Record<ScopeKind, string> = {
+  permission: 'Permissions',
+  role: 'Site roles',
+  group: 'Groups',
+};
+
+/** The catalogue by kind, for the picker: permissions, then site roles, then groups; empty kinds left out. */
+export function groupByKind(entries: readonly ScopeEntry[]): { kind: ScopeKind; entries: ScopeEntry[] }[] {
+  return (['permission', 'role', 'group'] as const)
+    .map((kind) => ({ kind, entries: entries.filter((e) => e.kind === kind) }))
+    .filter((g) => g.entries.length > 0)
+    .map((g) => ({ ...g, entries: g.kind === 'permission' ? sortScopes(g.entries.map((e) => e.scope)).map((s) => g.entries.find((e) => e.scope === s)!) : [...g.entries].sort((a, b) => a.scope.localeCompare(b.scope)) }));
 }
 
 /** One permission a personal key may be narrowed to, and the resource it belongs to (`users`, `audit`). */
@@ -128,11 +143,16 @@ export function expiryState(expiresAt: string | null | undefined, now: number = 
 const READ_VERBS = /:(read|list|get|view)$/;
 
 /**
- * What a scope lets a program do, in two words for the picker: reading, or changing things. Only the
- * verb is read; the platform decides what each permission really opens.
+ * What a scope lets a program do, for the picker. A permission: reading, or changing things (only the
+ * verb is read; the platform decides what it really opens). A role or a group: where, and what it
+ * carries today.
  */
-export function scopeHint(scope: string): string {
-  return READ_VERBS.test(scope) ? 'Read only' : 'Can change data';
+export function scopeHint(entry: ScopeEntry | string): string {
+  const e = typeof entry === 'string' ? { scope: entry, kind: scopeKindOf(entry), sites: [], permissions: [] } : entry;
+  if (e.kind === 'permission') return READ_VERBS.test(e.scope) ? 'Read only' : 'Can change data';
+  const where = e.sites.length ? `On ${e.sites.join(', ')}` : '';
+  const what = e.permissions.length ? `${e.permissions.length} permission${e.permissions.length === 1 ? '' : 's'}: ${e.permissions.slice(0, 4).join(', ')}${e.permissions.length > 4 ? '…' : ''}` : 'No permission today';
+  return where ? `${where} · ${what}` : what;
 }
 
 /** Scopes by resource, reads before the rest — `fleet:read` right above `fleet:write`. */

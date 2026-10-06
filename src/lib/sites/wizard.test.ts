@@ -14,11 +14,15 @@ describe('wizard', () => {
     expect(s.address.host).toBe('payroll.dev.example.com');
     expect(s.upstream).toEqual({ service: 'payroll-ui', namespace: 'payroll', port: 8080, preserveHost: true });
     expect(s.groups.platform).toEqual({ admins: ['admin'] });
-    expect(Object.keys(s.groups.orgGrantable)).toEqual(['payroll-editors', 'payroll-viewers']);
+    expect(Object.keys(s.groups.orgGrantable)).toEqual(['payroll-admin', 'payroll-member']);
     expect(s.orgs).toHaveLength(1);
+    expect(s.organizations).toEqual({ enabled: true, ownerRole: 'admin' });
+    expect(s.gates.map((g) => g.id)).toContain('organization');
+    expect(s.routes.items.find((r) => r.id === 'org')).toMatchObject({ path: '/orgs/:orgId/:any*', orgParam: 'orgId', gate: 'organization' });
   });
   it('drops orgs when the toggle is off', () => {
     expect(siteFrom({ ...filled, orgs: ['x'] }).orgs).toEqual([]);
     expect(siteFrom(filled).groups.orgGrantable).toEqual({});
+    expect(siteFrom(filled).organizations).toBeUndefined();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { orgFormProblem, tenantFrom } from './orgTenant';
+import { orgFormProblem, ownerProblem, tenantFrom } from './orgTenant';
 
 describe('tenantFrom', () => {
   it('derives a namespace-shaped label, as jinbe does', () => {
@@ -17,5 +17,13 @@ describe('orgFormProblem', () => {
     expect(orgFormProblem('***', 'stars')).toBeNull();
     expect(orgFormProblem('Acme', 'Not Valid')).toMatch(/lowercase/);
     expect(orgFormProblem('Acme', '')).toBeNull();
+  });
+});
+
+describe('ownerProblem', () => {
+  it('needs an address', () => {
+    expect(ownerProblem('')).toMatch(/email/);
+    expect(ownerProblem('jane')).toMatch(/email address/);
+    expect(ownerProblem(' jane@example.com ')).toBeNull();
   });
 });

@@ -4,15 +4,18 @@ import type { Gate, Handler } from './types';
  * The gate's four questions (site-ux.md §7.1) and the handlers each answer renders to (OK§11.4–11.7).
  * `presetsOf` reads a gate back into answers, `custom` when the handlers are not exactly a preset —
  * that is the "Customized" badge, shown even in Basic, so a hand-built chain is never hidden.
+ *
+ * WHO, PASS, GETS, WHO_LABEL and ORG_GATE are kept equal to jinbe src/sites/presets.ts.
  */
 
-export type WhoPreset = 'signed-in' | 'signed-in-or-tokens' | 'tokens' | 'machines' | 'anyone' | 'optional';
+export type WhoPreset = 'signed-in' | 'signed-in-or-tokens' | 'people-and-org-keys' | 'tokens' | 'machines' | 'anyone' | 'optional';
 export type PassPreset = 'policy' | 'everyone' | 'nobody';
 export type GetsPreset = 'identity' | 'nothing' | 'enrich';
 export type FailsPreset = 'website' | 'api' | 'platform';
 export type Custom = 'custom';
 
-const SESSION_TOKEN: Handler = {
+/** Kratos session tokens, read from their own header so `Authorization` stays free for OAuth2 tokens. */
+export const SESSION_TOKEN: Handler = {
   handler: 'bearer_token',
   config: { token_from: { header: 'X-Session-Token' }, forward_http_headers: ['X-Session-Token'] },
 };
@@ -20,6 +23,8 @@ const SESSION_TOKEN: Handler = {
 export const WHO: Record<WhoPreset, Handler[]> = {
   'signed-in': [{ handler: 'cookie_session' }],
   'signed-in-or-tokens': [{ handler: 'cookie_session' }, SESSION_TOKEN, { handler: 'oauth2_introspection' }],
+  // Organizations: the org's people (session) and its API keys (OAuth2 client credentials).
+  'people-and-org-keys': [{ handler: 'cookie_session' }, { handler: 'oauth2_introspection' }],
   tokens: [{ handler: 'oauth2_introspection' }, SESSION_TOKEN],
   machines: [{ handler: 'oauth2_introspection' }],
   anyone: [{ handler: 'noop' }],
@@ -41,11 +46,30 @@ export const GETS: Record<GetsPreset, Handler[]> = {
 export const WHO_LABEL: Record<WhoPreset, string> = {
   'signed-in': 'Signed-in people (session cookie)',
   'signed-in-or-tokens': 'Signed-in people or API tokens',
+  'people-and-org-keys': "Organization members and their organization's API keys",
   tokens: 'API tokens only (OAuth2 or session token)',
   machines: 'Machines only (OAuth2 tokens)',
   anyone: 'Anyone',
   optional: 'Optional sign-in',
 };
+
+/**
+ * The ready-made gate of a site with organizations on (wave 2, owner decision 2026-10-06): the org's
+ * people and its API keys come in, the policy decides — on an org row, only in the route's own org,
+ * a key only for its own org — and the service gets the identity plus X-Org-Id, X-Org-Roles and
+ * X-Client-Id from the decision (render.ts forwards them on every policy gate of such a site). Errors
+ * as an API. kuma's and the MCP templates use exactly this.
+ */
+export const ORG_GATE_ID = 'organization';
+export const ORG_GATE: Gate = {
+  id: ORG_GATE_ID,
+  label: 'Organization members and API keys',
+  authenticators: WHO['people-and-org-keys'],
+  authorizer: PASS.policy,
+  mutators: GETS.identity,
+  errors: 'api',
+};
+
 export const PASS_LABEL: Record<PassPreset, string> = {
   policy: 'Check permissions per route (recommended)',
   everyone: 'Everyone who signed in',

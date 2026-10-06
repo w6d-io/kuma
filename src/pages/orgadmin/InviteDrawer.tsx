@@ -1,13 +1,9 @@
 import { useState } from 'react';
-import { Button, Card, Checkbox, Drawer, Field, FormGrid, Input, Switch, cx } from '../../components/ui';
+import { Button, Callout, Card, Checkbox, CopyField, Drawer, Field, FormGrid, I, Input, cx } from '../../components/ui';
 import { refusalWords, refusedOf, type OrgRole, type RefusedRole } from '../../api/orgAccess';
+import { invitationAddress, useCreateInvitation, type InvitationCreated } from '../../api/invitations';
 import { roleLabel } from '../../lib/orgRoles';
 import { makeToastErr, type PushToast } from './toastErr';
-import { useCreateOrgUser } from '../../api/hooks';
-import { GrantComposer } from '../../components/grants/GrantComposer';
-import { refusedGrantsOf, requestOf, type RefusedGrant } from '../../api/grants';
-import { RefusedGrants } from '../../components/grants/RefusedGrants';
-import type { GrantDraft } from '../../lib/grants';
 
 /** Checkbox list limited to the org roles the caller may assign here (never the whole catalogue). */
 function RolePicker({ assignable, checked, toggle }: { assignable: OrgRole[]; checked: string[]; toggle: (r: string) => void }) {
@@ -36,91 +32,98 @@ function RolePicker({ assignable, checked, toggle }: { assignable: OrgRole[]; ch
   );
 }
 
-export function InviteDrawer({ org, assignable, mayGrant = assignable.length > 0, onClose, onDone, pushToast }: {
+/**
+ * Invite somebody into this organization by address, with or without an account. They join only by
+ * accepting, signed in with that address verified; the roles chosen here are given then. The link
+ * (or token) is shown once, to be sent to them.
+ */
+export function InviteDrawer({ org, assignable, onClose, onDone, pushToast }: {
   org: string; assignable: OrgRole[];
-  /** May give individual access in this org (org.members:write here). */
-  mayGrant?: boolean;
   onClose: () => void; onDone: () => void; pushToast: PushToast;
 }) {
   const toastErr = makeToastErr(pushToast);
-  const createUser = useCreateOrgUser(org);
+  const create = useCreateInvitation(org);
   const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
-  const [sendInvite, setSendInvite] = useState(true);
   const [roles, setRoles] = useState<string[]>([]);
   const [refused, setRefused] = useState<RefusedRole[]>([]);
-  const [grants, setGrants] = useState<{ drafts: GrantDraft[]; valid: boolean }>({ drafts: [], valid: true });
-  const [refusedGrants, setRefusedGrants] = useState<RefusedGrant[]>([]);
-  const busy = createUser.isPending;
+  const [problem, setProblem] = useState<string | null>(null);
+  const [sent, setSent] = useState<InvitationCreated | null>(null);
+  const busy = create.isPending;
   const toggle = (r: string) => setRoles(rs => (rs.includes(r) ? rs.filter(x => x !== r) : [...rs, r]));
 
   const submit = () => {
-    if (!email || busy || !grants.valid) return;
+    if (!email.trim() || busy) return;
     setRefused([]);
-    setRefusedGrants([]);
-    createUser.mutate(
+    setProblem(null);
+    create.mutate(
+      { email: email.trim(), ...(roles.length ? { roles } : {}) },
       {
-        email: email.trim(),
-        name: name.trim() || undefined,
-        sendInvite,
-        roles: roles.length ? roles : undefined,
-        // Checked before anybody is created: a refusal creates nothing.
-        grants: grants.drafts.length ? grants.drafts.map((d) => requestOf(d, org)) : undefined,
-      },
-      {
-        onSuccess: () => { pushToast(`Invited ${email.trim()}`, { sub: sendInvite ? 'recovery email sent' : undefined }); onDone(); },
+        onSuccess: (res) => { pushToast(`Invited ${res.invitation.email}`); setSent(res); onDone(); },
         onError: (err) => {
           const list = refusedOf(err);
-          const grantList = refusedGrantsOf(err);
-          if (list.length || grantList.length) { setRefused(list); setRefusedGrants(grantList); }
-          else toastErr(err);
+          if (list.length) { setRefused(list); return; }
+          if ((err as { details?: { code?: string } }).details?.code === 'already_member') { setProblem('Already a member. Give them roles from the list instead.'); return; }
+          toastErr(err);
         },
       },
     );
   };
+
+  if (sent) {
+    const address = invitationAddress(sent);
+    return (
+      <Drawer
+        open
+        onClose={onClose}
+        eyebrow="Organization"
+        title={`${sent.invitation.email} invited`}
+        footer={<><span className="small muted">Pending until they accept.</span><Button variant="primary" onClick={onClose}>Done</Button></>}
+      >
+        <div className="stack gap-16">
+          <Callout tone="warning" icon={I.lock} title="Send it now">
+            The {sent.link ? 'link' : 'token'} is shown once. They join when they accept it, signed in with this address,
+            before {new Date(sent.invitation.expiresAt).toLocaleDateString()}.
+          </Callout>
+          <Field label={address.label}><CopyField value={address.value} /></Field>
+        </div>
+      </Drawer>
+    );
+  }
 
   return (
     <Drawer
       open
       onClose={onClose}
       eyebrow="Organization"
-      title="Invite user"
+      title="Invite by email"
       footer={
         <>
-          <span className="small muted">Adds a new member to this organization</span>
+          <span className="small muted">They join when they accept</span>
           <div className="row">
             <Button onClick={onClose}>Cancel</Button>
-            <Button variant="primary" onClick={submit} disabled={!email || busy || !grants.valid}>{busy ? 'Inviting…' : 'Invite'}</Button>
+            <Button variant="primary" onClick={submit} disabled={!email.trim() || busy}>{busy ? 'Inviting…' : 'Invite'}</Button>
           </div>
         </>
       }
     >
       <FormGrid>
-      <Field label="Email" required>
-        <Input mono type="text" inputMode="email" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="user@example.com" value={email} onChange={e => setEmail(e.target.value)} autoFocus />
-      </Field>
-      <Field label={<>Name <span className="muted">(optional)</span></>}>
-        <Input placeholder="Jane Doe" value={name} onChange={e => setName(e.target.value)} />
-      </Field>
-      {/* No list at all where there is nothing to hand out on invite: roles are assigned after joining. */}
-      {assignable.length > 0 && (
-        <Field label={<>Roles <span className="muted">(optional · only roles you may assign here)</span></>}>
-          <RolePicker assignable={assignable} checked={roles} toggle={toggle} />
+        <Field label="Email" required error={problem ?? undefined}>
+          <Input mono type="text" inputMode="email" autoComplete="off" data-1p-ignore data-lpignore="true" placeholder="user@example.com" value={email} onChange={e => setEmail(e.target.value)} autoFocus />
         </Field>
-      )}
-      {refused.length > 0 && (
-        <div role="alert" className="orgs-refused">
-          <div className="small fw-medium text-danger">Nobody was invited. Refused:</div>
-          <ul className="small orgs-refused-list">
-            {refused.map((r) => <li key={r.role}><span className="mono">{r.role}</span> — {refusalWords(r)}</li>)}
-          </ul>
-        </div>
-      )}
-      {mayGrant && <GrantComposer org={org} onChange={(drafts, valid) => setGrants({ drafts, valid })} />}
-      <RefusedGrants refused={refusedGrants} lead="Nobody was invited. Refused:" />
-      <Field label="Send invite email" inline hint="Emails them a link to set their password">
-        <Switch on={sendInvite} onChange={setSendInvite} label="Send invite email" />
-      </Field>
+        {/* No list at all where there is nothing to hand out: roles are assigned after joining. */}
+        {assignable.length > 0 && (
+          <Field label={<>Roles <span className="muted">(optional · given when they accept)</span></>}>
+            <RolePicker assignable={assignable} checked={roles} toggle={toggle} />
+          </Field>
+        )}
+        {refused.length > 0 && (
+          <div role="alert" className="orgs-refused">
+            <div className="small fw-medium text-danger">Nobody was invited. Refused:</div>
+            <ul className="small orgs-refused-list">
+              {refused.map((r) => <li key={r.role}><span className="mono">{r.role}</span> — {refusalWords(r)}</li>)}
+            </ul>
+          </div>
+        )}
       </FormGrid>
     </Drawer>
   );

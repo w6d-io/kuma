@@ -1,4 +1,4 @@
-import { GETS, PASS, WHO } from './presets';
+import { GETS, ORG_GATE, PASS, WHO } from './presets';
 import type { Gate, Route, Site } from './types';
 
 /**
@@ -121,6 +121,86 @@ export function orgGrantableFor(name: string, displayName: string): Site['groups
     [`${name}-editors`]: { label: `${displayName} editors`, roles: ['editor'] },
     [`${name}-viewers`]: { label: `${displayName} viewers`, roles: ['viewer'] },
   };
+}
+
+// ── organizations (jinbe src/sites/organizations.ts — orgTemplatePath and organizationTemplate kept equal) ──
+
+/** The org role an organisation's owners hold on a site when `organizations.ownerRole` is left out. */
+export const DEFAULT_OWNER_ROLE = 'admin';
+
+export const organizationsOn = (site: Pick<Site, 'organizations'>): boolean => site.organizations?.enabled === true;
+
+/** Whether an intent uses any org feature — each is refused while organizations are off (organizations_off). */
+export function usesOrganizations(site: Pick<Site, 'routes' | 'groups' | 'everyOrg' | 'orgs' | 'signUp'>): boolean {
+  return site.routes.items.some((r) => !!r.orgParam)
+    || Object.keys(site.groups.orgGrantable).length > 0
+    || Object.keys(site.everyOrg ?? {}).length > 0
+    || site.orgs.length > 0
+    || (!!site.signUp && site.signUp.orgs !== 'none');
+}
+
+/** The org-scoped template route's path under a site's prefix: everything under /orgs/:orgId/. */
+export const orgTemplatePath = (prefix?: string): string => `${prefix ?? ''}/orgs/:orgId/:any*`;
+
+/**
+ * What a template adds to a site to turn organizations on (kuma and the MCP use it as is): the switch
+ * (owners hold `admin`), the organization gate (presets.ts ORG_GATE), one org-scoped route
+ * `/orgs/:orgId/:any*` on it asking `<site>:use`, and the default org roles `<site>-admin` (site role
+ * admin) and `<site>-member` (site role user, of the standard set). A developer then puts the
+ * service's routes under /orgs/:orgId/…, and the gateway lets a person through only with a role in
+ * that org, and a key only for its own org.
+ */
+export function organizationTemplate(site: Pick<Site, 'name'> & { address: Pick<Site['address'], 'pathPrefix'> }): {
+  organizations: NonNullable<Site['organizations']>;
+  gate: Gate;
+  route: Route;
+  orgGrantable: Site['groups']['orgGrantable'];
+} {
+  return {
+    organizations: { enabled: true, ownerRole: DEFAULT_OWNER_ROLE },
+    gate: structuredClone(ORG_GATE),
+    route: {
+      id: 'org',
+      methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+      path: orgTemplatePath(site.address.pathPrefix),
+      gate: ORG_GATE.id,
+      access: { kind: 'permission', permission: `${site.name}:use` },
+      orgParam: 'orgId',
+      source: 'template',
+    },
+    orgGrantable: {
+      [`${site.name}-admin`]: { label: 'Admins', roles: ['admin'] },
+      [`${site.name}-member`]: { label: 'Members', roles: ['user'] },
+    },
+  };
+}
+
+/**
+ * The template applied to a site: the switch on, and the gate, the route and the org roles added
+ * where the site does not have them yet (by id, path and name) — what the site already has is kept.
+ */
+export function withOrganizationTemplate(site: Site): Site {
+  const t = organizationTemplate(site);
+  const hasGate = site.gates.some((g) => g.id === t.gate.id);
+  const hasRoute = site.routes.items.some((r) => r.id === t.route.id || r.path === t.route.path);
+  return {
+    ...site,
+    organizations: { ...t.organizations, ...(site.organizations?.ownerRole ? { ownerRole: site.organizations.ownerRole } : {}), enabled: true },
+    gates: hasGate ? site.gates : [...site.gates, t.gate],
+    routes: hasRoute ? site.routes : { ...site.routes, items: [...site.routes.items, t.route] },
+    groups: { ...site.groups, orgGrantable: { ...t.orgGrantable, ...site.groups.orgGrantable } },
+  };
+}
+
+/** What the template would add to this site, in words, for the offer: empty when it has it all. */
+export function organizationTemplateAdds(site: Site): string[] {
+  const t = organizationTemplate(site);
+  const out: string[] = [];
+  if (!site.gates.some((g) => g.id === t.gate.id)) out.push(`the gate “${t.gate.label}”`);
+  if (!site.routes.items.some((r) => r.id === t.route.id || r.path === t.route.path)) out.push(`the route ${t.route.path} (permission ${site.name}:use)`);
+  const roles = Object.keys(t.orgGrantable).filter((g) => !site.groups.orgGrantable[g]);
+  if (roles.length) out.push(`org role${roles.length === 1 ? '' : 's'} ${roles.map((g) => `${site.name}:${g.slice(site.name.length + 1)}`).join(' and ')}`);
+  return out;
 }
 
 /** One sentence about the site, the top of every Review (§4.4). */

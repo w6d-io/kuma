@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildSite, kindOf, summarySentence, TEMPLATES, orgGrantableFor } from './templates';
-import { GETS, GETS_LABEL, WHO, presetsOf, withPreset, isCustomized, allowsAnonymous, missingHandlers, passesNoIdentity, SANDBOX_ENABLED } from './presets';
+import { buildSite, kindOf, summarySentence, TEMPLATES, orgGrantableFor, organizationTemplate, orgTemplatePath, withOrganizationTemplate, organizationTemplateAdds, usesOrganizations, organizationsOn } from './templates';
+import { GETS, GETS_LABEL, ORG_GATE, WHO, WHO_LABEL, presetsOf, withPreset, isCustomized, allowsAnonymous, missingHandlers, passesNoIdentity, SANDBOX_ENABLED } from './presets';
 
 const basics = { name: 'payroll', displayName: 'Payroll', host: 'payroll.dev.example.com', service: 'payroll-ui', namespace: 'payroll', port: 8080 };
 
@@ -129,5 +129,51 @@ describe('passRoles', () => {
     const site = buildSite('app', basics);
     site.gates = site.gates.map((g) => (g.authorizer === 'policy' ? { ...g, passRoles: true } : g));
     expect(summarySentence(site)).toMatch(/also pass(es)? each person's roles and permissions to the app/);
+  });
+});
+
+describe('organizations', () => {
+  it('ORG_GATE is jinbe\'s: people and org keys, the policy, the identity, API errors', () => {
+    expect(ORG_GATE).toEqual({
+      id: 'organization',
+      label: 'Organization members and API keys',
+      authenticators: [{ handler: 'cookie_session' }, { handler: 'oauth2_introspection' }],
+      authorizer: 'policy',
+      mutators: [{ handler: 'header' }],
+      errors: 'api',
+    });
+    expect(presetsOf(ORG_GATE)).toEqual({ who: 'people-and-org-keys', pass: 'policy', gets: 'identity', fails: 'api' });
+    expect(WHO_LABEL['people-and-org-keys']).toBe("Organization members and their organization's API keys");
+    expect(missingHandlers(ORG_GATE.authenticators, SANDBOX_ENABLED.authenticators)).toEqual([]);
+  });
+
+  it('the template is jinbe\'s: owners hold admin, one /orgs/:orgId route asking <site>:use, admin and member org roles', () => {
+    const t = organizationTemplate({ name: 'payroll', address: { pathPrefix: '/payroll' } });
+    expect(t.organizations).toEqual({ enabled: true, ownerRole: 'admin' });
+    expect(t.gate).toEqual(ORG_GATE);
+    expect(t.gate).not.toBe(ORG_GATE);
+    expect(t.route).toEqual({
+      id: 'org', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], path: '/payroll/orgs/:orgId/:any*', gate: 'organization',
+      access: { kind: 'permission', permission: 'payroll:use' }, orgParam: 'orgId', source: 'template',
+    });
+    expect(t.orgGrantable).toEqual({ 'payroll-admin': { label: 'Admins', roles: ['admin'] }, 'payroll-member': { label: 'Members', roles: ['user'] } });
+    expect(orgTemplatePath()).toBe('/orgs/:orgId/:any*');
+  });
+
+  it('applies the template once, keeping what the site already has', () => {
+    const site = buildSite('web-api', basics);
+    expect(organizationsOn(site)).toBe(false);
+    expect(usesOrganizations(site)).toBe(false);
+    expect(organizationTemplateAdds(site)).toHaveLength(3);
+    const own = { ...site, groups: { ...site.groups, orgGrantable: { 'payroll-admin': { label: 'Bosses', roles: ['admin', 'editor'] } } } };
+    const once = withOrganizationTemplate(own);
+    expect(organizationsOn(once)).toBe(true);
+    expect(usesOrganizations(once)).toBe(true);
+    expect(once.groups.orgGrantable['payroll-admin'].label).toBe('Bosses');
+    expect(once.groups.orgGrantable['payroll-member']).toBeDefined();
+    expect(withOrganizationTemplate(once)).toEqual(once);
+    expect(organizationTemplateAdds(once)).toEqual([]);
+    // Every route sits on a declared gate.
+    for (const r of once.routes.items) expect(once.gates.map((g) => g.id)).toContain(r.gate);
   });
 });

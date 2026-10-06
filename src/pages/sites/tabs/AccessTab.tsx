@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Button, Callout, Card, Checkbox, EmptyHint, Field, I, Input, Segmented, Select, Table, Th } from '../../../components/ui';
 import { useAllOrganizations, useGroupsMap } from '../../../api/hooks';
 import { accessMatrix, declaredPermissions, expandRolePermissions, isWildcard, orgRoleName, PUBLIC, SIGNED_IN } from '../../../lib/sites/access';
-import { orgGrantableFor } from '../../../lib/sites/templates';
+import { orgGrantableFor, organizationsOn, usesOrganizations } from '../../../lib/sites/templates';
 import type { RolesPreset, Site } from '../../../lib/sites/types';
 import type { SiteEditor } from '../useSiteEditor';
 import type { Go } from '../SiteDetail';
 import { CheckList, type CheckLine } from '../parts';
+import { OrganizationsCard } from './OrganizationsCard';
 
 /**
  * Access (site-ux.md §8): who can do what on this site — the matrix, the roles, the groups that
@@ -198,19 +199,32 @@ function GroupsView({ site, readOnly, set }: { site: Site; readOnly: boolean; se
                 <div className="row gap-8 items-center wrap">
                   <span className="mono fw-medium" title={`entry ${g}`}>{site.name}:{orgRoleName(site.name, g)}</span>
                   <Input size="sm" aria-label={`${g} label`} value={def.label} disabled={readOnly} onChange={(e) => setGrantable({ ...site.groups.orgGrantable, [g]: { ...def, label: e.target.value } })} />
-                  <Select size="sm" aria-label={`${g} role`} value={def.roles[0]} disabled={readOnly} onChange={(e) => setGrantable({ ...site.groups.orgGrantable, [g]: { ...def, roles: [e.target.value] } })}>
-                    {roles.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </Select>
                   {!readOnly && <Button size="sm" variant="ghost" iconOnly icon={I.close} aria-label={`Remove ${g}`} onClick={() => { const n = { ...site.groups.orgGrantable }; delete n[g]; setGrantable(n); }} />}
+                </div>
+                {/* Several site roles per org role: it gives everything they carry. At least one. */}
+                <div className="row wrap gap-8" role="group" aria-label={`${g} site roles`}>
+                  {[...new Set([...roles, ...def.roles])].map((r) => {
+                    const on = def.roles.includes(r);
+                    return (
+                      <Checkbox
+                        key={r}
+                        size="sm"
+                        checked={on}
+                        disabled={readOnly || (on && def.roles.length === 1)}
+                        onChange={(next) => setGrantable({ ...site.groups.orgGrantable, [g]: { ...def, roles: next ? [...def.roles, r] : def.roles.filter((x) => x !== r) } })}
+                        label={<span className="mono small">{r}</span>}
+                      />
+                    );
+                  })}
                 </div>
                 <CheckList lines={lines} live={false} className="site-checks-inline" />
               </li>
             );
           })}
         </ul>
-        {!readOnly && Object.keys(site.groups.orgGrantable).length === 0 && (
-          <Button size="sm" icon={I.plus} className="mt-8" onClick={() => setGrantable(orgGrantableFor(site.name, site.displayName))}>Create org roles {site.name}:editors and {site.name}:viewers</Button>
-        )}
+        {!readOnly && Object.keys(site.groups.orgGrantable).length === 0 && (organizationsOn(site)
+          ? <Button size="sm" icon={I.plus} className="mt-8" onClick={() => setGrantable(orgGrantableFor(site.name, site.displayName))}>Create org roles {site.name}:editors and {site.name}:viewers</Button>
+          : <p className="small muted m-0">Org roles need organizations on (Organizations view).</p>)}
       </Card>
     </div>
   );
@@ -222,9 +236,12 @@ function OrgsView({ site, readOnly, set }: { site: Site; readOnly: boolean; set:
   const name = (id: string) => list.find((o) => o.id === id)?.name ?? id;
   const [pick, setPick] = useState('');
   const setOrgs = (o: string[]) => set((s) => ({ ...s, orgs: o }));
+  // Off and unused: only the switch. Off with org features left: everything, so they can be removed.
+  if (!organizationsOn(site) && !usesOrganizations(site)) return <OrganizationsCard site={site} readOnly={readOnly} set={set} />;
   return (
     <>
-    <Card title="Organizations" sub="Which organizations are entitled to this site: its org roles can be assigned in them. Removing one stops those roles counting there; access through platform groups is unchanged.">
+    <OrganizationsCard site={site} readOnly={readOnly} set={set} />
+    <Card title="Served organizations" sub="Which organizations are entitled to this site: its org roles can be assigned in them. Removing one stops those roles counting there; access through platform groups is unchanged.">
       {site.orgs.length === 0 && <EmptyHint>No organization. Only platform groups give access.</EmptyHint>}
       <ul className="site-list">
         {site.orgs.map((id) => (

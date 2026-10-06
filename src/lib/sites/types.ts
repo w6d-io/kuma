@@ -85,12 +85,20 @@ export interface Site {
     scheme?: 'http' | 'https';
     preserveHost?: boolean;
     stripPath?: string;
+    /** A literal base path prepended to every request after stripPath is removed (e.g. /api/external). */
+    path?: string;
   };
   exposure?: { mode: 'zone' | 'vanity' };
   gates: Gate[];
   routes: { items: Route[]; catchAll: { gate: string; access: Access } };
   roles: RolesPreset | Record<string, string[]>;
   groups: { platform: Record<string, string[]>; orgGrantable: Record<string, { label: string; roles: string[] }> };
+  /**
+   * Organizations on this site. Off (absent) refuses every org feature: orgParam routes, org roles
+   * (groups.orgGrantable), everyOrg, the orgs list, a sign-up that makes organizations. On, an
+   * organization's owners hold `ownerRole` (an org role of the site, after `<site>-`; default admin).
+   */
+  organizations?: { enabled: boolean; ownerRole?: string };
   orgs: string[];
   /** What a site role carries into every organization entitled to the site, never more than it holds. */
   everyOrg?: Record<string, string[]>;

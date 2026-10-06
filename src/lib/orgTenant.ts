@@ -26,3 +26,11 @@ export function orgFormProblem(name: string, tenant: string): string | null {
   if (!TENANT.test(t)) return 'A tenant is lowercase letters, digits and inner dashes, at most 63.';
   return null;
 }
+
+/** What is wrong with the owner's address on a create form, in words, or null. */
+export function ownerProblem(email: string): string | null {
+  const v = email.trim();
+  if (!v) return 'Give the owner’s email address.';
+  if (v.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return 'An email address, like jane@example.com.';
+  return null;
+}

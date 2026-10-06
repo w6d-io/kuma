@@ -5,6 +5,7 @@ import { cleanup, render, type } from '../components/ui/testing';
 
 const ACME = '11111111-1111-4111-8111-111111111111';
 const BOB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const CAROL = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 
 const h = vi.hoisted(() => ({
   pageParam: null as string | null,
@@ -26,7 +27,9 @@ import { OrganizationsPage } from './Organizations';
 
 type Call = { method: string; url: string; body?: unknown };
 let calls: Call[] = [];
-let orgs: Array<{ id: string; name: string; tenant: string; applications: string[]; owners?: string[]; sites?: string[] }> = [];
+let orgs: Array<{ id: string; name: string; tenant: string; owners?: string[]; sites?: string[] }> = [];
+let invitations: Record<string, unknown>[] = [];
+let createOwner: { status: 'owner' | 'invited' } = { status: 'owner' };
 let members: Record<string, unknown>[] = [];
 let listStatus = 200;
 let listBody: unknown = null;
@@ -42,6 +45,8 @@ beforeEach(() => {
   h.permissions = ['orgs:read', 'orgs:write', 'orgs:delete'];
   orgs = [];
   members = [];
+  invitations = [];
+  createOwner = { status: 'owner' };
   listStatus = 200;
   listBody = null;
   orgPermissions = {};
@@ -56,10 +61,14 @@ beforeEach(() => {
     if (path === '/whoami') return ok({ authenticated: true, email: 'sam@example.com', permissions: h.permissions, groups: ['admins'] });
     if (path === '/admin/organizations' && c.method === 'GET') return listStatus === 200 ? ok({ organizations: orgs }) : ok(listBody, listStatus);
     if (path === '/admin/organizations' && c.method === 'POST') {
-      const body = c.body as { name: string; tenant?: string };
-      const created = { id: ACME, name: body.name, tenant: body.tenant ?? 'acme-corp', applications: [] };
+      const body = c.body as { name: string; tenant?: string; owner: string };
+      const created = { id: ACME, name: body.name, tenant: body.tenant ?? 'acme-corp' };
       orgs = [...orgs, created];
-      return ok(created, 201);
+      return ok({
+        ...created,
+        owner: { email: body.owner, id: createOwner.status === 'owner' ? BOB : null, status: createOwner.status },
+        ...(createOwner.status === 'invited' ? { invitation: { id: 'inv1', token: 'tok-123', link: 'https://login.example.com/invite?t=tok-123', expiresAt: '2026-10-20T00:00:00Z' } } : {}),
+      }, 201);
     }
     if (path === `/admin/organizations/${ACME}` && c.method === 'DELETE') {
       if (members.length > 0) return ok({ error: 'organisation_in_use', message: 'still has members', members: members.length }, 409);
@@ -67,6 +76,9 @@ beforeEach(() => {
       return ok(null, 204);
     }
     if (path === `/organizations/${ACME}/users`) return ok({ data: members, total: members.length });
+    if (path === `/organizations/${ACME}/invitations`) return ok({ invitations });
+    if (path === `/admin/organizations/${ACME}/api-keys`) return ok({ data: [], total: 0 });
+    if (path === '/admin/users' && c.url.includes('credentials_identifier=carol')) return ok({ data: [{ id: CAROL, traits: { email: 'carol@example.com' } }] });
     if (path === '/me/permissions') return ok({ permissions: h.permissions, orgPermissions });
     if (path === `/organizations/${ACME}/roles`) return ok({ roles: orgRoles });
     const member = path.match(new RegExp(`^/organizations/${ACME}/users/([^/]+)/roles$`));
@@ -109,7 +121,7 @@ describe('Organizations', () => {
     expect(button('Retry')).not.toBeNull();
   });
 
-  it('creates the first organisation from a name, showing the tenant it will derive', async () => {
+  it('creates the first organisation for its owner, showing the tenant it will derive', async () => {
     mount();
     await settle();
     expect(text()).toContain('No organization yet');
@@ -118,12 +130,36 @@ describe('Organizations', () => {
     type(document.getElementById('org-name'), 'Acme Corp');
     await settle();
     expect(text()).toContain('acme-corp');
+    // No owner, nothing sent.
+    click(button('Create'));
+    await settle();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+    expect(text()).toContain('Give the owner’s email address.');
+    type(document.getElementById('org-owner'), 'bob@example.com');
     click(button('Create'));
     await settle();
     const post = calls.find((c) => c.method === 'POST' && c.url.endsWith('/admin/organizations'));
-    expect(post?.body).toEqual({ name: 'Acme Corp' });
+    expect(post?.body).toEqual({ name: 'Acme Corp', owner: 'bob@example.com' });
     expect(h.setPage).toHaveBeenCalledWith('organizations', ACME);
-    expect(h.toasts[0][0]).toBe('Created Acme Corp');
+    expect(h.toasts[0]).toEqual(['Created Acme Corp', { sub: 'bob@example.com is its owner' }]);
+  });
+
+  it('shows the owner invitation once when the address has no account', async () => {
+    createOwner = { status: 'invited' };
+    mount();
+    await settle();
+    click(button('Create organization'));
+    await settle();
+    type(document.getElementById('org-name'), 'Acme Corp');
+    type(document.getElementById('org-owner'), 'new@acme.com');
+    click(button('Create'));
+    await settle();
+    expect(text()).toContain('Send the invitation');
+    expect((document.querySelector('.copy-field input') as HTMLInputElement).value).toBe('https://login.example.com/invite?t=tok-123');
+    expect(h.setPage).not.toHaveBeenCalledWith('organizations', ACME);
+    click(button('Done'));
+    await settle();
+    expect(h.setPage).toHaveBeenCalledWith('organizations', ACME);
   });
 
   it('refuses a name that yields no tenant, before sending anything', async () => {
@@ -140,7 +176,7 @@ describe('Organizations', () => {
 
   it('offers no create, edit or delete to somebody who may only read', async () => {
     h.permissions = ['orgs:read'];
-    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', applications: [] }];
+    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme' }];
     mount();
     await settle();
     expect(text()).toContain('Acme');
@@ -150,7 +186,7 @@ describe('Organizations', () => {
   });
 
   it('will not delete an organisation that still has people', async () => {
-    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', applications: [] }];
+    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme' }];
     members = [{ id: BOB, traits: { email: 'bob@example.com' }, state: 'active', metadata_admin: {} }];
     mount();
     await settle();
@@ -163,7 +199,7 @@ describe('Organizations', () => {
   });
 
   it('deletes an empty organisation after its name is typed', async () => {
-    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', applications: [] }];
+    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme' }];
     mount();
     await settle();
     click(button('Delete'));
@@ -177,7 +213,7 @@ describe('Organizations', () => {
   });
 
   it('shows the owners and the entitled sites read from the org roles, and no applications editor', async () => {
-    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', applications: ['legacy-app'] }];
+    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme' }];
     members = [{ id: BOB, traits: { email: 'bob@example.com' }, state: 'active', metadata_admin: {} }];
     orgPermissions = { [ACME]: ['org.members:read'] };
     orgRoles = [{ role: 'jinbe:owner', permissions: ['org.members:write'], assignable: false }, { role: 'payroll:editor', permissions: ['pay:write'], assignable: false }];
@@ -200,7 +236,7 @@ describe('Organizations', () => {
 
   it('names owners with orgs.owners:write: the whole list, by identity id', async () => {
     h.permissions = ['orgs:read', 'orgs.owners:write'];
-    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', applications: [] }];
+    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme' }];
     members = [{ id: BOB, traits: { email: 'bob@example.com' }, state: 'active', metadata_admin: {} }];
     orgPermissions = { [ACME]: ['org.members:read'] };
     mount();
@@ -210,14 +246,35 @@ describe('Organizations', () => {
     await settle();
     click([...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'bob@example.com') ?? null);
     await settle();
+    // Nobody is named by a typed UUID: somebody else is found by address.
+    expect(document.querySelector('input[aria-label="Add an owner by identity id"]')).toBeNull();
+    type(document.querySelector('input[aria-label="Add an owner by email"]'), 'carol@example.com');
+    click(button('Add'));
+    await settle();
+    expect(text()).toContain('carol@example.com');
     click(button('Save owners'));
     await settle();
     const put = calls.find((c) => c.method === 'PUT' && c.url.endsWith(`/admin/organizations/${ACME}/owners`));
-    expect(put?.body).toEqual({ owners: [BOB] });
+    expect(put?.body).toEqual({ owners: [BOB, CAROL] });
+  });
+
+  it('lists pending invitations, and the keys from the admin route with create for orgs.keys:write', async () => {
+    h.permissions = ['orgs:read', 'orgs.keys:write'];
+    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme' }];
+    orgPermissions = { [ACME]: ['org.members:read'] };
+    invitations = [{ id: 'i1', org: ACME, email: 'dana@example.com', roles: ['crm:user'], invitedBy: { id: null, email: 'sam@example.com' }, byPlatform: false, createdAt: '2026-10-05T10:00:00Z', expiresAt: '2099-10-19T10:00:00Z' }];
+    mount();
+    await settle();
+    expect(text()).toContain('Pending invitations');
+    expect(text()).toContain('dana@example.com');
+    // org.members:read only: shown, not taken back.
+    expect(button('Take back')).toBeNull();
+    expect(calls.some((c) => c.method === 'GET' && c.url.endsWith(`/admin/organizations/${ACME}/api-keys`))).toBe(true);
+    expect(button('Create key')).not.toBeNull();
   });
 
   it('assigns a role per member and says why jinbe refused each one', async () => {
-    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', applications: [] }];
+    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme' }];
     members = [{ id: BOB, traits: { email: 'bob@example.com' }, state: 'active', metadata_admin: {} }];
     orgPermissions = { [ACME]: ['org.members:read', 'org.members:write'] };
     orgRoles = [{ role: 'jinbe:viewer', permissions: ['org.members:read'], assignable: true }, { role: 'jinbe:owner', permissions: ['org.keys:write'], assignable: false }];
@@ -238,7 +295,7 @@ describe('Organizations', () => {
   });
 
   it('reads the owners and the entitled sites from the organisations list when jinbe sends them', async () => {
-    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', applications: ['legacy-app'], owners: [BOB], sites: ['crm'] }];
+    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', owners: [BOB], sites: ['crm'] }];
     members = [{ id: BOB, traits: { email: 'bob@example.com' }, state: 'active', metadata_admin: {} }];
     orgPermissions = { [ACME]: ['org.members:read'] };
     mount();
@@ -251,7 +308,7 @@ describe('Organizations', () => {
   });
 
   it('reads member roles off the member list, without one call per member, and never shows jinbe as a site', async () => {
-    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', applications: [], owners: [BOB], sites: ['jinbe', 'crm'] }];
+    orgs = [{ id: ACME, name: 'Acme', tenant: 'acme', owners: [BOB], sites: ['jinbe', 'crm'] }];
     members = [{ id: BOB, traits: { email: 'bob@example.com' }, state: 'active', metadata_admin: {}, roles: ['jinbe:owner'] }];
     orgPermissions = { [ACME]: ['org.members:read'] };
     orgRoles = [{ role: 'jinbe:owner', permissions: ['org.members:write'], assignable: false }];

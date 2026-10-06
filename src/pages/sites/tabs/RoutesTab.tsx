@@ -5,6 +5,7 @@ import { displayPath } from '../../../lib/sites/paths';
 import { routeProblems } from '../../../lib/sites/validate';
 import { expandRolePermissions } from '../../../lib/sites/access';
 import { allowsAnonymous } from '../../../lib/sites/presets';
+import { organizationsOn } from '../../../lib/sites/templates';
 import type { Access, Route } from '../../../lib/sites/types';
 import type { SiteEditor } from '../useSiteEditor';
 import type { Go } from '../SiteDetail';
@@ -113,6 +114,7 @@ export function RoutesTab({ ed, readOnly, query, go }: { ed: SiteEditor; readOnl
                           route={r}
                           gates={gates}
                           permissions={permissions}
+                          orgsOn={organizationsOn(site)}
                           rowNumber={i + 1}
                           problem={problem}
                           onChange={(next) => setItems((rs) => rs.map((x) => (x.id === r.id ? { ...next, pinned: next.source === 'openapi' ? true : next.pinned } : x)))}

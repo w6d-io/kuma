@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseScopes, allowedScopesFrom, initialScopes, normalizeCatalog, groupBySite, expiryLabel, expiryState, scopeHint, sortScopes, mcpServerUrl, normalizePlatformScopes, scopeGroupLabel, scopeGroupOf } from './apiKeys';
+import { parseScopes, allowedScopesFrom, initialScopes, normalizeCatalog, groupByKind, expiryLabel, expiryState, scopeHint, sortScopes, mcpServerUrl, normalizePlatformScopes, scopeGroupLabel, scopeGroupOf } from './apiKeys';
 
 describe('parseScopes', () => {
   it('splits on commas and spaces and drops duplicates', () => {
@@ -32,26 +32,31 @@ describe('initialScopes', () => {
 });
 
 describe('normalizeCatalog', () => {
-  it('takes the per-org entries and the older bare strings', () => {
-    expect(normalizeCatalog([{ scope: 'payroll:read', sites: ['payroll'] }, 'api:read', 42, { nope: 1 }])).toEqual([
-      { scope: 'payroll:read', sites: ['payroll'] },
-      { scope: 'api:read', sites: [] },
+  it('takes the kinded entries and the older bare strings, reading the kind off the scope when not said', () => {
+    expect(normalizeCatalog([
+      { scope: 'payroll:read', kind: 'permission', sites: ['payroll'], permissions: [] },
+      { scope: 'role:payroll:admin', kind: 'role', sites: ['payroll'], permissions: ['payroll:read', 'payroll:write'] },
+      { scope: 'group:payroll-ops', sites: ['payroll'] },
+      'api:read', 42, { nope: 1 },
+    ])).toEqual([
+      { scope: 'payroll:read', kind: 'permission', sites: ['payroll'], permissions: [] },
+      { scope: 'role:payroll:admin', kind: 'role', sites: ['payroll'], permissions: ['payroll:read', 'payroll:write'] },
+      { scope: 'group:payroll-ops', kind: 'group', sites: ['payroll'], permissions: [] },
+      { scope: 'api:read', kind: 'permission', sites: [], permissions: [] },
     ]);
     expect(normalizeCatalog(undefined)).toEqual([]);
   });
 });
 
-describe('groupBySite', () => {
-  it('groups by site, alphabetically, a shared scope under each site, site-less last', () => {
-    expect(groupBySite([
-      { scope: 'wiki:read', sites: ['wiki'] },
-      { scope: 'payroll.runs:read', sites: ['wiki', 'payroll'] },
-      { scope: 'api:read', sites: [] },
-    ])).toEqual([
-      { site: 'payroll', scopes: ['payroll.runs:read'] },
-      { site: 'wiki', scopes: ['payroll.runs:read', 'wiki:read'] },
-      { site: '', scopes: ['api:read'] },
+describe('groupByKind', () => {
+  it('permissions (reads first), then site roles, then groups; empty kinds left out', () => {
+    const groups = groupByKind(normalizeCatalog(['group:ops', 'fleet:write', 'role:fleet:admin', 'fleet:read']));
+    expect(groups.map((g) => [g.kind, g.entries.map((e) => e.scope)])).toEqual([
+      ['permission', ['fleet:read', 'fleet:write']],
+      ['role', ['role:fleet:admin']],
+      ['group', ['group:ops']],
     ]);
+    expect(groupByKind(normalizeCatalog(['fleet:read'])).map((g) => g.kind)).toEqual(['permission']);
   });
 });
 
@@ -82,6 +87,11 @@ describe('scopes in the picker', () => {
     expect(scopeHint('fleet:read')).toBe('Read only');
     expect(scopeHint('fleet.runs:list')).toBe('Read only');
     expect(scopeHint('fleet:write')).toBe('Can change data');
+  });
+
+  it('says where a role or a group reaches and what it carries', () => {
+    expect(scopeHint({ scope: 'role:fleet:admin', kind: 'role', sites: ['fleet'], permissions: ['fleet:read', 'fleet:write'] })).toBe('On fleet · 2 permissions: fleet:read, fleet:write');
+    expect(scopeHint({ scope: 'group:ops', kind: 'group', sites: [], permissions: [] })).toBe('No permission today');
   });
 
   it('puts a resource\'s read right above its write', () => {

@@ -518,7 +518,7 @@ function refreshOrganizations(qc: ReturnType<typeof useQueryClient>) {
 export function useCreateOrganization() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { name: string; tenant?: string }) => api.createOrganization(body),
+    mutationFn: (body: { name: string; tenant?: string; owner: string }) => api.createOrganization(body),
     onSettled: () => refreshOrganizations(qc),
   });
 }
@@ -567,19 +567,6 @@ export function useOrgUsers(orgId: string, search?: string) {
     queryKey: ['org-users', orgId, search ?? ''],
     queryFn: () => api.getOrgUsers(orgId, { search: search || undefined }),
     enabled: !!orgId,
-  });
-}
-
-export function useCreateOrgUser(orgId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: Parameters<typeof api.createOrgUser>[1]) =>
-      api.createOrgUser(orgId, payload),
-    // Server assigns the identity id → invalidate-only (no fabricated row).
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['org-users', orgId] });
-      qc.invalidateQueries({ queryKey: ['org-member-roles', orgId] });
-    },
   });
 }
 

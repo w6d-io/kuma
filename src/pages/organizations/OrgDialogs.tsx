@@ -1,16 +1,18 @@
 import { useState } from 'react';
 import { useCreateOrganization, useDeleteOrganization, useUpdateOrganization } from '../../api/hooks';
-import type { OrganizationRecord } from '../../api/client';
+import type { OrganizationCreated, OrganizationRecord } from '../../api/client';
+import { invitationAddress } from '../../api/invitations';
 import { toastFor } from '../../lib/apiError';
 import { stepUpOnRefusal } from '../../lib/resume';
-import { orgFormProblem, tenantFrom } from '../../lib/orgTenant';
-import { Button, ConfirmDialog, Dialog, Field, Input } from '../../components/ui';
+import { orgFormProblem, ownerProblem, tenantFrom } from '../../lib/orgTenant';
+import { Button, Callout, ConfirmDialog, CopyField, Dialog, Field, I, Input } from '../../components/ui';
 
 type PushToast = (msg: string, opts?: { err?: boolean; sub?: string }) => void;
 
 /**
- * Creating, changing and deleting an organisation. The record is a name and a tenant. Which sites it
- * may use is each site's intent; who belongs to it, and their roles, is changed on the people list.
+ * Creating, changing and deleting an organisation. The record is a name and a tenant; it is created
+ * for its owner, named by address. Which sites it may use is each site's intent; who belongs to it,
+ * and their roles, is changed on the people list.
  */
 
 export function CreateOrgDialog({ onClose, onCreated, pushToast }: {
@@ -21,18 +23,51 @@ export function CreateOrgDialog({ onClose, onCreated, pushToast }: {
   const create = useCreateOrganization();
   const [name, setName] = useState('');
   const [tenant, setTenant] = useState('');
+  const [owner, setOwner] = useState('');
   const [tried, setTried] = useState(false);
+  // An owner with no account yet is invited: the link is answered once, shown here to be sent.
+  const [invited, setInvited] = useState<OrganizationCreated | null>(null);
   const problem = orgFormProblem(name, tenant);
+  const badOwner = ownerProblem(owner);
   const derived = tenantFrom(name);
 
   const submit = () => {
     setTried(true);
-    if (problem || create.isPending) return;
-    create.mutate({ name: name.trim(), ...(tenant.trim() ? { tenant: tenant.trim() } : {}) }, {
-      onSuccess: (org) => { pushToast(`Created ${org.name}`, { sub: `Tenant ${org.tenant}` }); onCreated(org); },
+    if (problem || badOwner || create.isPending) return;
+    create.mutate({ name: name.trim(), owner: owner.trim(), ...(tenant.trim() ? { tenant: tenant.trim() } : {}) }, {
+      onSuccess: (org) => {
+        if (org.owner?.status === 'invited' && org.invitation) {
+          pushToast(`Created ${org.name}`, { sub: `${org.owner.email} is invited as owner` });
+          setInvited(org);
+          return;
+        }
+        pushToast(`Created ${org.name}`, { sub: `${org.owner?.email ?? owner.trim()} is its owner` });
+        onCreated(org);
+      },
       onError: (e) => pushToast(...toastFor(e)),
     });
   };
+
+  if (invited?.invitation) {
+    const address = invitationAddress(invited.invitation);
+    return (
+      <Dialog
+        open
+        onClose={() => onCreated(invited)}
+        eyebrow="Organizations"
+        title={`${invited.name} created`}
+        footer={<Button variant="primary" onClick={() => onCreated(invited)}>Done</Button>}
+      >
+        <div className="stack gap-12">
+          <Callout tone="warning" icon={I.key} title="Send the invitation">
+            {invited.owner?.email} has no account yet. Send them this {invited.invitation.link ? 'link' : 'token'}: it is shown once.
+            They become owner when they accept it, before {new Date(invited.invitation.expiresAt).toLocaleDateString()}.
+          </Callout>
+          <Field label={address.label}><CopyField value={address.value} /></Field>
+        </div>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog
@@ -48,6 +83,14 @@ export function CreateOrgDialog({ onClose, onCreated, pushToast }: {
       <form className="stack gap-12" onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <Field label="Name" error={tried && problem?.includes('name') ? problem : undefined}>
           <Input id="org-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Corp" />
+        </Field>
+        <Field
+          label="Owner"
+          required
+          hint="Their email. An account becomes owner at once; an address with no account is invited."
+          error={tried ? badOwner ?? undefined : undefined}
+        >
+          <Input id="org-owner" type="text" inputMode="email" autoComplete="off" value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="jane@acme.com" />
         </Field>
         <Field
           label={<>Tenant <span className="muted">(optional)</span></>}
@@ -129,7 +172,7 @@ export function DeleteOrgDialog({ org, name, members, onClose, onDeleted, pushTo
       title={`Delete ${label}?`}
       body={members > 0
         ? <>It still has {members} member{members === 1 ? '' : 's'}. Remove them first: their memberships would otherwise point at nothing.</>
-        : <>The organization record and the applications it has are removed. Nobody belongs to it.</>}
+        : <>Nobody belongs to it. Its record, domains, roles and pending invitations are removed.</>}
       confirmLabel="Delete organization"
       requireText={members > 0 ? undefined : label}
       busy={remove.isPending}

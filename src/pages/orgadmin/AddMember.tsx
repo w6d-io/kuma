@@ -35,7 +35,7 @@ export function AddMember({ org, orgName, pushToast }: { org: string; orgName: s
           if (statusOf(err) === 403) throw Object.assign(new Error('lookup'), { lookupRefused: true });
           throw err;
         });
-        if (!found.data[0]) { setProblem(`No account uses ${target.email}. Use "Invite new person" to create one.`); return; }
+        if (!found.data[0]) { setProblem(`No account uses ${target.email}. Use "Invite by email".`); return; }
         id = found.data[0].id;
       }
       await orgAccessApi.addMember(org, id);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Checkbox, Field, I, Select, Switch } from '../../../components/ui';
+import { Button, Field, I, Select, Switch } from '../../../components/ui';
 import { useAllOrganizations, useGroupsMap } from '../../../api/hooks';
 import { presetRoles } from '../../../lib/sites/access';
 import { STANDARD_GROUPS } from '../../../lib/sites/templates';
@@ -85,12 +85,10 @@ export function AccessStep({ s, patch }: { s: WizardState; patch: (p: Partial<Wi
               </Select>
               <Button size="sm" disabled={!orgPick} onClick={() => { patch({ orgs: [...s.orgs, orgPick] }); setOrgPick(''); }}>Add</Button>
             </div>
-            <Checkbox
-              checked={s.orgGrantable}
-              onChange={(on) => patch({ orgGrantable: on })}
-              label={`Organizations can give their members ${s.displayName || s.name} ${s.roles === 'readonly' ? 'viewer' : 'editor and viewer'} roles`}
-              hint="Created for you as org roles, assigned per organization by its owners. admin is not offered: it carries every permission of the site."
-            />
+            <p className="small muted m-0">
+              Adds the organization gate, a route for /orgs/:orgId/…, and the org roles {s.name || 'site'}-admin (owners hold it) and {s.name || 'site'}-member.
+            </p>
+            {s.roles === 'readonly' && <p className="small text-warning m-0">These org roles need the admin and user roles: choose Standard roles.</p>}
           </div>
         )}
       </fieldset>

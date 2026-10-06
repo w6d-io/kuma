@@ -11,13 +11,15 @@ import { useOrgMemberRoles, useOrgRoles } from '../../api/orgRoles';
 import { RolesMatrix } from './RolesMatrix';
 import { AddMember } from './AddMember';
 import { InviteDrawer } from './InviteDrawer';
+import { PendingInvitations } from './PendingInvitations';
 import { makeToastErr } from './toastErr';
 import { IndividualAccess } from '../../components/grants/IndividualAccess';
 
 /**
- * One organization's people and the org roles they hold there — the same table on My org and on the
- * Organizations hub, so the two never disagree about who may do what. `mayManage` is org.members:write
- * IN this org: jinbe decides every write anyway, and refuses a role the caller does not hold.
+ * One organization's people, the org roles they hold there, and who is invited — the same table on My
+ * org and on the Organizations hub, so the two never disagree about who may do what. `mayManage` is
+ * org.members:write IN this org: jinbe decides every write anyway, and refuses a role the caller does
+ * not hold. Somebody new joins only through an invitation they accept.
  */
 export function OrgMembers({ org, orgName, mayManage, pushToast }: {
   org: string;
@@ -73,7 +75,7 @@ export function OrgMembers({ org, orgName, mayManage, pushToast }: {
           <div className="row wrap gap-8 px-12 py-8 border-b">
             <AddMember org={org} orgName={orgName} pushToast={pushToast} />
             <div className="flex-1" />
-            <Button variant="primary" size="sm" icon={I.plus} onClick={() => setInvite(true)}>Invite new person</Button>
+            <Button variant="primary" size="sm" icon={I.plus} onClick={() => setInvite(true)}>Invite by email</Button>
           </div>
         )}
         <RolesMatrix
@@ -90,14 +92,15 @@ export function OrgMembers({ org, orgName, mayManage, pushToast }: {
         />
       </Card>
 
+      <PendingInvitations org={org} orgName={orgName} mayManage={manage} pushToast={pushToast} />
+
       {invite && (
         <InviteDrawer
           org={org}
           assignable={roles.filter((r) => r.assignable)}
-          mayGrant={manage}
           pushToast={pushToast}
           onClose={() => setInvite(false)}
-          onDone={() => { setInvite(false); usersQ.refetch(); }}
+          onDone={() => usersQ.refetch()}
         />
       )}
       {individual && (

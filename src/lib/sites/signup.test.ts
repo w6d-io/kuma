@@ -19,7 +19,8 @@ const site = (over: Partial<Site> = {}): Site => ({
 
 describe('site sign-up', () => {
   it('starts closed with the user role and a personal org', () => {
-    expect(defaultSignUp(site())).toEqual({ mode: 'closed', domains: [], roles: ['user'], orgs: 'personal' });
+    expect(defaultSignUp(site())).toEqual({ mode: 'closed', domains: [], roles: ['user'], orgs: 'none' });
+    expect(defaultSignUp(site({ organizations: { enabled: true } })).orgs).toBe('personal');
     expect(defaultSignUp(site({ roles: 'readonly' })).roles).toEqual(['viewer']);
   });
 

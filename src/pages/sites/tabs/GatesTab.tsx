@@ -10,6 +10,7 @@ import type { SiteEditor } from '../useSiteEditor';
 import type { Go } from '../SiteDetail';
 import { CheckList, LockedCallout, MethodChips } from '../parts';
 import { checkLines } from '../../../lib/sites/format';
+import { upstreamPathProblem } from '../../../lib/sites/validate';
 import { gateSkipsTwoFactor } from '../../../lib/sites/twoFactorGates';
 import { SIGN_IN_CODES, gateChecks, gatePath, mergeChecks } from '../../../lib/sites/gateChecks';
 import { customAnswers, type CustomAnswer, type Question } from '../../../lib/sites/gateWords';
@@ -235,6 +236,9 @@ function GateBasic({ gate, site, enabled, readOnly, onChange, onSite, onLocked, 
           </Field>
           <Field label="Remove path prefix" hint="Site-wide. Oathkeeper removes the first occurrence (a substring replace) — it must be a literal prefix of every path.">
             <Input mono placeholder="/api" disabled={readOnly} value={site.upstream.stripPath ?? ''} onChange={(e) => onSite((s) => ({ ...s, upstream: { ...s.upstream, stripPath: e.target.value || undefined } }))} />
+          </Field>
+          <Field label="Then add base path" hint="Site-wide. Put in front of every path after the prefix is removed: /v1/days with prefix /v1 and base /api/external reaches /api/external/days." error={upstreamPathProblem(site.upstream.path ?? '') ?? undefined}>
+            <Input mono placeholder="/api/external" disabled={readOnly} value={site.upstream.path ?? ''} onChange={(e) => onSite((s) => ({ ...s, upstream: { ...s.upstream, path: e.target.value.trim() || undefined } }))} />
           </Field>
         </FormGrid>
       </section>

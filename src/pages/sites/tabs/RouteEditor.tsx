@@ -44,10 +44,12 @@ function PathBuilder({ path, onChange }: { path: string; onChange: (p: string) =
   );
 }
 
-export function RouteEditor({ route, gates, permissions, rowNumber, problem, onChange, onDelete, onDone }: {
+export function RouteEditor({ route, gates, permissions, orgsOn = true, rowNumber, problem, onChange, onDelete, onDone }: {
   route: Route;
   gates: Gate[];
   permissions: string[];
+  /** The site has organizations on: only then can a route be org-scoped. */
+  orgsOn?: boolean;
   rowNumber: number;
   problem?: string;
   onChange: (r: Route) => void;
@@ -66,7 +68,7 @@ export function RouteEditor({ route, gates, permissions, rowNumber, problem, onC
     const next: Route = { ...route, path };
     // Auto-on when a param looks like the org (platform default); off when the param is gone.
     const guess = guessOrgParam(path);
-    if (!route.orgParam && guess) next.orgParam = guess;
+    if (!route.orgParam && guess && orgsOn) next.orgParam = guess;
     if (route.orgParam && !pathParams(path).includes(route.orgParam)) delete next.orgParam;
     onChange(next);
   };
@@ -132,12 +134,12 @@ export function RouteEditor({ route, gates, permissions, rowNumber, problem, onC
           <Field
             label="Org-scoped"
             inline
-            hint={params.length === 0 ? 'Add :orgId to the path to make it org-scoped.' : 'Only members of the organization in the URL, using that organization’s grants.'}
+            hint={!orgsOn && !route.orgParam ? 'Needs organizations on (Access → Organizations).' : params.length === 0 ? 'Add :orgId to the path to make it org-scoped.' : 'Only members of the organization in the URL, using that organization’s grants.'}
             error={orgErr ?? undefined}
           >
             <Switch
               on={!!route.orgParam}
-              disabled={params.length === 0}
+              disabled={params.length === 0 || (!orgsOn && !route.orgParam)}
               label="Org-scoped"
               onChange={(on) => onChange({ ...route, orgParam: on ? (guessOrgParam(route.path) ?? params[0]) : undefined })}
             />

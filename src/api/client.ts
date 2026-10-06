@@ -263,8 +263,6 @@ export const api = {
         id: string;
         name: string;
         tenant: string;
-        /** The organisation registry's deployments — not what it is entitled to (that is `sites`). */
-        applications?: string[];
         /** Identity ids holding jinbe:owner there. Absent on an older jinbe. */
         owners?: string[];
         /** The sites whose intents list it (org_sites): whose org roles it may hold. Absent on an older jinbe. */
@@ -272,9 +270,13 @@ export const api = {
       }[];
     }>('/admin/organizations'),
 
-  /** A new organisation from a name; the tenant is derived from it when not given. */
-  createOrganization: (body: { name: string; tenant?: string }) =>
-    request<OrganizationRecord>('/admin/organizations', { method: 'POST', body: JSON.stringify(body) }),
+  /**
+   * A new organisation for its owner, named by address: an account with it becomes owner at once,
+   * an unknown address is invited as owner (the invitation token is answered once). The tenant is
+   * derived from the name when not given.
+   */
+  createOrganization: (body: { name: string; tenant?: string; owner: string }) =>
+    request<OrganizationCreated>('/admin/organizations', { method: 'POST', body: JSON.stringify(body) }),
 
   /** Rename or re-tenant. Only what is sent changes. */
   updateOrganization: (id: string, body: { name?: string; tenant?: string }) =>
@@ -450,15 +452,6 @@ export const api = {
       `/organizations/${orgId}/users${q ? `?${q}` : ''}`,
     );
   },
-
-  createOrgUser: (
-    orgId: string,
-    payload: { email: string; name?: string; sendInvite?: boolean; roles?: string[]; grants?: ReturnType<typeof import('./grants').requestOf>[] },
-  ) =>
-    request<KratosIdentity>(`/organizations/${orgId}/users`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
 };
 
 // ─── Types matching jinbe API responses ───
@@ -619,7 +612,14 @@ export interface OrganizationRecord {
   id: string;
   name: string;
   tenant: string;
-  applications: string[];
+}
+
+/** POST /admin/organizations: the record, and whether its owner was named or invited. */
+export interface OrganizationCreated extends OrganizationRecord {
+  sites?: string[];
+  owner?: { email: string; id: string | null; status: 'owner' | 'invited' };
+  /** Only when the owner was invited: the token (and link) answered this once. */
+  invitation?: { id: string; token: string; link: string | null; expiresAt: string };
 }
 
 /** One person found by GET /admin/users/lookup. `null` = that part could not be read, not "none". */
