@@ -3,14 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, click, render, type } from '../components/ui/testing';
 
-// An organization's API keys: scopes as compact tags, listed and revoked here; created by platform
-// staff from the Organizations hub, in a drawer whose scopes are ticked by kind (never typed while a
-// catalogue exists), the secret shown once with a confirm before closing uncopied — and nothing about
-// personal keys, which belong to people, not to organizations.
+// Organizations' API keys: scopes as compact tags, listed and revoked here; created here only, by
+// platform staff, for any organization picked in a drawer whose scopes are ticked by kind (never typed
+// while a catalogue exists), the secret shown once with a confirm before closing uncopied — and nothing
+// about personal keys, which belong to people, not to organizations.
 
 const ORG = '3cb95fec-bc9f-48b1-8fa7-f3da8ed9fff8';
+const OTHER = '9d0c1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f';
 const ME = 'a1b2c3d4-0000-4000-8000-000000000001';
 const perms = vi.hoisted(() => ({ list: [] as string[] }));
+const nav = vi.hoisted(() => ({ setPage: vi.fn() }));
 const api = vi.hoisted(() => ({
   listApiKeys: vi.fn(),
   apiKeyScopes: vi.fn(),
@@ -19,15 +21,14 @@ const api = vi.hoisted(() => ({
   toast: vi.fn(),
 }));
 vi.mock('../api/accounts', () => ({ accountsApi: api }));
-vi.mock('../contexts/AppContext', () => ({ useApp: () => ({ pageParam: ORG, setPage: vi.fn(), pushToast: api.toast }) }));
-vi.mock('../api/orgCatalog', () => ({ useOrgCatalog: () => ({ orgs: [{ id: ORG, name: 'test-org' }], isLoading: false, error: null }) }));
+vi.mock('../contexts/AppContext', () => ({ useApp: () => ({ pageParam: ORG, setPage: nav.setPage, pushToast: api.toast }) }));
+vi.mock('../api/orgCatalog', () => ({ useOrgCatalog: () => ({ orgs: [{ id: ORG, name: 'test-org' }, { id: OTHER, name: 'other-org' }], isLoading: false, error: null }) }));
 vi.mock('../api/hooks', () => ({
   useSession: () => ({ data: { identity_id: ME, groups: ['admins'], permissions: perms.list } }),
   useUserIdentity: () => ({ data: undefined }),
 }));
 
 import { ApiKeysPage } from './ApiKeys';
-import { OrgKeys } from './apikeys/OrgKeys';
 
 const key = {
   client_id: '15b59756-cfe7-45e6-8173-51026fe0a065', organization_id: ORG, label: 'test keys',
@@ -39,8 +40,8 @@ async function settle() {
 }
 const wrap = (el: React.ReactNode) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{el}</QueryClientProvider>);
 const mount = () => wrap(<ApiKeysPage />);
-// The hub's keys card, for staff holding orgs.keys:write.
-const mountStaff = () => wrap(<OrgKeys org={ORG} orgName="test-org" from="admin" mayCreate />);
+// Staff holding orgs.keys:write: the page's Create key.
+const mountStaff = () => { perms.list = ['orgs:read', 'orgs.keys:write']; return mount(); };
 const button = (label: RegExp) => [...document.querySelectorAll('button')].find((b) => label.test(b.textContent?.trim() ?? '')) as HTMLButtonElement;
 // The drawer's own button, not the page's one behind it.
 const inDrawer = (label: RegExp) => [...document.querySelectorAll('.drawer button')].find((b) => label.test(b.textContent?.trim() ?? '')) as HTMLButtonElement;
@@ -48,6 +49,7 @@ const text = () => document.body.textContent ?? '';
 
 beforeEach(() => {
   Object.values(api).forEach((f) => f.mockReset());
+  nav.setPage.mockReset();
   perms.list = [];
   api.listApiKeys.mockResolvedValue({ data: [key], total: 1 });
   api.apiKeyScopes.mockResolvedValue([
@@ -76,13 +78,30 @@ describe('API keys', () => {
     expect(button(/Create/)).toBeUndefined();
   });
 
-  it('sends staff who may create keys to the Organizations hub, and lists from the admin route', async () => {
-    perms.list = ['orgs:read', 'orgs.keys:write'];
-    mount();
+  it('offers staff who may create keys a Create key here, never a detour to Organizations, and lists from the admin route', async () => {
+    mountStaff();
     await settle();
     expect(api.listApiKeys).toHaveBeenCalledWith(ORG, 'admin');
-    expect(button(/^Create key$/)).toBeUndefined();
-    expect(button(/^Create on Organizations$/)).toBeDefined();
+    expect(button(/^Create key$/)).toBeDefined();
+    expect(button(/Organizations/)).toBeUndefined();
+  });
+
+  it('creates for any organization picked in the form, with that organization\'s catalogue, then shows its keys', async () => {
+    api.createApiKey.mockResolvedValue({ ...key, organization_id: OTHER, label: 'Sync', client_secret: 'hk_secret', scopes: ['fleet:read'] });
+    mountStaff();
+    await settle();
+    click(button(/^Create key$/));
+    await settle();
+    const picker = document.querySelector('.drawer select[aria-label="Organization"]') as HTMLSelectElement;
+    expect(picker.value).toBe(ORG);
+    await act(async () => { picker.value = OTHER; picker.dispatchEvent(new Event('change', { bubbles: true })); });
+    await settle();
+    expect(api.apiKeyScopes).toHaveBeenLastCalledWith(OTHER);
+    type(document.querySelector('input[placeholder="e.g. Billing sync"]'), 'Sync');
+    click(inDrawer(/^Create key$/));
+    await settle();
+    expect(api.createApiKey).toHaveBeenCalledWith(OTHER, { label: 'Sync', scopes: ['fleet:read'], expires_in_days: 90 });
+    expect(nav.setPage).toHaveBeenCalledWith('apikeys', OTHER);
   });
 
   it('revokes through the admin route with orgs.keys:write, and through the org route otherwise', async () => {

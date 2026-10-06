@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../contexts/AppContext';
 import { accountsApi, type ApiKeySecretView } from '../../api/accounts';
+import { useOrgCatalog } from '../../api/orgCatalog';
+import { OrgPicker } from '../../components/OrgPicker';
 import { Button, Drawer, Field, FormGrid, Input, Select } from '../../components/ui';
+import { orgLabel } from '../../lib/orgOptions';
 import { toastFor } from '../../lib/apiError';
 import { stepUpOnRefusal } from '../../lib/resume';
 import { allowedScopesFrom, initialScopes, KEY_EXPIRY_CHOICES, normalizeCatalog, parseScopes, type ScopeEntry } from '../../lib/apiKeys';
@@ -10,17 +13,21 @@ import { ScopeField } from './parts';
 import { SecretDrawer } from './SecretDrawer';
 
 /**
- * A new machine key for an organization, made by platform staff (orgs.keys:write, a recent second
- * factor): a label, scopes ticked by kind (permissions, site roles, groups), an expiry — then its
- * secret, once. The key works on every site serving the organization. The catalogue comes from jinbe
- * up front; when it cannot be read, the scopes are typed.
+ * A new machine key, made by platform staff (orgs.keys:write, a recent second factor) on the API keys
+ * page, the only place keys are made: the organization (any; `initialOrg` preselects the page's), a
+ * label, scopes ticked by kind (permissions, site roles, groups), an expiry — then its secret, once.
+ * The key works on every site serving the organization. The catalogue is the chosen organization's,
+ * from jinbe; when it cannot be read, the scopes are typed.
  */
-export function CreateOrgKeyDrawer({ org, orgName, onClose, onCreated }: {
-  org: string; orgName: string; onClose: () => void; onCreated: () => void;
+export function CreateOrgKeyDrawer({ initialOrg, onClose, onCreated }: {
+  initialOrg: string; onClose: () => void; onCreated: (org: string) => void;
 }) {
   const { pushToast } = useApp();
+  const { orgs } = useOrgCatalog();
+  const [org, setOrg] = useState(initialOrg);
+  const orgName = org ? orgLabel(org, orgs) : '';
   const [label, setLabel] = useState('');
-  const catalogue = useQuery({ queryKey: ['api-keys', org, 'scopes'], queryFn: () => accountsApi.apiKeyScopes(org), staleTime: 60_000, retry: false });
+  const catalogue = useQuery({ queryKey: ['api-keys', org, 'scopes'], queryFn: () => accountsApi.apiKeyScopes(org), staleTime: 60_000, retry: false, enabled: !!org });
   const [refusedWith, setRefusedWith] = useState<ScopeEntry[] | null>(null);
   const entries = catalogue.data ?? refusedWith;
   const [expiresIn, setExpiresIn] = useState<number | null>(90);
@@ -33,7 +40,9 @@ export function CreateOrgKeyDrawer({ org, orgName, onClose, onCreated }: {
   }, [entries, picked]);
   const allowed = entries?.map((e) => e.scope);
   const scopes = allowed ? (picked ?? []).filter((s) => allowed.includes(s)) : parseScopes(scopesText);
-  const ready = !!label.trim() && scopes.length > 0;
+  const ready = !!org && !!label.trim() && scopes.length > 0;
+  // Another organization, another catalogue: nothing ticked for the last one carries over.
+  const chooseOrg = (id: string) => { setOrg(id); setPicked(null); setRefusedWith(null); setScopesText(''); };
 
   const submit = async () => {
     if (!ready) return;
@@ -41,7 +50,7 @@ export function CreateOrgKeyDrawer({ org, orgName, onClose, onCreated }: {
     try {
       const res = await accountsApi.createApiKey(org, { label: label.trim(), scopes, ...(expiresIn ? { expires_in_days: expiresIn } : {}) });
       setCreated(res);
-      onCreated();
+      onCreated(org);
     } catch (err) {
       const refused = allowedScopesFrom(err);
       if (refused) setRefusedWith(normalizeCatalog(refused));
@@ -74,7 +83,7 @@ export function CreateOrgKeyDrawer({ org, orgName, onClose, onCreated }: {
     <Drawer
       open
       onClose={onClose}
-      eyebrow={orgName}
+      eyebrow={orgName || undefined}
       title="Create API key"
       footer={<>
         <span className="small muted">The secret is shown once, after creating.</span>
@@ -86,10 +95,13 @@ export function CreateOrgKeyDrawer({ org, orgName, onClose, onCreated }: {
     >
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <FormGrid>
+          <Field label="Organization" required hint="The key belongs to it and works on every site serving it.">
+            <OrgPicker value={org} onChange={chooseOrg} />
+          </Field>
           <Field label="Label" required hint="What the key is for, so it can be told apart later.">
             <Input placeholder="e.g. Billing sync" value={label} maxLength={200} autoFocus onChange={(e) => setLabel(e.target.value)} />
           </Field>
-          <ScopeField
+          {org ? <ScopeField
             entries={entries}
             loading={catalogue.isLoading}
             error={catalogue.error}
@@ -97,7 +109,7 @@ export function CreateOrgKeyDrawer({ org, orgName, onClose, onCreated }: {
             onChange={setPicked}
             text={scopesText}
             onText={setScopesText}
-          />
+          /> : <Field label="Scopes" hint="Choose the organization first: the scopes are those of the sites serving it."><span className="small muted">—</span></Field>}
           <Field label="Expires" hint="The key stops working after this. Revoking it stops it at once.">
             <Select value={expiresIn ?? ''} onChange={(e) => setExpiresIn(e.target.value ? Number(e.target.value) : null)}>
               {KEY_EXPIRY_CHOICES.map((d) => <option key={d ?? 'never'} value={d ?? ''}>{d ? `In ${d} days` : 'Never'}</option>)}

@@ -258,7 +258,7 @@ describe('Organizations', () => {
     expect(put?.body).toEqual({ owners: [BOB, CAROL] });
   });
 
-  it('lists pending invitations, and the keys from the admin route with create for orgs.keys:write', async () => {
+  it('lists pending invitations, and the keys from the admin route, made on API keys (a link there for orgs.keys:write)', async () => {
     h.permissions = ['orgs:read', 'orgs.keys:write'];
     orgs = [{ id: ACME, name: 'Acme', tenant: 'acme' }];
     orgPermissions = { [ACME]: ['org.members:read'] };
@@ -270,7 +270,8 @@ describe('Organizations', () => {
     // org.members:read only: shown, not taken back.
     expect(button('Take back')).toBeNull();
     expect(calls.some((c) => c.method === 'GET' && c.url.endsWith(`/admin/organizations/${ACME}/api-keys`))).toBe(true);
-    expect(button('Create key')).not.toBeNull();
+    expect(button('Create key')).toBeNull();
+    expect(button('Open in API keys')).not.toBeNull();
   });
 
   it('assigns a role per member and says why jinbe refused each one', async () => {

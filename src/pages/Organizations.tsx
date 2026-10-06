@@ -171,7 +171,7 @@ function OrgDetail({ org, name, tenant, listedOwners, listedSites, mayWrite, may
   listedOwners?: string[]; listedSites?: string[];
   mayWrite: boolean; mayDelete: boolean; onDeleted: () => void;
 }) {
-  const { pushToast } = useApp();
+  const { pushToast, setPage } = useApp();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const { data: session } = useSession();
@@ -270,7 +270,13 @@ function OrgDetail({ org, name, tenant, listedOwners, listedSites, mayWrite, may
         : <Card className="p-32"><EmptyHint>Its members and their roles are visible to whoever holds org.members:read in this organization.</EmptyHint></Card>}
 
       <div className="mt-12">
-        <OrgKeys org={org} orgName={name ?? org} from="admin" mayCreate={mayCreateKeys} />
+        <OrgKeys
+          org={org}
+          orgName={name ?? org}
+          from="admin"
+          adminRevoke={mayCreateKeys}
+          actions={mayCreateKeys && <Button size="sm" icon={I.key} onClick={() => setPage('apikeys', org)}>Open in API keys</Button>}
+        />
       </div>
 
       {editing && (
