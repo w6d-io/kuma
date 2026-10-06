@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Badge, Button, ButtonBase, Callout, EmptyRow, EmptyState, I, Input, LoadingRows, PageHeader, Segmented, Table, Th, TwoFactorBadge } from '../../components/ui';
 import { sitesApi, useSites, notAvailable } from '../../api/sites';
 import { goSites, sitesHref } from '../../lib/sites/route';
-import type { SiteSummary } from '../../lib/sites/types';
+import type { MigrationStatus, SiteSummary } from '../../lib/sites/types';
 import { QueryError, StatusBadge, WafBadge } from './parts';
 import { timeAgo } from '../../lib/sites/format';
 import { useSitePerms } from './usePerms';
@@ -34,6 +34,31 @@ function subline(s: SiteSummary): string {
   return 'Never applied';
 }
 
+/**
+ * Legacy rules still to move to sites. Shown only when there are some besides the platform's own
+ * built-in rules, and it says whether new sites can be applied meanwhile as the server says it.
+ */
+export function MigrationCallout({ migration }: { migration: MigrationStatus | undefined }) {
+  if (!migration || ['done', 'cut-over'].includes(migration.state) || migration.legacyRules === 0) return null;
+  const n = migration.legacyRules;
+  const apply = migration.applyAllowed === true
+    ? ' New sites can be applied now, beside the old rules.'
+    : migration.applyAllowed === false
+      ? ` ${migration.applyBlocked && migration.applyBlocked.code !== 'migration_pending' ? migration.applyBlocked.message : 'New sites can be applied only after the cut-over.'}`
+      : '';
+  return (
+    <Callout
+      tone="warning"
+      icon={I.sync}
+      className="mb-12"
+      title="The gateway still reads rules from the old source"
+      actions={<Button size="sm" onClick={() => goSites(sitesHref({ view: 'migrate' }))}>Start migration</Button>}
+    >
+      {n} legacy rule{n === 1 ? '' : 's'} to move to sites — preview first, nothing changes until you cut over.{apply}
+    </Callout>
+  );
+}
+
 export function SitesList({ query }: { query: Record<string, string> }) {
   const perms = useSitePerms();
   const sites = useSites();
@@ -54,7 +79,6 @@ export function SitesList({ query }: { query: Record<string, string> }) {
     .filter((s) => !needle || s.name.includes(needle) || s.displayName.toLowerCase().includes(needle) || s.host.includes(needle));
   const count = (f: Filter) => all.filter(FILTERS[f]).length;
   const open = (s: SiteSummary) => goSites(sitesHref({ view: 'site', name: s.name, tab: (s.draft || s.status === 'attention') && !s.system ? 'review' : undefined }));
-  const migrating = migration.data && !['done', 'cut-over'].includes(migration.data.state);
 
   const plug = perms.canDraft && (
     <Button variant="primary" icon={I.plus} kbd="n" onClick={() => goSites(sitesHref({ view: 'new' }))}>Plug a site</Button>
@@ -71,17 +95,7 @@ export function SitesList({ query }: { query: Record<string, string> }) {
         <Callout tone="info" icon={I.info} className="mb-12">You can look around. Changing sites needs a platform admin.</Callout>
       )}
       <DeletionsWaiting />
-      {migrating && (
-        <Callout
-          tone="warning"
-          icon={I.sync}
-          className="mb-12"
-          title="The gateway still reads rules from the old source"
-          actions={<Button size="sm" onClick={() => goSites(sitesHref({ view: 'migrate' }))}>Start migration</Button>}
-        >
-          {migration.data!.legacyRules} legacy rules. Move them to sites — preview first, nothing changes until you cut over. New sites can be applied only after the cut-over.
-        </Callout>
-      )}
+      <MigrationCallout migration={migration.data} />
 
       <div className="site-toolbar">
         <Segmented

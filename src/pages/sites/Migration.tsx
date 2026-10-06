@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge, Button, Callout, Card, Checkbox, CodeView, EmptyState, Field, I, Input, PageHeader, SkeletonPanel, Stepper, Table, Th } from '../../components/ui';
-import { sitesApi, notAvailable } from '../../api/sites';
+import { sitesApi, notAvailable, type SiteError } from '../../api/sites';
 import { goSites, sitesHref, MIGRATION_STEPS, type MigrationStep } from '../../lib/sites/route';
 import type { MigrationDiff, MigrationGroup, MigrationState, ParityReport } from '../../lib/sites/types';
 import { QueryError } from './parts';
@@ -73,6 +73,8 @@ export function MigrationPage({ step }: { step: MigrationStep | null }) {
   const [parity, setParity] = useState<ParityReport | null>(null);
   const [told, setTold] = useState(false);
   const [note, setNote] = useState('Migration to Sites');
+  // jinbe's refusal of the cut-over (mixed gateway, a converted rule sharing a URL with a rule that stays served).
+  const [refused, setRefused] = useState<string | null>(null);
   const refresh = () => void qc.invalidateQueries({ queryKey: ['sites', 'migration'] });
 
   const header = (
@@ -99,6 +101,11 @@ export function MigrationPage({ step }: { step: MigrationStep | null }) {
   const isRegression = (d: MigrationDiff) => regressionRows.includes(d) || (!report?.regressions && !d.fix);
   const preview = async (f = fixes, d = decisions) => { const out = await run('Preview', () => sitesApi.migrationPreview({ fixes: f, decisions: d })); if (out) { setPlan(out.groups); refresh(); } };
   const go = (s: MigrationStep) => goSites(sitesHref({ view: 'migrate', step: s }));
+  const cutover = () => sitesApi.migrationCutover(note).catch((err: unknown) => {
+    const e = err as SiteError;
+    if (e.status === 409 && (e.code === 'mixed_gateway' || e.code === 'cutover_overlap')) setRefused(e.message);
+    throw err;
+  });
 
   return (
     <div className="page-enter">
@@ -106,7 +113,7 @@ export function MigrationPage({ step }: { step: MigrationStep | null }) {
       <Stepper className="mb-16" current={current} onStep={(id) => go(id as MigrationStep)} steps={MIGRATION_STEPS.map((id, i) => ({ id, label: `${i + 1} ${{ preview: 'Preview', parity: 'Parity', dualrun: 'Dual run', cutover: 'Cut over', done: 'Done' }[id]}` }))} />
 
       {current === 'preview' && (
-        <Card title={`${m.legacyRules} legacy rules → ${groups.filter((g) => g.kind === 'site').length} sites + ${groups.filter((g) => g.kind === 'system').length} system sites`} sub={unassigned ? `${unassigned} need a decision` : 'Default: convert 1:1 (same patterns, same handlers)'} actions={<Button size="sm" loading={busy === 'Preview'} onClick={() => void preview()}>{groups.length ? 'Preview again' : 'Preview conversion'}</Button>}>
+        <Card title={`${m.legacyRules} legacy rules${m.builtIn ? ` + ${m.builtIn} built-in` : ''} → ${groups.filter((g) => g.kind === 'site').length} sites + ${groups.filter((g) => g.kind === 'system').length} system sites`} sub={unassigned ? `${unassigned} need a decision` : 'Default: convert 1:1 (same patterns, same handlers)'} actions={<Button size="sm" loading={busy === 'Preview'} onClick={() => void preview()}>{groups.length ? 'Preview again' : 'Preview conversion'}</Button>}>
           <ul className="site-list">{groups.map((g) => <GroupRow key={g.proposedSite + g.legacyRuleIds.join()} g={g}
             fixOn={!!fixes[g.proposedSite]?.includes('pin-app')}
             onFix={(on) => { const f = { ...fixes }; if (on) f[g.proposedSite] = ['pin-app']; else delete f[g.proposedSite]; setFixes(f); void preview(f); }}
@@ -138,11 +145,15 @@ export function MigrationPage({ step }: { step: MigrationStep | null }) {
 
       {current === 'cutover' && (
         <Card title="Cut over" sub="Site objects are created → maester writes the rules → every gateway pod loads them → the gateway switches to maester’s rules → the old sync stops. Rollback for 7 days.">
+          {m.mixedGateway && (
+            <Callout tone="info" icon={I.info} className="mb-8">This gateway loads the old rules and the site rules side by side, so the cut-over is refused here: it would serve both copies of every converted rule. New sites can already be applied.</Callout>
+          )}
+          {refused && <Callout tone="danger" icon={I.alert} className="mb-8" title="The server refused the cut-over">{refused}</Callout>}
           <Checkbox checked={told} onChange={setTold} label="I’ve told the team" />
           <Field label="Note for the audit log" className="mt-8"><Input value={note} onChange={(e) => setNote(e.target.value)} /></Field>
           <div className="row justify-end gap-8 mt-12">
             <Button onClick={() => go('dualrun')}>Cancel</Button>
-            <Button variant="danger" disabled={!told} loading={busy === 'Cut over'} onClick={async () => { const out = await run('Cut over', () => sitesApi.migrationCutover(note), 'Cut over: the gateway now serves the sites'); if (out) { refresh(); go('done'); } }}>Cut over now</Button>
+            <Button variant="danger" disabled={!told || !!m.mixedGateway} loading={busy === 'Cut over'} onClick={async () => { setRefused(null); const out = await run('Cut over', cutover, 'Cut over: the gateway now serves the sites'); if (out) { refresh(); go('done'); } }}>Cut over now</Button>
           </div>
         </Card>
       )}

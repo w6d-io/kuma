@@ -462,7 +462,15 @@ export interface DualRun {
 
 export interface MigrationStatus {
   state: MigrationState;
+  /** Legacy rules to migrate. Older servers count the built-ins in it too. */
   legacyRules: number;
+  /** The platform's own rules (sign-in, Kratos, kuma, jinbe, MCP), rewritten by jinbe on every start: never "to migrate". */
+  builtIn?: number;
+  /** The gateway loads the legacy rules and the site rules side by side: sites apply before the cut-over, the cut-over is refused. */
+  mixedGateway?: boolean;
+  /** Whether new sites can be applied now; absent on older servers (say nothing then). */
+  applyAllowed?: boolean;
+  applyBlocked?: { code: string; message: string };
   groups: MigrationGroup[];
   parity?: ParityReport;
   cutoverAt?: string;
