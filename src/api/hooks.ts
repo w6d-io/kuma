@@ -42,9 +42,10 @@ const CONFIG_STALE_TIME = 5 * 60_000;
  * pages (see useUsers). Unrelated mutations no longer re-walk the directory
  * because the query key is stable and invalidation is scoped (STORE-3).
  */
-export function useUsersInfinite(search?: string) {
+export function useUsersInfinite(search?: string, enabled = true) {
   return useInfiniteQuery({
     queryKey: ['users', search ?? ''],
+    enabled,
     queryFn: async ({ pageParam }: { pageParam: string | undefined }) => {
       const { data, nextPageToken } = await api.getUsersPage(pageParam, USERS_PAGE_SIZE, search);
       return { users: data.map(kratosToUser), nextPageToken };
@@ -69,8 +70,8 @@ export function useUsersInfinite(search?: string) {
  * `count` grows as background pages land; `isComplete` flips when the keyset is
  * exhausted; `usersLoading` mirrors the old "N+ / loading more…" affordance.
  */
-export function useUsers(search?: string) {
-  const q = useUsersInfinite(search);
+export function useUsers(search?: string, enabled = true) {
+  const q = useUsersInfinite(search, enabled);
   const users = useMemo<User[]>(
     () => (q.data?.pages ?? []).flatMap((p) => p.users),
     [q.data],
@@ -101,10 +102,11 @@ export function useUserIdentity(id: string | undefined, enabled = true) {
   });
 }
 
-export function useGroups() {
+export function useGroups(enabled = true) {
   return useQuery({
     queryKey: ['groups'],
     queryFn: () => api.getGroups(),
+    enabled,
     staleTime: CONFIG_STALE_TIME,
   });
 }
@@ -120,10 +122,11 @@ export function useGroupsMap() {
   });
 }
 
-export function useServices() {
+export function useServices(enabled = true) {
   return useQuery({
     queryKey: ['services'],
     queryFn: () => api.getServices(),
+    enabled,
     staleTime: CONFIG_STALE_TIME,
   });
 }
