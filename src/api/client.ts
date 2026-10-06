@@ -669,6 +669,8 @@ export interface SetUserGroupsResponse {
   email: string;
   groups: string[];
   updatedAt: string;
+  /** Groups that wait for this person's second factor instead of being refused; joined once enrolled. */
+  awaitingSecondFactor?: { groups: string[]; expiresAt: string };
 }
 
 export interface KratosIdentity {

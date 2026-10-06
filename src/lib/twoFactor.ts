@@ -82,7 +82,7 @@ export interface SecondFactorRefusal {
 export const STEP_UP_MINUTES = 15;
 
 export const GROUP_REQUIRED_TITLE = 'Members must use two-step sign-in: they enrol a second factor before being added, and sign in with it on every app.';
-export const NEEDS_ENROL_TITLE = 'This person has not enrolled a second factor, so they cannot be added to a group that requires one.';
+export const NEEDS_ENROL_TITLE = 'This person has not enrolled a second factor yet: added to a group that requires one, they join it once they set it up.';
 
 export function stepUpTitle(rule?: Pick<StepUpRule, 'maxAgeMin' | 'viaPersonalKey' | 'fourEyes'> | null): string {
   const min = rule?.maxAgeMin ?? STEP_UP_MINUTES;
@@ -119,8 +119,12 @@ export function siteScopeSentence(sf: SiteSecondFactor): string {
   return label ? `${label}.` : 'This site asks for no two-step sign-in.';
 }
 
-/** Whether adding `target` to a group is blocked by its second-factor rule (the target never enrolled). */
-export function blockedForEnrolment(group: GroupSecondFactor | undefined, targetEnrolled: boolean | null | undefined): boolean {
+/**
+ * Whether adding `target` to a group waits for their second factor: its members must use 2FA and they
+ * never enrolled. Not a refusal any more — jinbe keeps the group until they enrol, and sends them to
+ * set it up (second-factor/awaiting.ts in jinbe).
+ */
+export function waitsForEnrolment(group: GroupSecondFactor | undefined, targetEnrolled: boolean | null | undefined): boolean {
   if (targetEnrolled !== false || !group) return false;
   return group.required || !!group.enrolBeforeJoining;
 }
@@ -183,4 +187,9 @@ export function secondFactorRefusalSentence(err: unknown): string | null {
       return `${what} needs a recent second factor, which this key cannot stand in for. Do it in the console in a browser.`;
   }
   return null;
+}
+
+/** Said beside a group that waits for the person's second factor. */
+export function waitsForEnrolmentSentence(group: string, who = 'This person'): string {
+  return `Members of '${group}' must use two-step sign-in. ${who} has no second factor yet: they join once they set it up, and are asked to the next time they sign in.`;
 }

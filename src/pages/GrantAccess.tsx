@@ -7,7 +7,8 @@ import { useSiteGroups } from './access/access';
 import { groupOutcome } from '../lib/rbacEdit';
 import { Avatar, Badge, Button, ButtonBase, Callout, Card, Checkbox, Drawer, Field, I, Input, Stepper, TwoFactorBadge, cx } from '../components/ui';
 import { useGroupSecondFactors } from '../api/twoFactor';
-import { blockedForEnrolment } from '../lib/twoFactor';
+import { waitsForEnrolment, waitsForEnrolmentSentence } from '../lib/twoFactor';
+import { awaitingNotice } from '../lib/secondFactor';
 import { accessLevelOf } from '../hooks/useRbac';
 import { useApplyChange } from '../hooks/useApplyChange';
 import { useDebounced } from '../hooks/useDebounced';
@@ -47,7 +48,7 @@ function outcomeOf(group: string, groups: GroupsMap, roles: RolesMap, privileged
 }
 
 export function GrantAccess() {
-  const { grant, setGrant, apiSetUserGroups, setUserDrawer, state } = useApp();
+  const { grant, setGrant, apiSetUserGroups, setUserDrawer, state, pushToast } = useApp();
   const applyChange = useApplyChange();
   const secondFactorOf = useGroupSecondFactors();
   // The same site groups Groups edits, so what is offered is what the mutation accepts.
@@ -117,8 +118,9 @@ export function GrantAccess() {
   const escalating = groups.filter((g) => !before.has(g) && siteGroups.beyond(g).length > 0);
   const actorBlock = escalating.length > 0;
   // Groups whose second-factor rule the person does not meet yet (never enrolled).
-  const needsEnrol = added.filter((g) => { const r = secondFactorOf(g); return r ? blockedForEnrolment(r, user?.mfa) : siteGroups.privileged(g) && user?.mfa === false; });
-  const mfaBlock = needsEnrol.length > 0;
+  const needsEnrol = added.filter((g) => { const r = secondFactorOf(g); return r ? waitsForEnrolment(r, user?.mfa) : siteGroups.privileged(g) && user?.mfa === false; });
+  // Not a block: those groups wait for the person's second factor (jinbe keeps them, asks them to enrol).
+  const waitsForMfa = needsEnrol.length > 0;
 
   const pick = (u: User) => {
     setSelected(u);
@@ -130,12 +132,15 @@ export function GrantAccess() {
     setGroups((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]));
 
   const apply = () => {
-    if (!user || !changed || actorBlock || mfaBlock) return;
+    if (!user || !changed || actorBlock) return;
     const summary = `${user.email} → [${groups.join(', ') || 'no groups'}]`;
     applyChange(
       'assign',
       summary,
-      () => apiSetUserGroups(user.email, groups),
+      async () => {
+        const res = await apiSetUserGroups(user.email, groups);
+        if (res?.awaitingSecondFactor) pushToast(...awaitingNotice(user.email, res.awaitingSecondFactor));
+      },
       { kind: 'user-groups', email: user.email, groups },
       () => setGrant(null),
     );
@@ -178,7 +183,7 @@ export function GrantAccess() {
             {step === 'review' && (
               <Button
                 variant="primary"
-                disabled={!user || !changed || actorBlock || mfaBlock}
+                disabled={!user || !changed || actorBlock}
                 onClick={apply}
               >
                 Apply access
@@ -277,12 +282,12 @@ export function GrantAccess() {
               const blockedByActor = !on && (!siteGroups.mayAssign || beyond.length > 0);
               // Follows the group's "members must use 2FA" rule; the privileged test only on a jinbe that does not say.
               const rule = secondFactorOf(o.g);
-              const blockedByMfa = !on && (rule ? blockedForEnrolment(rule, user.mfa) : o.privileged && user.mfa === false);
-              const blocked = blockedByActor || blockedByMfa;
+              const waits = rule ? waitsForEnrolment(rule, user.mfa) : o.privileged && user.mfa === false;
+              const blocked = blockedByActor;
               const title = blockedByActor
                 ? (siteGroups.mayAssign ? `“${o.g}” gives what you do not hold: ${beyond.join(', ')}.` : 'Adding people to groups needs groups.members:write.')
-                : blockedByMfa
-                ? `Members of “${o.g}” must use two-step sign-in. ${user.name} must enrol a second factor (authenticator app, security key or backup codes) first.`
+                : waits
+                ? waitsForEnrolmentSentence(o.g, user.name)
                 : undefined;
               return (
                 <div key={o.g} title={title} className={cx('ga-row ga-outcome', on && 'on')}>
@@ -298,7 +303,7 @@ export function GrantAccess() {
                             {o.privileged && <Badge tone="warning" title="Gives platform permissions (jinbe)"><span className="chip-ico">{I.lock}</span>platform</Badge>}
                             {blockedByActor && <Badge tone="danger">{siteGroups.mayAssign ? 'beyond what you hold' : 'needs groups.members:write'}</Badge>}
                             {rule?.required && <TwoFactorBadge kind="required" />}
-                            {blockedByMfa && !blockedByActor && <TwoFactorBadge kind="needs-enrol" />}
+                            {waits && !blockedByActor && <TwoFactorBadge kind="needs-enrol" title={waitsForEnrolmentSentence(o.g, user.name)} />}
                           </span>
                           <AccessLevel level={o.level} compact />
                         </span>
@@ -330,12 +335,17 @@ export function GrantAccess() {
       {/* ── Step 3: Review ── */}
       {step === 'review' && user && (
         <>
-          {(actorBlock || mfaBlock) && (
+          {actorBlock && (
             <Callout tone="danger" icon={I.alert} title="Can't apply — this grants what you do not hold" className="mb-12">
               <div className="small text-muted">
-                {actorBlock && <>You may hand out only what you hold yourself: <b>{escalating.join(', ')}</b> gives {escalating.flatMap((g) => siteGroups.beyond(g)).join(', ')}. </>}
-                {mfaBlock && <>{user.name} must enrol a second factor before being added to <b>{needsEnrol.join(', ')}</b>: its members must use two-step sign-in. </>}
-                jinbe enforces this regardless.
+                You may hand out only what you hold yourself: <b>{escalating.join(', ')}</b> gives {escalating.flatMap((g) => siteGroups.beyond(g)).join(', ')}. jinbe enforces this regardless.
+              </div>
+            </Callout>
+          )}
+          {waitsForMfa && (
+            <Callout tone="info" icon={I.info} title={`${user.name} joins ${needsEnrol.join(', ')} once they set up two-step sign-in`} className="mb-12">
+              <div className="small text-muted">
+                Its members must use two-step sign-in and {user.name} has none yet. Nothing is refused: they are asked to set it up the next time they sign in, and join as soon as they have.
               </div>
             </Callout>
           )}

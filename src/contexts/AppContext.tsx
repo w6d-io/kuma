@@ -5,6 +5,7 @@ import { parseHash, formatHash } from '../lib/route';
 import { useStore } from '../api/store';
 import { withOptimism, cachePatch } from '../api/mutations';
 import { api } from '../api/client';
+import type { SetUserGroupsResponse } from '../api/client';
 import { ConfirmDialog } from '../components/ui';
 import { applyTheme, nextTheme, storeTheme, storedTheme, type Theme } from '../theme';
 
@@ -93,7 +94,7 @@ interface AppContextType {
   tweaks: TweakDefaults;
   setTweak: (key: string, val: unknown) => void;
   // Live API mutations
-  apiSetUserGroups: (email: string, groups: string[]) => Promise<void>;
+  apiSetUserGroups: (email: string, groups: string[]) => Promise<SetUserGroupsResponse | undefined>;
   /** Resolves to the new account's identity id, when jinbe answers one. */
   apiCreateUser: (payload: { email: string; name: string; groups?: string[]; sendInvite?: boolean }) => Promise<string | undefined>;
   apiDeleteUser: (id: string) => Promise<void>;
@@ -323,7 +324,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // (PERF-1/STORE-3).
 
   const apiSetUserGroups = useCallback(async (email: string, groups: string[]) => {
-    await withOptimism(qc, [['users'], ['groups-map'], ['stats']],
+    return withOptimism(qc, [['users'], ['groups-map'], ['stats']],
       () => cachePatch.patchUserGroupsByEmail(qc, email, groups),
       () => api.setUserGroups(email, groups));
   }, [qc]);

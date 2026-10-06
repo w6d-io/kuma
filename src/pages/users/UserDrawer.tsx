@@ -7,6 +7,7 @@ import { Avatar, Badge, Button, Callout, Card, Drawer, Field, FormGrid, Input, S
 import { useApplyChange } from '../../hooks/useApplyChange';
 import { formatHash } from '../../lib/route';
 import { useResume } from '../../lib/resume';
+import { awaitingNotice } from '../../lib/secondFactor';
 import { emailResumeAction, type EmailResume } from '../../lib/userAddress';
 import { holds } from '../../policy/model';
 import { SiteGroupRows } from './SiteGroupRows';
@@ -87,7 +88,10 @@ export function UserDrawer() {
     applyChange(
       "assign",
       summary,
-      () => apiSetUserGroups(user.email, groups),
+      async () => {
+        const res = await apiSetUserGroups(user.email, groups);
+        if (res?.awaitingSecondFactor) pushToast(...awaitingNotice(user.email, res.awaitingSecondFactor));
+      },
       { kind: 'user-groups', email: user.email, groups },
       // Closed on the WRITE, not on the call. `applyChange` returns before its promise does, so
       // closing on its return discarded the selection on every refusal — which is what made a

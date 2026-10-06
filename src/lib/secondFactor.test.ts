@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sameGroups, secondFactorPrompt, secondFactorWarnings } from './secondFactor';
+import { awaitingNotice, sameGroups, secondFactorPrompt, secondFactorWarnings } from './secondFactor';
 import { describeApiError } from './apiError';
 
 describe('secondFactorWarnings', () => {
@@ -42,5 +42,14 @@ describe('secondFactorPrompt', () => {
     expect(secondFactorPrompt({ secondFactorRequired: true, hasSecondFactor: true, aal: 'aal2' })).toBeNull();
     expect(secondFactorPrompt({ secondFactorRequired: false, hasSecondFactor: false, aal: 'aal1' })).toBeNull();
     expect(secondFactorPrompt(undefined)).toBeNull();
+  });
+});
+
+describe('awaitingNotice', () => {
+  it('says the person joins once enrolled, that they are asked to, and until when it waits', () => {
+    const [title, { sub }] = awaitingNotice('ann@x.io', { groups: ['staff-developers', 'ops'], expiresAt: '2026-10-13T12:00:00Z' });
+    expect(title).toBe('ann@x.io joins staff-developers, ops once they set up two-step sign-in');
+    expect(sub).toContain('asked to set it up the next time they sign in');
+    expect(sub).toContain(new Date('2026-10-13T12:00:00Z').toLocaleDateString());
   });
 });

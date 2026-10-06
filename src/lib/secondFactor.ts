@@ -51,3 +51,22 @@ export function secondFactorPrompt(s: OwnSecondFactor | null | undefined): Secon
 
 export const ENROL_TITLE = 'Two-step sign-in is required for your role — set it up now';
 export const ENROL_DETAIL = 'It takes about two minutes, on the sign-in page; you come straight back here.';
+
+/** Groups jinbe keeps for somebody until they enrol (second-factor/awaiting.ts in jinbe). */
+export interface AwaitingSecondFactor {
+  groups: string[];
+  expiresAt: string;
+}
+
+/**
+ * The toast after adding somebody who has no second factor yet to a group that requires one: nothing
+ * is refused, the groups wait for them, and they are asked to set it up when they next arrive.
+ */
+export function awaitingNotice(email: string, awaiting: AwaitingSecondFactor): [string, { sub: string; ttl: number }] {
+  const groups = awaiting.groups.join(', ');
+  const until = new Date(awaiting.expiresAt).toLocaleDateString();
+  return [
+    `${email} joins ${groups} once they set up two-step sign-in`,
+    { sub: `They are asked to set it up the next time they sign in or open the console. Waiting until ${until}.`, ttl: 12000 },
+  ];
+}

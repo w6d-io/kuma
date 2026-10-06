@@ -43,12 +43,13 @@ describe('group rows', () => {
     <SiteGroupRows checked={[]} toggle={() => {}} targetMfa={targetMfa} offered={['ops', 'platform', 'readers']} mayAssign privileged={(g) => g === 'platform'} describe={() => ''} />,
   );
 
-  it('badges the groups whose members must use 2FA, and keeps them out of reach of somebody not enrolled', () => {
+  it('badges the groups whose members must use 2FA; somebody not enrolled can be picked and joins after setting it up', () => {
     mount(false);
     expect(rowOf('ops').textContent).toContain('2FA required');
-    expect(rowOf('ops').textContent).toContain('needs 2FA enrolled');
-    expect((rowOf('ops').querySelector('input') as HTMLInputElement).disabled).toBe(true);
-    expect((rowOf('platform').querySelector('input') as HTMLInputElement).disabled).toBe(true);
+    expect(rowOf('ops').textContent).toContain('joins after 2FA');
+    expect(rowOf('ops').getAttribute('title')).toContain('they join once they set it up');
+    expect((rowOf('ops').querySelector('input') as HTMLInputElement).disabled).toBe(false);
+    expect((rowOf('platform').querySelector('input') as HTMLInputElement).disabled).toBe(false);
     expect(rowOf('platform').textContent).toContain('platform');
     expect(rowOf('platform').textContent).not.toContain('2FA required');
     expect((rowOf('readers').querySelector('input') as HTMLInputElement).disabled).toBe(false);
@@ -57,7 +58,7 @@ describe('group rows', () => {
   it('lets an enrolled person be added', () => {
     mount(true);
     expect((rowOf('ops').querySelector('input') as HTMLInputElement).disabled).toBe(false);
-    expect(rowOf('ops').textContent).not.toContain('needs 2FA enrolled');
+    expect(rowOf('ops').textContent).not.toContain('joins after 2FA');
   });
 });
 
@@ -66,7 +67,7 @@ describe('Members must use 2FA', () => {
 
   it('switches the group on through its own route for a groups.mfa:write holder, and explains both halves of the rule', async () => {
     render(<GroupSecondFactor name="ops" rule={{ required: false }} />);
-    expect(document.body.textContent).toContain('enrolled a second factor before being added');
+    expect(document.body.textContent).toContain('joins once they set one up');
     expect(sw().getAttribute('aria-checked')).toBe('false');
     click(sw());
     await settle();

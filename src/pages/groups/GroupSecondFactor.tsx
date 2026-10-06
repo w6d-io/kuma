@@ -11,8 +11,8 @@ import { stepUpAndResume, useResume } from '../../lib/resume';
 import { mayChangeGroup2fa, type GroupSecondFactor as Rule } from '../../lib/twoFactor';
 
 /**
- * "Members must use 2FA", on one group (owner decision, wave 19): members enrol a second factor
- * before they can be added, and sign in with it on every app. Only groups.mfa:write changes it, through
+ * "Members must use 2FA", on one group (owner decision, wave 19): somebody added without a second
+ * factor joins once they enrol (jinbe keeps the group waiting), and members sign in with it on every app. Only groups.mfa:write changes it, through
  * the group's own switch (PUT /admin/rbac/groups/:name/second-factor); a jinbe without that route
  * takes the Settings → Two-step sign-in list with this one name added or removed. Saved at once —
  * apart from the group's roles, which go through their own review.
@@ -75,7 +75,7 @@ export function GroupSecondFactor({ name, rule }: { name: string; rule: Rule | u
       <div className="flex-1 min-w-0">
         <div className="fw-medium text-base row gap-8 items-center">Members must use 2FA {on && <TwoFactorBadge kind="required" />}</div>
         <div className="small muted">
-          Covers both: a person must have enrolled a second factor before being added, and members sign in with it on every app.
+          Covers both: a person added without a second factor joins once they set one up (they are asked to at once), and members sign in with it on every app.
           {!mayChange && ' Changing it needs groups.mfa:write.'}
           {rule?.source === 'default' && ' Not set yet: it follows the default for its roles.'}
           {rule?.defaultRequired !== undefined && ` Default for this group: ${rule.defaultRequired ? 'on' : 'off'}.`}

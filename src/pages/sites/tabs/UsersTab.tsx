@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../../contexts/AppContext';
 import { sitesApi } from '../../../api/sites';
 import { stepUpOnRefusal } from '../../../lib/resume';
+import { awaitingNotice } from '../../../lib/secondFactor';
 import { Badge, Button, Callout, Card, Checkbox, ConfirmDialog, EmptyRow, Field, FieldRow, I, Input, LoadingRows, RadioGroup, Select, Table } from '../../../components/ui';
 import { expandRolePermissions } from '../../../lib/sites/access';
 import { REACH_WORDS, defaultSignUp, signUpReach } from '../../../lib/sites/signup';
@@ -214,7 +215,8 @@ function SitePeople({ name, pushToastSite }: { name: string; pushToastSite: stri
     setBusy('add');
     try {
       const r = await sitesApi.addSiteMember(name, target, email.trim());
-      pushToast(r.added ? `Added to ${target}` : `Already in ${target}`, { sub: email.trim() });
+      if (r.awaitingSecondFactor) pushToast(...awaitingNotice(email.trim(), r.awaitingSecondFactor));
+      else pushToast(r.added ? `Added to ${target}` : `Already in ${target}`, { sub: email.trim() });
       setEmail('');
       await qc.invalidateQueries({ queryKey: key });
     } catch (e: unknown) {

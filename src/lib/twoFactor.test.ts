@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockedForEnrolment, mayChangeGroup2fa, ownStatus, secondFactorRefusalSentence, siteScopeLabel, stepUpTitle, type UserSecondFactor } from './twoFactor';
+import { waitsForEnrolment, waitsForEnrolmentSentence, mayChangeGroup2fa, ownStatus, secondFactorRefusalSentence, siteScopeLabel, stepUpTitle, type UserSecondFactor } from './twoFactor';
 import { describeApiError } from './apiError';
 
 const me = (over: Partial<UserSecondFactor> = {}): UserSecondFactor => ({
@@ -18,12 +18,13 @@ describe('two-step sign-in rules, in words', () => {
     expect(siteScopeLabel(undefined)).toBeNull();
   });
 
-  it('blocks a group for somebody who never enrolled when its members must use 2FA (or it needs enrolment)', () => {
-    expect(blockedForEnrolment({ required: true }, false)).toBe(true);
-    expect(blockedForEnrolment({ required: false, enrolBeforeJoining: true }, false)).toBe(true);
-    expect(blockedForEnrolment({ required: false, enrolBeforeJoining: false }, false)).toBe(false);
-    expect(blockedForEnrolment({ required: true }, true)).toBe(false);
-    expect(blockedForEnrolment({ required: true }, undefined)).toBe(false);
+  it('a group waits for somebody who never enrolled when its members must use 2FA (or it needs enrolment), and says so', () => {
+    expect(waitsForEnrolment({ required: true }, false)).toBe(true);
+    expect(waitsForEnrolment({ required: false, enrolBeforeJoining: true }, false)).toBe(true);
+    expect(waitsForEnrolment({ required: false, enrolBeforeJoining: false }, false)).toBe(false);
+    expect(waitsForEnrolment({ required: true }, true)).toBe(false);
+    expect(waitsForEnrolment({ required: true }, undefined)).toBe(false);
+    expect(waitsForEnrolmentSentence('staff-developers', 'Ann')).toContain('Ann has no second factor yet: they join once they set it up');
   });
 
   it('describes the step-up with the key stand-in and four-eyes', () => {

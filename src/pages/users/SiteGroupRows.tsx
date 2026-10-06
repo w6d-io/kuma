@@ -1,6 +1,6 @@
 import { Badge, Checkbox, TwoFactorBadge, cx } from '../../components/ui';
 import { useGroupSecondFactors } from '../../api/twoFactor';
-import { blockedForEnrolment } from '../../lib/twoFactor';
+import { waitsForEnrolment, waitsForEnrolmentSentence } from '../../lib/twoFactor';
 import { I } from '../../components/ui/Icons';
 
 /**
@@ -30,18 +30,18 @@ export function SiteGroupRows({ checked, toggle, targetMfa, offered, mayAssign, 
         const on = checked.includes(g);
         const known = offered.includes(g);
         const privileged = isPrivileged(g);
-        // 2FA gate (a mirror of jinbe's refusal): a group whose members must use two-step sign-in
-        // cannot be picked for somebody who never enrolled. A jinbe that does not describe its groups'
-        // rule falls back to the old test, privileged groups.
+        // A group whose members must use two-step sign-in, for somebody who never enrolled: picked all
+        // the same, it waits for their second factor (jinbe keeps it and sends them to set one up).
+        // A jinbe that does not describe its groups' rule falls back to the old test, privileged groups.
         const rule = secondFactorOf(g);
-        const blockedByMfa = !on && (rule ? blockedForEnrolment(rule, targetMfa) : privileged && targetMfa === false);
+        const waits = rule ? waitsForEnrolment(rule, targetMfa) : privileged && targetMfa === false;
         const exceeds = beyond?.(g) ?? [];
         const blockedByActor = !on && (!mayAssign || exceeds.length > 0);
-        const blocked = blockedByMfa || blockedByActor;
+        const blocked = blockedByActor;
         const title = blockedByActor
           ? (mayAssign ? `It gives what you do not hold: ${exceeds.join(', ')}.` : 'Adding people to groups needs groups.members:write.')
-          : blockedByMfa
-          ? `Members of '${g}' must use two-step sign-in. This person must enrol a second factor (authenticator app, security key or backup codes) before being added.`
+          : waits
+          ? waitsForEnrolmentSentence(g)
           : !known
           ? `Group '${g}' is held but no longer exists, so it grants nothing. It can be removed.`
           : undefined;
@@ -58,7 +58,7 @@ export function SiteGroupRows({ checked, toggle, targetMfa, offered, mayAssign, 
                   {privileged && <Badge tone="warning" title="Gives platform permissions (jinbe)"><span className="chip-ico">{I.lock}</span>platform</Badge>}
                   {rule?.required && <TwoFactorBadge kind="required" />}
                   {!known && <Badge tone="danger">unknown group</Badge>}
-                  {blockedByMfa && !blockedByActor && <TwoFactorBadge kind="needs-enrol" />}
+                  {waits && !blockedByActor && <TwoFactorBadge kind="needs-enrol" title={waitsForEnrolmentSentence(g)} />}
                 </span>
               }
               hint={known ? describe(g) : undefined}

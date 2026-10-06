@@ -114,7 +114,7 @@ export const sitesApi = {
   pause: (name: string) => request<{ name: string; state: string }>(`${BASE}/${enc(name)}/pause`, { method: 'POST' }),
   resume: (name: string) => request<{ name: string; state: string }>(`${BASE}/${enc(name)}/resume`, { method: 'POST' }),
   siteMembers: (name: string) => request<SiteMembers>(`${BASE}/${enc(name)}/members`),
-  addSiteMember: (name: string, group: string, email: string) => request<{ added: boolean; group: string; id: string }>(`${BASE}/${enc(name)}/members`, { method: 'POST', body: json({ group, email }) }),
+  addSiteMember: (name: string, group: string, email: string) => request<{ added: boolean; group: string; id: string; awaitingSecondFactor?: { groups: string[]; expiresAt: string } }>(`${BASE}/${enc(name)}/members`, { method: 'POST', body: json({ group, email }) }),
   removeSiteMember: (name: string, group: string, id: string) => request<{ removed: boolean }>(`${BASE}/${enc(name)}/members/${enc(group)}/${enc(id)}`, { method: 'DELETE' }),
   signUpMembers: (name: string, limit = 200) => request<SignUpMembers>(`${BASE}/${enc(name)}/sign-up/members?limit=${limit}`),
   removeSignUpMember: (name: string, id: string) => request<{ removed: boolean }>(`${BASE}/${enc(name)}/sign-up/members/${enc(id)}`, { method: 'DELETE' }),
