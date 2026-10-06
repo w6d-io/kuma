@@ -113,6 +113,9 @@ export const sitesApi = {
     request<ApplyResult>(`${BASE}/${enc(name)}/rollback`, { method: 'POST', body: json({ toVersion, ...(note ? { note } : {}) }) }),
   pause: (name: string) => request<{ name: string; state: string }>(`${BASE}/${enc(name)}/pause`, { method: 'POST' }),
   resume: (name: string) => request<{ name: string; state: string }>(`${BASE}/${enc(name)}/resume`, { method: 'POST' }),
+  siteMembers: (name: string) => request<SiteMembers>(`${BASE}/${enc(name)}/members`),
+  addSiteMember: (name: string, group: string, email: string) => request<{ added: boolean; group: string; id: string }>(`${BASE}/${enc(name)}/members`, { method: 'POST', body: json({ group, email }) }),
+  removeSiteMember: (name: string, group: string, id: string) => request<{ removed: boolean }>(`${BASE}/${enc(name)}/members/${enc(group)}/${enc(id)}`, { method: 'DELETE' }),
   signUpMembers: (name: string, limit = 200) => request<SignUpMembers>(`${BASE}/${enc(name)}/sign-up/members?limit=${limit}`),
   removeSignUpMember: (name: string, id: string) => request<{ removed: boolean }>(`${BASE}/${enc(name)}/sign-up/members/${enc(id)}`, { method: 'DELETE' }),
   removeAllSignUpMembers: (name: string) => request<{ removed: number }>(`${BASE}/${enc(name)}/sign-up/members`, { method: 'DELETE' }),
@@ -298,4 +301,10 @@ export interface SignUpMembers {
   group: string;
   total: number;
   members: Array<{ id: string; email: string | null; name: string | null; createdAt: string | null; organizations: Array<{ id: string; name: string | null }> }>;
+}
+
+/** GET /sites/:name/members: the site's own groups and who is in each. */
+export interface SiteMembers {
+  site: string;
+  groups: Array<{ group: string; roles: string[]; signUp: boolean; total: number; members: Array<{ id: string; email: string | null; name: string | null }> }>;
 }

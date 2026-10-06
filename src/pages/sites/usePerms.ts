@@ -17,6 +17,8 @@ export function useSitePerms() {
     canDelete: holds(data, 'sites:delete'), canRequest: holds(data, 'sites:write'),
     // Site sign-up: who joined (people data), removing them, and publishing a version that opens it.
     canSeeMembers: holds(data, 'users:read'), canRevokeSignUp: holds(data, 'sites.signup:revoke'), canOpenSignUp: holds(data, 'sites.signup:write'),
+    // People in the site's own groups (<site>-…, the sign-up group included).
+    canManageMembers: holds(data, 'sites.members:write'),
     email: data?.email ?? null,
   };
 }

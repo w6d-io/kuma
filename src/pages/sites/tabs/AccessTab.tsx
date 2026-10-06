@@ -138,6 +138,9 @@ function GroupsView({ site, readOnly, set }: { site: Site; readOnly: boolean; se
   const roles = Object.keys(expandRolePermissions(site));
   const existing = Object.keys(groups.data ?? {}).filter((g) => !site.groups.orgGrantable[g]).sort();
   const [pick, setPick] = useState('');
+  const [fresh, setFresh] = useState('');
+  const freshName = `${site.name}-${fresh.trim().toLowerCase()}`;
+  const freshOk = /^[a-z0-9][a-z0-9_-]{0,40}$/.test(fresh.trim().toLowerCase()) && !site.groups.platform[freshName] && !site.groups.orgGrantable[freshName];
   const setPlatform = (p: Record<string, string[]>) => set((s) => ({ ...s, groups: { ...s.groups, platform: p } }));
   const setGrantable = (g: Site['groups']['orgGrantable']) => set((s) => ({ ...s, groups: { ...s.groups, orgGrantable: g } }));
   const others = (g: string) => Object.keys(groups.data?.[g] ?? {}).filter((svc) => svc !== site.name).length;
@@ -154,7 +157,9 @@ function GroupsView({ site, readOnly, set }: { site: Site; readOnly: boolean; se
               <Select size="sm" aria-label={`${g} role`} value={rs[0] ?? ''} disabled={readOnly} onChange={(e) => setPlatform({ ...site.groups.platform, [g]: [e.target.value] })}>
                 {roles.map((r) => <option key={r} value={r}>{r}</option>)}
               </Select>
-              {!groups.isLoading && !groups.data?.[g] && <span className="small text-danger">{g} doesn’t exist — create it on Groups first.</span>}
+              {!groups.isLoading && !groups.data?.[g] && (g.startsWith(`${site.name}-`)
+                ? <span className="small muted">new — made when this version is published; add people on Users</span>
+                : <span className="small text-danger">{g} doesn’t exist — create it on Groups first.</span>)}
               {others(g) > 0 && <span className="small muted">also covers {others(g)} other site{others(g) === 1 ? '' : 's'}</span>}
               {!readOnly && <Button size="sm" variant="ghost" iconOnly icon={I.close} aria-label={`Unmap ${g}`} onClick={() => { const n = { ...site.groups.platform }; delete n[g]; setPlatform(n); }} />}
             </li>
@@ -167,6 +172,13 @@ function GroupsView({ site, readOnly, set }: { site: Site; readOnly: boolean; se
               {existing.filter((g) => !site.groups.platform[g]).map((g) => <option key={g} value={g}>{g}</option>)}
             </Select>
             <Button size="sm" disabled={!pick} onClick={() => { setPlatform({ ...site.groups.platform, [pick]: [roles.includes('viewer') ? 'viewer' : roles[0]] }); setPick(''); }}>Map</Button>
+          </div>
+        )}
+        {!readOnly && (
+          <div className="row gap-8 mt-8 items-center">
+            <span className="mono small">{site.name}-</span>
+            <Input size="sm" aria-label="New site group name" placeholder="editors" value={fresh} onChange={(e) => setFresh(e.target.value)} />
+            <Button size="sm" icon={I.plus} disabled={!freshOk} onClick={() => { setPlatform({ ...site.groups.platform, [freshName]: [roles.includes('user') ? 'user' : roles.includes('viewer') ? 'viewer' : roles[0]] }); setFresh(''); }}>New site group</Button>
           </div>
         )}
       </Card>

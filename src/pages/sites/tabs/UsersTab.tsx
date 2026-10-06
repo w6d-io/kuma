@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../../contexts/AppContext';
 import { sitesApi } from '../../../api/sites';
 import { stepUpOnRefusal } from '../../../lib/resume';
-import { Badge, Button, Callout, Card, Checkbox, ConfirmDialog, EmptyRow, Field, I, Input, LoadingRows, RadioGroup, Table } from '../../../components/ui';
+import { Badge, Button, Callout, Card, Checkbox, ConfirmDialog, EmptyRow, Field, FieldRow, I, Input, LoadingRows, RadioGroup, Select, Table } from '../../../components/ui';
 import { expandRolePermissions } from '../../../lib/sites/access';
 import { REACH_WORDS, defaultSignUp, signUpReach } from '../../../lib/sites/signup';
 import type { Site, SiteSignUp } from '../../../lib/sites/types';
@@ -51,6 +51,7 @@ export function UsersTab({ ed, readOnly }: { ed: SiteEditor; readOnly: boolean }
         <SignUpSettings site={site} signUp={signUp} set={set} readOnly={readOnly} canOpen={perms.canOpenSignUp} />
       )}
 
+      {perms.canManageMembers && !ed.neverSaved && <SitePeople name={ed.name} pushToastSite={site.displayName} />}
       {signUp && <WhatUsersCanDo site={site} roles={signUp.roles} />}
       {signUp && perms.canSeeMembers && !ed.neverSaved && <Members name={ed.name} canRevoke={perms.canRevokeSignUp} />}
     </div>
@@ -181,6 +182,83 @@ function Members({ name, canRevoke }: { name: string; canRevoke: boolean }) {
         onConfirm={removeAll}
         onCancel={() => setConfirmAll(false)}
       />
+    </Card>
+  );
+}
+
+/**
+ * People in the site's own groups (<site>-…, the sign-up group included, as published): who uses the
+ * site and with which roles. Adding needs an existing account; a group that requires two-step sign-in
+ * refuses somebody without a second factor (jinbe says so).
+ */
+function SitePeople({ name, pushToastSite }: { name: string; pushToastSite: string }) {
+  const { pushToast } = useApp();
+  const qc = useQueryClient();
+  const key = ['sites', 'members', name];
+  const q = useQuery({ queryKey: key, queryFn: () => sitesApi.siteMembers(name) });
+  const [email, setEmail] = useState('');
+  const [group, setGroup] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const groups = q.data?.groups ?? [];
+  const target = group || groups[0]?.group || '';
+
+  async function add() {
+    setBusy('add');
+    try {
+      const r = await sitesApi.addSiteMember(name, target, email.trim());
+      pushToast(r.added ? `Added to ${target}` : `Already in ${target}`, { sub: email.trim() });
+      setEmail('');
+      await qc.invalidateQueries({ queryKey: key });
+    } catch (e: unknown) {
+      pushToast((e as Error).message || 'Could not add', { err: true });
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function remove(g: string, id: string, who: string) {
+    setBusy(id + g);
+    try {
+      await sitesApi.removeSiteMember(name, g, id);
+      pushToast(`Removed from ${g}`, { sub: who });
+      await qc.invalidateQueries({ queryKey: key });
+    } catch (e: unknown) {
+      pushToast((e as Error).message || 'Could not remove', { err: true });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Card title="People" sub={`Who uses ${pushToastSite}: the people in its own groups and the roles each group gives here.`} pad="none">
+      {q.isError && <p className="small text-warning p-12 m-0">Could not load the site’s groups (published version only).</p>}
+      {q.data && groups.length === 0 && <p className="small muted p-12 m-0">This site has no group of its own yet: add one named {name}-… on Access (or open sign-up), then publish.</p>}
+      <Table>
+        <thead><tr><th>Group</th><th>Roles here</th><th>Person</th><th className="actions" /></tr></thead>
+        <tbody>
+          {q.isLoading && <LoadingRows rows={3} cols={4} />}
+          {groups.flatMap((g) => (g.members.length ? g.members : [null]).map((m, i) => (
+            <tr key={`${g.group}-${m?.id ?? 'empty'}`}>
+              <td className="mono small">{i === 0 ? <>{g.group}{g.signUp && <Badge tone="plain"> sign-up</Badge>}</> : ''}</td>
+              <td className="mono small">{i === 0 ? g.roles.join(', ') : ''}</td>
+              <td>{m ? (m.name ? <>{m.name} <span className="muted small">{m.email}</span></> : (m.email ?? m.id)) : <span className="muted small">nobody yet</span>}</td>
+              <td className="actions">{m && <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => remove(g.group, m.id, m.email ?? m.id)}>Remove</Button>}</td>
+            </tr>
+          )))}
+        </tbody>
+      </Table>
+      {groups.length > 0 && (
+        <FieldRow className="p-12">
+          <Field label="Add a person" hint="Their account must exist (they sign up, or support invites them)">
+            <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
+          </Field>
+          <Field label="To group">
+            <Select value={target} onChange={(e) => setGroup(e.target.value)}>
+              {groups.map((g) => <option key={g.group} value={g.group}>{g.group}</option>)}
+            </Select>
+          </Field>
+          <Button icon={I.plus} disabled={!email.includes('@') || !target || busy !== null} onClick={add}>Add</Button>
+        </FieldRow>
+      )}
     </Card>
   );
 }
