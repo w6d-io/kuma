@@ -54,3 +54,8 @@
 }
 
 .rb-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); }
+
+/* Groups page: one table per kind; site access rows sit under a row naming their site. */
+.groups-table .groups-site-head th { background: var(--color-surface-2); font-weight: 400; text-align: left; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--color-border); }
+.groups-table tbody:first-of-type .groups-site-head th { border-top: 0; }
+.groups-legend { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
