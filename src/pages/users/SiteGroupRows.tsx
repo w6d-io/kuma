@@ -1,4 +1,4 @@
-import { Badge, Checkbox, TwoFactorBadge, cx } from '../../components/ui';
+import { Badge, Button, Checkbox, TwoFactorBadge, cx } from '../../components/ui';
 import { useGroupSecondFactors } from '../../api/twoFactor';
 import { waitsForEnrolment, waitsForEnrolmentSentence } from '../../lib/twoFactor';
 import { I } from '../../components/ui/Icons';
@@ -30,14 +30,17 @@ export function SiteGroupRows({ checked, toggle, targetMfa, offered, mayAssign, 
         const on = checked.includes(g);
         const known = offered.includes(g);
         const privileged = isPrivileged(g);
-        // A group whose members must use two-step sign-in, for somebody who never enrolled: picked all
-        // the same, it waits for their second factor (jinbe keeps it and sends them to set one up).
+        // A group whose members must use two-step sign-in, for somebody who never enrolled: it cannot be
+        // ticked like the others (it gives nothing yet); an explicit "add once 2FA is set up" keeps the
+        // option — it waits for their second factor (jinbe keeps it and sends them to set one up).
         // A jinbe that does not describe its groups' rule falls back to the old test, privileged groups.
         const rule = secondFactorOf(g);
         const waits = rule ? waitsForEnrolment(rule, targetMfa) : privileged && targetMfa === false;
         const exceeds = beyond?.(g) ?? [];
         const blockedByActor = !on && (!mayAssign || exceeds.length > 0);
-        const blocked = blockedByActor;
+        // Not held yet and waiting for a second factor: looks disabled, added only through the explicit action.
+        const pending = waits && !on && !blockedByActor;
+        const blocked = blockedByActor || pending;
         const title = blockedByActor
           ? (mayAssign ? `It gives what you do not hold: ${exceeds.join(', ')}.` : 'Adding people to groups needs groups.members:write.')
           : waits
@@ -63,6 +66,12 @@ export function SiteGroupRows({ checked, toggle, targetMfa, offered, mayAssign, 
               }
               hint={known ? describe(g) : undefined}
             />
+            {pending && (
+              <div className="row gap-8 small muted site-group-pending">
+                <span>No second factor yet: this group gives nothing until they set one up.</span>
+                <Button size="sm" variant="ghost" onClick={() => toggle(g)} aria-label={`Add to ${g} once two-step sign-in is set up`}>Add once 2FA is set up</Button>
+              </div>
+            )}
           </div>
         );
       })}

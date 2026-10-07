@@ -16,6 +16,8 @@
 .site-group.on { background: var(--color-accent-soft); }
 .site-group .checkbox-text { flex: 1; min-width: 0; }
 .site-group .checkbox-hint { font-family: var(--font-mono); font-size: var(--text-sm); overflow-wrap: anywhere; }
+/* A 2FA group for somebody without a second factor: disabled-looking, added only through its own action. */
+.site-group-pending { padding: 0 var(--space-4) var(--space-3) calc(var(--space-4) + 28px); align-items: center; flex-wrap: wrap; }
 
 /* The first, reversible step of a delete: a secondary button drawn in the danger colour. The kit's
    danger variant is filled and reserved for the confirming step. */

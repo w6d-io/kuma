@@ -39,17 +39,22 @@ async function settle() { for (let i = 0; i < 4; i++) await act(async () => { aw
 afterEach(cleanup);
 
 describe('group rows', () => {
+  const toggle = vi.fn();
   const mount = (targetMfa: boolean | undefined) => render(
-    <SiteGroupRows checked={[]} toggle={() => {}} targetMfa={targetMfa} offered={['ops', 'platform', 'readers']} mayAssign privileged={(g) => g === 'platform'} describe={() => ''} />,
+    <SiteGroupRows checked={[]} toggle={toggle} targetMfa={targetMfa} offered={['ops', 'platform', 'readers']} mayAssign privileged={(g) => g === 'platform'} describe={() => ''} />,
   );
 
-  it('badges the groups whose members must use 2FA; somebody not enrolled can be picked and joins after setting it up', () => {
+  it('a 2FA group for somebody not enrolled looks disabled; only "Add once 2FA is set up" adds them (they join after setting it up)', () => {
+    toggle.mockReset();
     mount(false);
     expect(rowOf('ops').textContent).toContain('2FA required');
     expect(rowOf('ops').textContent).toContain('joins after 2FA');
     expect(rowOf('ops').getAttribute('title')).toContain('they join once they set it up');
-    expect((rowOf('ops').querySelector('input') as HTMLInputElement).disabled).toBe(false);
-    expect((rowOf('platform').querySelector('input') as HTMLInputElement).disabled).toBe(false);
+    expect((rowOf('ops').querySelector('input') as HTMLInputElement).disabled).toBe(true);
+    const add = rowOf('ops').querySelector('button[aria-label="Add to ops once two-step sign-in is set up"]') as HTMLButtonElement;
+    expect(add).not.toBeNull();
+    act(() => { add.click(); });
+    expect(toggle).toHaveBeenCalledWith('ops');
     expect(rowOf('platform').textContent).toContain('platform');
     expect(rowOf('platform').textContent).not.toContain('2FA required');
     expect((rowOf('readers').querySelector('input') as HTMLInputElement).disabled).toBe(false);
