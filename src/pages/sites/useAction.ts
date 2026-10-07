@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { findingsOf, notAvailable, type SiteError } from '../../api/sites';
 import type { Finding } from '../../lib/sites/types';
@@ -56,7 +56,11 @@ export type AfterStepUp = { resume: string; data: unknown; confirmAgain?: boolea
 export function useSiteAction() {
   const { pushToast } = useApp();
   const [busy, setBusy] = useState<string | null>(null);
+  // One action at a time: a second click lands before React disables the button, so the guard is a ref.
+  const inFlight = useRef(false);
   const run = useCallback(async <T,>(label: string, fn: () => Promise<T>, success?: string, after?: AfterStepUp, onFindings?: (findings: Finding[]) => void): Promise<T | undefined> => {
+    if (inFlight.current) return undefined;
+    inFlight.current = true;
     setBusy(label);
     try {
       const out = await fn();
@@ -82,6 +86,7 @@ export function useSiteAction() {
       }
       return undefined;
     } finally {
+      inFlight.current = false;
       setBusy(null);
     }
   }, [pushToast]);
