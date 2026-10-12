@@ -59,3 +59,19 @@ export const REACH_WORDS: Record<Reach, string> = {
   role: 'Yes, through',
   no: 'No',
 };
+
+/** The platform's own apps: a group giving a role there is never offered to a sign-up. */
+const PLATFORM_APPS = new Set(['jinbe', 'kuma', 'global']);
+
+/**
+ * The groups a site's sign-up may add newcomers to: they give roles on sites only (never a platform
+ * role) and are not the site's own `<site>-…` groups. One already picked stays listed so it can be
+ * unticked. Sorted by name, each with what it gives.
+ */
+export function signUpGroupsOffered(groups: Record<string, Record<string, string[]> | undefined>, site: string, picked: readonly string[] = []): Array<[string, Record<string, string[]>]> {
+  return Object.entries(groups)
+    .filter((entry): entry is [string, Record<string, string[]>] => !!entry[1])
+    .filter(([g, def]) => picked.includes(g) || (!g.startsWith(`${site}-`) && Object.keys(def).length > 0 && !Object.keys(def).some((a) => PLATFORM_APPS.has(a))))
+    .sort(([a], [b]) => a.localeCompare(b));
+}
+

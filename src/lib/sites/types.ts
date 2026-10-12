@@ -70,6 +70,8 @@ export interface SiteSignUp {
   roles: string[];
   /** The organization a sign-up lands in. */
   orgs: 'personal' | 'domain' | 'invite' | 'none';
+  /** Existing groups giving site roles that a newcomer joins too (jinbe refuses staff or platform ones). */
+  groups?: string[];
 }
 
 export interface Site {

@@ -6,7 +6,7 @@ import { stepUpOnRefusal } from '../../../lib/resume';
 import { awaitingNotice } from '../../../lib/secondFactor';
 import { Badge, Button, Callout, Card, Checkbox, ConfirmDialog, EmptyRow, Field, FieldRow, I, Input, LoadingRows, RadioGroup, Select, Table } from '../../../components/ui';
 import { expandRolePermissions } from '../../../lib/sites/access';
-import { REACH_WORDS, defaultSignUp, signUpReach } from '../../../lib/sites/signup';
+import { REACH_WORDS, defaultSignUp, signUpGroupsOffered, signUpReach } from '../../../lib/sites/signup';
 import { organizationsOn } from '../../../lib/sites/templates';
 import type { Site, SiteSignUp } from '../../../lib/sites/types';
 import type { SiteEditor } from '../useSiteEditor';
@@ -62,6 +62,9 @@ export function UsersTab({ ed, readOnly }: { ed: SiteEditor; readOnly: boolean }
 
 function SignUpSettings({ site, signUp, set, readOnly, canOpen }: { site: Site; signUp: SiteSignUp; set: (fn: (s: SiteSignUp) => SiteSignUp) => void; readOnly: boolean; canOpen: boolean }) {
   const roles = Object.keys(expandRolePermissions(site)).sort();
+  const { state } = useApp();
+  const picked = signUp.groups ?? [];
+  const offered = signUpGroupsOffered(state.groups ?? {}, site.name, picked);
   const [domainsText, setDomainsText] = useState(signUp.domains.join(', '));
   const parseDomains = (text: string) => [...new Set(text.split(/[\s,]+/).map((d) => d.trim().toLowerCase().replace(/^@/, '')).filter(Boolean))];
 
@@ -87,6 +90,21 @@ function SignUpSettings({ site, signUp, set, readOnly, canOpen }: { site: Site; 
           {signUp.roles.includes('admin') && <p className="small text-warning m-0">Everybody who signs up would be an admin of this site.</p>}
           {signUp.roles.length === 0 && <p className="small text-warning m-0">Pick at least one role: without one, sign-up stays closed.</p>}
         </fieldset>
+        {offered.length > 0 && (
+          <fieldset className="site-fieldset">
+            <legend className="small fw-medium">Groups they also join <span className="muted">(optional)</span></legend>
+            <p className="small muted m-0">Existing groups every newcomer is added to, for access on other sites (e.g. an onboarding group). Publishing asks you to confirm the sites they open.</p>
+            <div className="stack gap-4">
+              {offered.map(([g, def]) => (
+                <Checkbox key={g} disabled={readOnly}
+                  label={<span className="mono small">{g}</span>}
+                  hint={Object.keys(def ?? {}).sort().join(', ')}
+                  checked={picked.includes(g)}
+                  onChange={(on) => set((s) => ({ ...s, groups: on ? [...(s.groups ?? []), g] : (s.groups ?? []).filter((x) => x !== g) }))} />
+              ))}
+            </div>
+          </fieldset>
+        )}
         <RadioGroup<SiteSignUp['orgs']>
           label="Organization"
           name="signup-orgs"
