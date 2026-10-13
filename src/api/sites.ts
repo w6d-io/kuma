@@ -73,7 +73,8 @@ export const sitesApi = {
   /** The sites grouped by host (Sites by address). */
   hosts: () => request<HostEntry[]>(`${BASE}/hosts`),
   /** One host: its services with their routes and the path the backend receives. */
-  host: (host: string) => request<HostDetail>(`${BASE}/hosts/${enc(host)}`),
+  // The host in the query, not the path: a URL ending in `.com` is refused by the WAF (CRS 920440).
+  host: (host: string) => request<HostDetail>(`${BASE}/hosts/detail?host=${enc(host)}`),
   zones: () => request<Zone[]>(`${BASE}/zones`),
   zone: (name: string) => request<ZoneDetail>(`${BASE}/zones/${enc(name)}`),
   /** No gateway and no ingress: jinbe picks the WAF-protected Gateway. `acknowledgeNoWaf`: nginx on purpose. */
@@ -189,7 +190,9 @@ export const siteKeys = {
 };
 
 /** 404s are answers here (no draft, not built yet), not failures to retry. */
-const noRetry404 = (count: number, err: unknown) => (err as SiteError)?.status !== 404 && count < 2;
+// A refusal (any 4xx: not found, forbidden, the WAF) is never retried: retrying a WAF block gets the
+// visitor's IP banned (CrowdSec), and the answer will not change. Only a network error or 5xx is.
+const noRetry404 = (count: number, err: unknown) => { const st = (err as SiteError)?.status ?? 0; return !(st >= 400 && st < 500) && count < 2; };
 
 export function useSites() {
   return useQuery({ queryKey: siteKeys.list(), queryFn: () => sitesApi.list(), retry: noRetry404 });
