@@ -6,7 +6,7 @@ import type {
   ApplyProgress, ApplyRequest, ApplyResult, BlastRadius, Check, DeletionRequest, DriftItem, EphemeralLimits, EphemeralView, Finding, DualRun, HostCheck,
   MatchResult, MigrationStatus, ParityReport, Preview, RenderResult, Site, SiteDetail, SiteDiff, SiteDraft, DraftConflict,
   SiteK8sStatus, SiteSummary, SiteVersion, Zone, MigrationGroup, HttpMethod,
-  GatewayInfo, ZoneDetail, ZoneGatewayRef, ZoneIngress,
+  GatewayInfo, ZoneDetail, ZoneGatewayRef, ZoneIngress, HostDetail, HostEntry,
 } from '../lib/sites/types';
 import { SANDBOX_ENABLED, type HandlerCatalog } from '../lib/sites/presets';
 import type { VerifyReport } from '../lib/sites/verify';
@@ -70,6 +70,10 @@ export function checksOf(err: unknown): Check[] {
 export const sitesApi = {
   list: (opts: { system?: boolean } = {}) => request<SiteSummary[]>(`${BASE}${opts.system ? '?system=true' : ''}`),
   get: (name: string) => request<SiteDetail>(`${BASE}/${enc(name)}`),
+  /** The sites grouped by host (Sites by address). */
+  hosts: () => request<HostEntry[]>(`${BASE}/hosts`),
+  /** One host: its services with their routes and the path the backend receives. */
+  host: (host: string) => request<HostDetail>(`${BASE}/hosts/${enc(host)}`),
   zones: () => request<Zone[]>(`${BASE}/zones`),
   zone: (name: string) => request<ZoneDetail>(`${BASE}/zones/${enc(name)}`),
   /** No gateway and no ingress: jinbe picks the WAF-protected Gateway. `acknowledgeNoWaf`: nginx on purpose. */
@@ -180,6 +184,8 @@ export const siteKeys = {
   zones: () => ['sites', 'zones'] as const,
   gateways: () => ['sites', 'gateways'] as const,
   deletions: () => ['sites', 'deletions'] as const,
+  hosts: () => ['sites', 'hosts'] as const,
+  host: (host: string) => ['sites', 'hosts', host] as const,
 };
 
 /** 404s are answers here (no draft, not built yet), not failures to retry. */
@@ -187,6 +193,14 @@ const noRetry404 = (count: number, err: unknown) => (err as SiteError)?.status !
 
 export function useSites() {
   return useQuery({ queryKey: siteKeys.list(), queryFn: () => sitesApi.list(), retry: noRetry404 });
+}
+
+export function useHosts() {
+  return useQuery({ queryKey: siteKeys.hosts(), queryFn: () => sitesApi.hosts(), retry: noRetry404 });
+}
+
+export function useHost(host: string) {
+  return useQuery({ queryKey: siteKeys.host(host), queryFn: () => sitesApi.host(host), retry: noRetry404 });
 }
 
 export function useSite(name: string | null) {

@@ -173,3 +173,38 @@
 .import-risk-line { max-width: 18rem; overflow-wrap: anywhere; }
 .import-list { margin: var(--space-1) 0 0; padding-left: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); }
 .toolbar.import-bulk { background: var(--color-accent-soft); }
+
+/* ── sites by address: one host, its path tree and the selected service ── */
+.host-split { display: grid; grid-template-columns: minmax(14rem, 22rem) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.host-tree { list-style: none; margin: 0; padding: var(--space-1); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.btn-base.host-tree-item {
+  display: flex; flex-direction: column; gap: var(--space-1); width: 100%; min-height: 44px; text-align: left;
+  padding-block: var(--space-2); padding-right: var(--space-3); border-radius: var(--radius-sm); color: var(--color-text);
+  border-left: 2px solid transparent;
+}
+.btn-base.host-tree-item.host-depth-0 { padding-left: var(--space-3); }
+.btn-base.host-tree-item.host-depth-1 { padding-left: calc(var(--space-3) + var(--space-5)); }
+.btn-base.host-tree-item.host-depth-2 { padding-left: calc(var(--space-3) + 2 * var(--space-5)); }
+.btn-base.host-tree-item.host-depth-3 { padding-left: calc(var(--space-3) + 3 * var(--space-5)); }
+/* Deeper nesting stops indenting so a phone keeps room for the path. */
+.btn-base.host-tree-item.host-depth-4 { padding-left: calc(var(--space-3) + 4 * var(--space-5)); }
+.btn-base.host-tree-item:hover { background: var(--color-surface-2); }
+.btn-base.host-tree-item.is-selected { background: var(--color-accent-soft); border-left-color: var(--color-accent); }
+.host-tree-path { font-weight: 500; word-break: break-all; }
+.host-tree-sub { word-break: break-all; }
+.host-flow {
+  display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline; padding: var(--space-3);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); word-break: break-all;
+}
+.host-flow-strip { color: var(--color-danger); text-decoration: line-through; }
+.host-flow-add { color: var(--color-success); text-decoration: none; font-weight: 500; }
+.host-flow-backend { color: var(--color-text-muted); }
+.host-kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: 0; }
+.host-kv dt { color: var(--color-text-muted); }
+.host-kv dd { margin: 0; }
+
+@media (max-width: 760px) {
+  .host-split { grid-template-columns: 1fr; }
+  .host-kv { grid-template-columns: 1fr; gap: var(--space-1); }
+  .host-kv dd { margin-bottom: var(--space-2); }
+}

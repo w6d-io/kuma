@@ -486,3 +486,55 @@ export interface MigrationStatus {
   cutoverAt?: string;
   rollbackUntil?: string;
 }
+
+// ── Sites by address (GET /api/admin/sites/hosts) ─────────────
+
+/** Who may reach a service, summed over its routes and catch-all. */
+export interface HostAccessSummary {
+  public: boolean;
+  signedIn: boolean;
+  permissions: string[];
+  orgKeys: boolean;
+}
+
+/** One service (site) mounted on a host. */
+export interface HostService {
+  site: string;
+  displayName: string;
+  pathPrefix: string | null;
+  /** The service on the same host whose prefix encloses this one most closely. */
+  parent: string | null;
+  upstream: { service: string; namespace: string; port: number; stripPath?: string; path?: string } | null;
+  kind: 'page' | 'api';
+  access: HostAccessSummary;
+  status: SiteStatus;
+  draft: boolean;
+  pendingRequest: boolean;
+  /** Other sites (any host) reaching the same backend Service. */
+  sharedBackendWith: string[];
+}
+
+export interface HostEntry {
+  host: string;
+  zone: string | null;
+  services: HostService[];
+  counts: { services: number; live: number; drafts: number; pendingRequests: number };
+}
+
+export interface HostRoute {
+  id: string;
+  methods: string[];
+  path: string;
+  access: Access;
+  /** The path the backend receives (strip_path removed, upstream.path prepended). */
+  backendPath: string;
+}
+
+export interface HostServiceDetail extends HostService {
+  routes: HostRoute[];
+  catchAll: { access: Access; backendPath: string } | null;
+}
+
+export interface HostDetail extends Omit<HostEntry, 'services'> {
+  services: HostServiceDetail[];
+}

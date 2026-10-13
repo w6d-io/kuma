@@ -3,8 +3,9 @@
  * param; everything below that — the tab, the step, the selected route, the tester input — is read
  * here from the hash, so every screen state is a link that can go into a ticket.
  *
- *   #/sites                                 list
- *   #/sites?filter=attention                list, filtered
+ *   #/sites                                 the sites by address (one row per host)
+ *   #/sites?show=all[&filter=attention]     every site in one flat list, filtered
+ *   #/sites/hosts/<host>[?site=<name>]      one host: its services, one selected
  *   #/sites/new?step=address|kind|access|review
  *   #/sites/migrate?step=preview|parity|dualrun|cutover|done   (also #/sites/migration)
  *   #/sites/deletion-requests                     deletion requests waiting on a decision
@@ -25,6 +26,7 @@ export type SitesView =
   | { view: 'new'; step: WizardStep; query: Record<string, string> }
   | { view: 'migrate'; step: MigrationStep | null; query: Record<string, string> }
   | { view: 'deletions'; query: Record<string, string> }
+  | { view: 'host'; host: string; query: Record<string, string> }
   | { view: 'site'; name: string; tab: SiteTab; query: Record<string, string> };
 
 const pick = <T extends string>(list: readonly T[], v: string | undefined, fallback: T): T =>
@@ -46,6 +48,11 @@ export function parseSitesHash(hash: string): SitesView {
     return { view: 'migrate', step: query.step ? pick(MIGRATION_STEPS, query.step, 'preview') : null, query };
   }
   if (second === 'deletion-requests') return { view: 'deletions', query };
+  // `hosts` is a reserved site name (jinbe RESERVED_NAMES): no site can be called that.
+  if (second === 'hosts') {
+    const host = third ? decode(third) : null;
+    return host ? { view: 'host', host: host.toLowerCase(), query } : { view: 'list', query };
+  }
   const name = decode(second);
   if (!name) return { view: 'list', query };
   return { view: 'site', name, tab: pick(SITE_TABS, third, 'overview'), query };
@@ -60,12 +67,14 @@ export function sitesHref(v: { view: 'list'; query?: Record<string, string | und
   | { view: 'new'; step?: WizardStep; query?: Record<string, string | undefined> }
   | { view: 'migrate'; step?: MigrationStep }
   | { view: 'deletions' }
+  | { view: 'host'; host: string; query?: Record<string, string | undefined> }
   | { view: 'site'; name: string; tab?: SiteTab; query?: Record<string, string | undefined> }): string {
   switch (v.view) {
     case 'list': return `#/sites${qs(v.query)}`;
     case 'new': return `#/sites/new${qs({ ...v.query, step: v.step && v.step !== 'address' ? v.step : undefined })}`;
     case 'migrate': return `#/sites/migrate${qs({ step: v.step })}`;
     case 'deletions': return '#/sites/deletion-requests';
+    case 'host': return `#/sites/hosts/${encodeURIComponent(v.host)}${qs(v.query)}`;
     case 'site': {
       const tab = v.tab && v.tab !== 'overview' ? `/${v.tab}` : '';
       return `#/sites/${encodeURIComponent(v.name)}${tab}${qs(v.query)}`;

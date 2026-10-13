@@ -10,6 +10,7 @@ import { useSitePerms } from './usePerms';
 import { EphemeralBadge } from './Lifecycle';
 import { DeletionsWaiting } from './Deletions';
 import { siteNotEnforced } from '../../lib/twoFactor';
+import { SitesViewSwitch } from './SitesViewSwitch';
 
 /**
  * The Sites list (site-ux.md §5.1): every site with its state in words, the built-in system sites
@@ -98,10 +99,11 @@ export function SitesList({ query }: { query: Record<string, string> }) {
       <MigrationCallout migration={migration.data} />
 
       <div className="site-toolbar">
+        <SitesViewSwitch value="all" />
         <Segmented
           label="Filter sites"
           value={filter}
-          onChange={(f) => goSites(sitesHref({ view: 'list', query: { filter: f === 'all' ? undefined : f, q: search || undefined } }))}
+          onChange={(f) => goSites(sitesHref({ view: 'list', query: { show: 'all', filter: f === 'all' ? undefined : f, q: search || undefined } }))}
           options={[
             { value: 'all', label: 'All', count: count('all') },
             { value: 'attention', label: 'Needs attention', count: count('attention') },
