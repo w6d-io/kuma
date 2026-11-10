@@ -64,7 +64,7 @@ export function ViewingAsNotice({ user, className }: { user: User; className?: s
       title={<>Viewing sites as {targetLabel(active.target)} — read-only — <span className="viewing-as-left">{formatLeft(left)}</span> left</>}
       actions={<Button size="sm" variant="primary" onClick={() => { void stop(); }} loading={stopping}>Stop</Button>}
     >
-      <ImpersonationSites userId={user.id} />
+      <ImpersonationSites userId={user.id} started compact />
     </Callout>
   );
 }

@@ -1,5 +1,4 @@
-import { IMPERSONATION_MINUTES, type ActiveImpersonation, type ImpersonationState, type ImpersonationTarget } from '../api/impersonation';
-import type { HostEntry } from './sites/types';
+import { IMPERSONATION_MINUTES, type ActiveImpersonation, type ImpersonationState, type ImpersonationTarget, type ReachableSite } from '../api/impersonation';
 import { EDGE_BLOCKED, edgeBlocked, refusalDetail } from './apiError';
 
 /**
@@ -97,29 +96,21 @@ export function impersonationFailure(err: unknown, who: string): { title: string
   return { title: 'Could not start', detail: e.message || 'The request failed.' };
 }
 
-export interface SiteLink {
-  site: string;
-  label: string;
-  href: string;
+/** The sites they can open, in the two groups the console shows: through a role, then as anybody signed in. */
+export function groupSites(sites: readonly ReachableSite[]): { role: ReachableSite[]; signedIn: ReachableSite[] } {
+  return { role: sites.filter((s) => s.access === 'role'), signedIn: sites.filter((s) => s.access !== 'role') };
 }
 
 /**
- * Where the sites this person holds a role on are served: the pages (never the APIs) that are live,
- * by address. `byService` is what `GET /admin/users/:id/access` answers, `hosts` the sites by
- * address — two answers the console already has; nothing here is asked of jinbe for this.
+ * What to warn about before (and while) viewing as somebody, from the sites they can open. Never a
+ * reason not to start: seeing the refusal they get is a support check in itself.
  */
-export function siteLinks(byService: Record<string, string[]> | undefined, hosts: HostEntry[] | undefined): SiteLink[] {
-  const held = new Set(Object.entries(byService ?? {}).filter(([, roles]) => roles.length > 0).map(([site]) => site));
-  const out = new Map<string, SiteLink>();
-  for (const h of hosts ?? []) {
-    for (const s of h.services) {
-      if (!held.has(s.site) || s.kind !== 'page' || !REACHABLE.has(s.status)) continue;
-      const href = `https://${h.host}${s.pathPrefix || '/'}`;
-      if (!out.has(href)) out.set(href, { site: s.site, label: s.displayName || s.site, href });
-    }
+export function reachNotice(sites: readonly ReachableSite[]): { title: string; detail: string } | null {
+  if (sites.length === 0) {
+    return { title: 'Nothing this person can open', detail: 'No live site is open to them, through a role or as a signed-in person. Every site will show them "no access" — that is what they see too.' };
   }
-  return [...out.values()].sort((a, b) => a.label.localeCompare(b.label) || a.href.localeCompare(b.href));
+  if (!sites.some((s) => s.access === 'role')) {
+    return { title: 'No role on any site', detail: 'They hold no role on any site, so sites that need one will show "no access" — that is what they see too.' };
+  }
+  return null;
 }
-
-/** A site that answers at its address: not a draft, not paused. */
-const REACHABLE: ReadonlySet<string> = new Set(['live', 'applying', 'attention', 'platform', 'legacy']);

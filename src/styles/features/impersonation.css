@@ -15,7 +15,7 @@
 .viewing-as-who { font-weight: var(--weight-semibold); text-decoration: underline; text-underline-offset: 2px; }
 .viewing-as-left { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-/* "Open as this person" (pages/users/ImpersonationSites.tsx): one link per site address. */
+/* "Open as this person" (pages/users/ImpersonationSites.tsx): one link per site, in two groups. */
 .viewing-as-sites { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin: var(--space-1) 0; padding: 0; list-style: none; }
 .viewing-as-sites a { overflow-wrap: anywhere; }
 

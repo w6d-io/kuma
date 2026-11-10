@@ -27,11 +27,44 @@ export interface ImpersonationState {
   maxMinutes?: number;
 }
 
+/** A live site the person can open in a browser: through a role they hold, or as any signed-in person. */
+export interface ReachableSite {
+  name: string;
+  title: string;
+  url: string;
+  access: 'role' | 'signed-in';
+}
+
+/**
+ * What jinbe answered, kept to what can be shown and followed: a name and an http(s) address. An
+ * address of any other scheme is dropped rather than rendered as a link.
+ */
+function reachable(raw: { sites?: unknown } | null | undefined): ReachableSite[] {
+  const list = Array.isArray(raw?.sites) ? raw.sites : [];
+  return list.flatMap((s: Partial<Record<keyof ReachableSite, unknown>> | null): ReachableSite[] => {
+    if (!s || typeof s.name !== 'string' || typeof s.url !== 'string' || !/^https?:\/\//i.test(s.url)) return [];
+    return [{
+      name: s.name,
+      title: typeof s.title === 'string' && s.title.trim() ? s.title : s.name,
+      url: s.url,
+      access: s.access === 'role' ? 'role' : 'signed-in',
+    }];
+  });
+}
+
 /** The durations offered, in minutes. */
 export const IMPERSONATION_MINUTES = [15, 30] as const;
 
 export const impersonationApi = {
   state: () => request<ImpersonationState>('/admin/impersonation'),
+
+  /**
+   * The live sites this person can open in a browser, the ones they hold a role on first. jinbe works
+   * it out (roles, and the sites open to any signed-in person); a refusal or a failure means it is
+   * not known — never that there is none.
+   */
+  reachableSites: (id: string) =>
+    request<{ sites?: unknown }>(`/admin/users/${encodeURIComponent(id)}/reachable-sites`).then(reachable),
 
   // Starting while another is in force replaces it: jinbe ends the first one itself.
   start: (id: string, body: { reason: string; minutes?: number }) =>

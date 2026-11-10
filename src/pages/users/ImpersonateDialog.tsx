@@ -127,6 +127,8 @@ export function ImpersonateDialog({ open, user, current, onClose }: {
             />
             <div className="small muted mt-4">It ends by itself after that. You can stop it sooner, at any time.</div>
           </div>
+          {/* What they will get, said before starting; never a reason the button stays grey. */}
+          <ImpersonationSites userId={user.id} started={false} />
         </div>
       )}
       {phase.kind === 'done' && (
@@ -134,7 +136,7 @@ export function ImpersonateDialog({ open, user, current, onClose }: {
           <Callout tone="warning" icon={I.users} title={`Sites now open as ${who} — read-only, until ${until(phase.active.expiresAt)}`}>
             This console is still yours. To stop, use Stop in the strip at the top of every page.
           </Callout>
-          <ImpersonationSites userId={user.id} />
+          <ImpersonationSites userId={user.id} started />
         </div>
       )}
       {phase.kind === 'error' && (

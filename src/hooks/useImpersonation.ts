@@ -24,6 +24,19 @@ export function useImpersonation() {
   });
 }
 
+/**
+ * The sites one person can open (jinbe's answer). One key for the dialog and the drawer, so the list
+ * shown before starting is the list shown after. An error is "not known", and is not asked twice.
+ */
+export function useReachableSites(userId: string) {
+  return useQuery({
+    queryKey: ['user-reachable-sites', userId],
+    queryFn: () => impersonationApi.reachableSites(userId),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
 /** Writes what a start or a stop answered straight into the shared state, then asks jinbe again. */
 export function setActiveImpersonation(qc: QueryClient, active: ActiveImpersonation | null): void {
   qc.setQueryData<ImpersonationState>(IMPERSONATION_KEY, (prev) => ({ enabled: true, allowed: true, ...prev, active }));

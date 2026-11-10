@@ -2,8 +2,8 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, click, render, type } from '../../components/ui/testing';
-import { durationChoices, formatLeft, impersonateBlocked, impersonationFailure, inForce, secondsLeft, siteLinks } from '../../lib/impersonation';
-import type { HostEntry } from '../../lib/sites/types';
+import { durationChoices, formatLeft, impersonateBlocked, impersonationFailure, groupSites, inForce, reachNotice, secondsLeft } from '../../lib/impersonation';
+import { impersonationApi } from '../../api/impersonation';
 
 const h = vi.hoisted(() => ({ session: {} as Record<string, unknown>, toasts: [] as unknown[][] }));
 vi.mock('../../auth/session', () => ({ bearerToken: async () => null }));
@@ -36,18 +36,15 @@ function serve(state: unknown, start: (c: Call) => Reply = () => [201, { active:
       reply = start(c);
       if (reply[0] === 201) current = { ...(current as object), active: (reply[1] as { active: unknown }).active };
     }
-    else if (c.url.endsWith('/access')) reply = [200, { site: { groups: ['support'], byService: { billing: ['viewer'], reports: [] } }, orgs: [] }];
-    else if (c.url === '/api/admin/sites/hosts') reply = [200, HOSTS];
+    else if (c.url.endsWith('/reachable-sites')) reply = reach;
     const [status, body] = reply;
     return new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   }));
 }
-const svc = (site: string, over: Partial<HostEntry['services'][number]> = {}) =>
-  ({ site, displayName: site, pathPrefix: null, parent: null, upstream: null, kind: 'page', status: 'live', draft: false, pendingRequest: false, sharedBackendWith: [], access: {}, ...over }) as HostEntry['services'][number];
-const HOSTS: HostEntry[] = [
-  { host: 'billing.example.com', zone: 'example.com', services: [svc('billing', { displayName: 'Billing' }), svc('billing-api', { kind: 'api', pathPrefix: '/api' })], counts: { services: 2, live: 2, drafts: 0, pendingRequests: 0 } },
-  { host: 'reports.example.com', zone: 'example.com', services: [svc('reports')], counts: { services: 1, live: 1, drafts: 0, pendingRequests: 0 } },
-];
+const BILLING = { name: 'billing', title: 'Billing', url: 'https://billing.example.com/', access: 'role' };
+const DOCS = { name: 'docs', title: 'Docs', url: 'https://docs.example.com/', access: 'signed-in' };
+/** What GET …/reachable-sites answers; each test sets its own. */
+let reach: Reply = [200, { sites: [BILLING, DOCS] }];
 
 async function flush() {
   for (let i = 0; i < 8; i++) await act(async () => { await new Promise(r => setTimeout(r, 0)); });
@@ -56,6 +53,9 @@ const text = () => document.body.textContent ?? '';
 const button = (label: string) => [...document.body.querySelectorAll('button')].find(b => b.textContent?.trim() === label) ?? null;
 /** The dialog's own button: the card behind it has an Impersonate too. */
 const inDialog = (label: string) => [...document.body.querySelectorAll('.modal button')].find(b => b.textContent?.trim() === label) as HTMLButtonElement | undefined ?? null;
+const links = () => [...document.body.querySelectorAll('.modal a')] as HTMLAnchorElement[];
+/** The reach warning in the dialog: the form step has no other warning box. */
+const warning = () => [...document.body.querySelectorAll('.modal .callout.warning')].find(c => !c.textContent?.includes('Sites now open as')) ?? null;
 const posts = () => calls.filter(c => c.method === 'POST');
 function mount(ui: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -72,8 +72,9 @@ async function fillAndStart(reason = 'Ticket 4821: cannot see invoices') {
 }
 
 beforeEach(() => {
-  h.session = { identity_id: 'u-me', permissions: ['users:read', 'sites:read'] };
+  h.session = { identity_id: 'u-me', permissions: ['users:read'] };
   h.toasts = [];
+  reach = [200, { sites: [BILLING, DOCS] }];
   (window as unknown as { __AUTH_DOMAIN__?: string }).__AUTH_DOMAIN__ = 'auth.example.com';
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -115,13 +116,23 @@ describe('lib/impersonation', () => {
     expect(impersonationFailure({ status: 500, message: 'boom' }, 'x')).toEqual({ title: 'Could not start', detail: 'boom' });
   });
 
-  it('links the live pages of the sites they hold a role on, never the APIs', () => {
-    expect(siteLinks({ billing: ['viewer'], reports: [], 'billing-api': ['viewer'] }, HOSTS)).toEqual([
-      { site: 'billing', label: 'Billing', href: 'https://billing.example.com/' },
+  it('groups the sites they can open, and says when no role or nothing at all', () => {
+    const billing = { ...BILLING, access: 'role' as const };
+    const docs = { ...DOCS, access: 'signed-in' as const };
+    expect(groupSites([billing, docs])).toEqual({ role: [billing], signedIn: [docs] });
+    expect(reachNotice([billing, docs])).toBeNull();
+    expect(reachNotice([docs])!.title).toBe('No role on any site');
+    expect(reachNotice([])!.title).toBe('Nothing this person can open');
+  });
+
+  it('keeps only sites with a name and an http(s) address', async () => {
+    serve(null);
+    reach = [200, { sites: [BILLING, { name: 'x', title: 'X', url: 'javascript:alert(1)', access: 'role' }, { title: 'no name', url: 'https://a.example.com/' }, { name: 'plain', url: 'https://plain.example.com/' }] }];
+    expect(await impersonationApi.reachableSites('u-bob')).toEqual([
+      { name: 'billing', title: 'Billing', url: 'https://billing.example.com/', access: 'role' },
+      { name: 'plain', title: 'plain', url: 'https://plain.example.com/', access: 'signed-in' },
     ]);
-    expect(siteLinks({ reports: ['viewer'] }, [{ ...HOSTS[1], services: [svc('reports', { status: 'draft' })] }])).toEqual([]);
-    expect(siteLinks(undefined, HOSTS)).toEqual([]);
-    expect(siteLinks({ billing: ['viewer'] }, undefined)).toEqual([]);
+    expect(calls).toEqual([{ method: 'GET', url: '/api/admin/users/u-bob/reachable-sites', body: undefined }]);
   });
 });
 
@@ -182,9 +193,15 @@ describe('the Impersonate action', () => {
     expect(text()).toContain('Viewing as Bob Stone');
     expect(text()).toContain('Sites now open as Bob Stone — read-only, until');
     expect(text()).toContain('This console is still yours.');
-    const links = [...document.body.querySelectorAll('.modal a')] as HTMLAnchorElement[];
-    expect(links.map(a => [a.textContent, a.getAttribute('href'), a.target, a.rel])).toEqual([['Billing', 'https://billing.example.com/', '_blank', 'noopener noreferrer']]);
-    expect(text()).toContain('Or open any other site in a new tab — it loads as this person.');
+    // Both groups, the role sites first, each opening its address in a new tab.
+    expect(text()).toContain('Open as this person:Billing');
+    expect(text()).toContain('Open to any signed-in person:Docs');
+    expect(links().map(a => [a.textContent, a.getAttribute('href'), a.target, a.rel])).toEqual([
+      ['Billing', 'https://billing.example.com/', '_blank', 'noopener noreferrer'],
+      ['Docs', 'https://docs.example.com/', '_blank', 'noopener noreferrer'],
+    ]);
+    expect(document.body.querySelector('.modal .callout.warning .callout-title')!.textContent).toContain('Sites now open as');
+    expect(text()).not.toContain('No role on any site');
     // The card behind the dialog is now Stop.
     expect(button('Stop impersonating')).not.toBeNull();
   });
@@ -211,15 +228,77 @@ describe('the Impersonate action', () => {
     expect(posts()[0].body).toEqual({ reason: 'Ticket 4821: cannot see invoices', minutes: 15 });
   });
 
-  it('without the sites by address, the plain instruction only', async () => {
-    h.session = { identity_id: 'u-me', permissions: ['users:read'] };
+  it('before starting: what they will be able to open, as names — a link would open as you', async () => {
     serve({ enabled: true, allowed: true, active: null });
     await mountCard();
     click(button('Impersonate'));
+    await flush();
+    expect(calls.filter(c => c.url.endsWith('/reachable-sites')).map(c => c.url)).toEqual(['/api/admin/users/u-bob/reachable-sites']);
+    expect(text()).toContain('They will be able to open:Billing');
+    expect(text()).toContain('Open to any signed-in person:Docs');
+    expect(links()).toHaveLength(0);
+    expect(warning()).toBeNull();
+  });
+
+  it('no role on any site: warns before starting, lists what is open to anybody, and still starts', async () => {
+    reach = [200, { sites: [DOCS] }];
+    serve({ enabled: true, allowed: true, active: null });
+    await mountCard();
+    click(button('Impersonate'));
+    await flush();
+    expect(warning()!.textContent).toContain('No role on any site');
+    expect(warning()!.textContent).toContain('sites that need one will show "no access" — that is what they see too.');
+    // A warning, not an error: nothing is announced as a failure.
+    expect(document.body.querySelector('.modal [role="alert"]')).toBeNull();
+    expect(text()).not.toContain('They will be able to open:');
+    expect(text()).toContain('Open to any signed-in person:Docs');
     await fillAndStart();
-    expect(document.body.querySelectorAll('.modal a')).toHaveLength(0);
+    expect(posts()).toHaveLength(1);
+    expect(links().map(a => a.getAttribute('href'))).toEqual(['https://docs.example.com/']);
+    expect(text()).toContain('No role on any site');
+  });
+
+  it('nothing they can open: says so, and still starts', async () => {
+    reach = [200, { sites: [] }];
+    serve({ enabled: true, allowed: true, active: null });
+    await mountCard();
+    click(button('Impersonate'));
+    await flush();
+    expect(warning()!.textContent).toContain('Nothing this person can open');
+    expect(text()).not.toContain('Open to any signed-in person:');
+    await fillAndStart();
+    expect(posts()).toHaveLength(1);
+    expect(links()).toHaveLength(0);
+    expect(text()).toContain('Nothing this person can open');
+  });
+
+  it.each([403, 404, 500])('the list could not be loaded (%i): not "none" — no warning, the plain instruction', async (status) => {
+    reach = [status, { error: 'refused' }];
+    serve({ enabled: true, allowed: true, active: null });
+    await mountCard();
+    click(button('Impersonate'));
+    await flush();
+    expect(warning()).toBeNull();
+    expect(text()).toContain('Which sites they can open could not be checked.');
+    await fillAndStart();
+    expect(posts()).toHaveLength(1);
+    expect(links()).toHaveLength(0);
     expect(text()).toContain('Open any site in a new tab — it loads as this person.');
-    expect(calls.some(c => c.url === '/api/admin/sites/hosts')).toBe(false);
+    expect(text()).not.toContain('No role on any site');
+    expect(text()).not.toContain('Nothing this person can open');
+    cleanup();
+  });
+
+  it('does not wait for the list: the form works while it loads', async () => {
+    serve({ enabled: true, allowed: true, active: null });
+    const real = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => (String(url).endsWith('/reachable-sites') ? new Promise<Response>(() => {}) : real(url, init))));
+    await mountCard();
+    click(button('Impersonate'));
+    await flush();
+    expect(text()).toContain('Checking which sites they can open…');
+    await fillAndStart();
+    expect(text()).toContain('Sites now open as Bob Stone');
   });
 
   const refusals: [string, number, string][] = [
@@ -296,5 +375,21 @@ describe('ViewingAsNotice (top of the drawer)', () => {
     click(button('Stop'));
     await flush();
     expect(text()).toBe('');
+  });
+
+  it('same list, same groups; no role is said in the notice itself', async () => {
+    serve({ enabled: true, allowed: true, active: activeFor(BOB) });
+    mount(<ViewingAsNotice user={BOB} />);
+    await flush();
+    expect(text()).toContain('Open as this person:Billing');
+    expect(text()).toContain('Open to any signed-in person:Docs');
+    cleanup();
+    reach = [200, { sites: [DOCS] }];
+    serve({ enabled: true, allowed: true, active: activeFor(BOB) });
+    mount(<ViewingAsNotice user={BOB} />);
+    await flush();
+    expect(text()).toContain('No role on any site.');
+    expect(document.body.querySelectorAll('.callout')).toHaveLength(1);
+    expect(document.body.querySelector('a[href="https://docs.example.com/"]')!.getAttribute('target')).toBe('_blank');
   });
 });
