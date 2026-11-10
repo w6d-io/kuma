@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { SecondFactorBanner } from './components/SecondFactorBanner';
+import { ImpersonationBanner } from './components/ImpersonationBanner';
 import { secondFactorPrompt } from './lib/secondFactor';
 import { twoStepHere } from './lib/stepUp';
 import { redirectToLogin } from './auth/loginRedirect';
@@ -262,6 +263,7 @@ function Topbar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
           403 Forbidden · access denied
         </div>
       )}
+      <ImpersonationBanner />
       <SecondFactorBanner />
     </>
   );

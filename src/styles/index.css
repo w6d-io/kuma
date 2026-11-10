@@ -33,6 +33,7 @@
 @import './features/settings.css';
 @import './features/orgs.css';
 @import './features/people.css';
+@import './features/impersonation.css';
 @import './features/design.css';
 @import './features/rbac.css';
 @import './features/home.css';

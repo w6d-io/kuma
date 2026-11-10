@@ -17,6 +17,7 @@ import { UserProfileTab } from './UserProfileTab';
 import { UserSessionsTab } from './UserSessionsTab';
 import { UserSignInTab } from './UserSignInTab';
 import { UserDangerTab } from './UserDangerTab';
+import { ViewingAsNotice } from './UserImpersonation';
 import { IndividualAccess } from '../../components/grants/IndividualAccess';
 import { GrantComposer } from '../../components/grants/GrantComposer';
 import { useOrgCatalog } from '../../api/orgCatalog';
@@ -212,6 +213,7 @@ export function UserDrawer() {
               )}
             </div>
           </Card>
+          <ViewingAsNotice user={user} className="mb-12" />
           <Tabs full label="User sections" items={DRAWER_TABS} value={drawerTab} onChange={setDrawerTab} />
           {drawerTab === "groups" && (
             <>

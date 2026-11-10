@@ -192,7 +192,8 @@ describe('UserSignInTab', () => {
     serve(() => [200, { methods: ['totp'], required: true }]);
     mount();
     await flush();
-    expect(calls[0].url).toBe('/api/admin/users/u-1/second-factors');
+    // Beside the tab's own question, the Impersonate card asks whether that feature is on.
+    expect(calls.map(c => c.url)).toContain('/api/admin/users/u-1/second-factors');
     expect(text()).toContain('Authenticator app');
     expect(button('Remove two-step sign-in')).not.toBeNull();
     expect(button('Send sign-in link')).not.toBeNull();

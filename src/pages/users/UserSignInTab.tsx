@@ -8,12 +8,13 @@ import { holds } from '../../policy/model';
 import { FACTOR_LABELS } from '../../lib/recovery';
 import { RemoveSecondFactorDialog } from './RemoveSecondFactorDialog';
 import { SendLoginLinkDialog } from './SendLoginLinkDialog';
+import { ImpersonateCard } from './UserImpersonation';
 import type { User } from '../../api/types';
 
 /**
  * Getting somebody back in: their two-step sign-in (and removing it when they lost it), and a
  * one-click sign-in link when the email code does not arrive. Each action shows to whoever holds its
- * permission; jinbe decides either way.
+ * permission; jinbe decides either way. Impersonating them, where it is on, sits with these.
  */
 export function UserSignInTab({ user }: { user: User }) {
   const { data: session } = useSession();
@@ -61,6 +62,7 @@ export function UserSignInTab({ user }: { user: User }) {
           </div>
         </Card>
       )}
+      <ImpersonateCard user={user} />
       <RemoveSecondFactorDialog
         open={dialog === 'remove'}
         user={user}

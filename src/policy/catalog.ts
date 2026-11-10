@@ -14,7 +14,7 @@
 
 export const PLATFORM_PERMISSIONS = [
   'users:read', 'users:create', 'users:update', 'users:update_email', 'users.metadata:write', 'users:disable',
-  'users:delete', 'users:recovery', 'users:verify', 'users:send_login_link', 'users:reset_second_factor',
+  'users:delete', 'users:recovery', 'users:verify', 'users:send_login_link', 'users:reset_second_factor', 'users:impersonate',
   'sessions:read', 'sessions:revoke',
   'access:read', 'access:check', 'groups:read', 'groups:write', 'groups.members:write', 'groups.members:revoke',
   'groups.mfa:write', 'users.grants:read', 'users.grants:write',
